@@ -1,0 +1,32 @@
+#
+# Miscellaneous I2C chip drivers configuration
+#
+# *** DEPRECATED! Do not add new entries! See Makefile ***
+#
+
+menu "Miscellaneous I2C Chip support"
+### ZTE_MODIFY  zhaoy0002:added by zhaoyang 2011/05/21 for adding tsl2583 ALS driver
+config ALS_TSL2583_ZTE
+	tristate "TSL2583 ALS Driver"
+	depends on I2C
+	help
+	 TSL2583 ALS Driver implemented by TAOS.
+
+## ZTE_MODIFY end ##
+### ZTE_MODIFY  zhaoy0003:added by zhaoyang 2011/05/21 for adding TMD26713 proximity driver
+config PROX_TMD26713_ZTE 
+	tristate "TMD26713 prox Driver"
+	depends on I2C
+	help
+	 TMD26713 PROX Driver implemented by TAOS.	 
+
+## ZTE_MODIFY end ##
+### ZTE_MODIFY  zhaoy0005:added by zhaoyang 2011/05/31 for adding TMD27713 ALS & proximity driver
+config ALS_PROX_TMD27713_ZTE 
+	tristate "TMD27713 ALS & prox Driver"
+	depends on I2C
+	help
+	 TMD27713 ALS & PROX Driver implemented by TAOS.	 
+
+## ZTE_MODIFY end ##
+endmenu
