@@ -1702,11 +1702,6 @@ static void msm_otg_sm_work(struct work_struct *w)
 
 			/* Workaround: Reset phy after session */
 			otg_reset(&dev->otg, 1);
-
-			if(!test_bit(B_SESS_VLD, &dev->inputs))
-			{
-				switchback_to_usbmassstorage();
-			}
 			
 			work = 1;
 		} else if (test_bit(B_BUS_REQ, &dev->inputs) &&

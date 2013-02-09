@@ -98,14 +98,4 @@ extern void android_register_function(struct android_usb_function *f);
 
 extern int android_enable_function(struct usb_function *f, int enable);
 
-
-/** ZTE_MODIFY liuyuanyuan 2011/09/29 added for global composition switch start */
-extern void switch_from_ms_to_mtp(void);
-extern void enable_mtp(void);
-extern void switchback_to_usbmassstorage(void);
-/** ZTE_MODIFY liuyuanyuan 2011/09/29 end */
-
-
-
-
 #endif	/* __LINUX_USB_ANDROID_H */

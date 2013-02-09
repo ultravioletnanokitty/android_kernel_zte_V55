@@ -680,121 +680,6 @@ int android_enable_function(struct usb_function *f, int enable)
 	return 0;
 }
 
-
-void switch_from_ms_to_mtp(void)
-{
-	struct usb_function *f;
-
-	printk("liuyuanyuan get rid of usb_mass_storage function in switch_from_ms_to_mtp()\n");
-	list_for_each_entry(f, &android_config_driver.functions, list)
-	{
-		if(!strcmp(f->name, "usb_mass_storage"))
-			android_enable_function(f, 0);
-	}
-
-	printk("liuyuanyuan enable mtp function in switch_from_ms_to_mtp\n");
-	list_for_each_entry(f, &android_config_driver.functions, list)
-	{
-		if(!strcmp(f->name, "mtp"))
-			android_enable_function(f, 1);
-	}
-
-	if(is_usbdebugging_enabled_before_plugoff == 1 )
-	{
-		list_for_each_entry(f, &android_config_driver.functions, list)
-		{
-			if(!strcmp(f->name, "adb"))
-				android_enable_function(f, 1);
-		}
-	}
-
-}
-void enable_mtp(void)
-{
-	struct usb_function *f;
-
-	list_for_each_entry(f, &android_config_driver.functions, list)
-	{
-		if(!strcmp(f->name, "mtp"))
-			android_enable_function(f, 1);
-	}
-}
-int is_diag_enabled(void)
-{
-	struct usb_function *f;
-
-	printk("liuyuanyuan try to get whether diag is enabled\n");
-	list_for_each_entry(f, &android_config_driver.functions, list)
-	{
-		if(!strcmp(f->name, "diag"))
-		{			
-			printk("liuyuanyuan gets /sys/class/usb_composite/diag/enable is <0x%x>\n", !f->disabled);
-			return !f->disabled;
-		}
-	}
-	printk("liuyuanyuan fatal error diag function not found\n");
-	return -1;
-}
-int is_accessory_enabled(void)
-{
-	struct usb_function *f;
-
-	printk("liuyuanyuan try to get whether diag is enabled\n");
-	list_for_each_entry(f, &android_config_driver.functions, list)
-	{
-		if(!strcmp(f->name, "accessory"))
-		{			
-			printk("liuyuanyuan gets /sys/class/usb_composite/accessory/enable is <0x%x>\n", !f->disabled);
-			return !f->disabled;
-		}
-	}
-	printk("liuyuanyuan fatal error accessory function not found\n");
-	return -1;
-}
-void switchback_to_usbmassstorage(void)
-{
-	struct usb_function *f;
-	if( (is_diag_enabled()==0)
-	&& (is_accessory_enabled()==0)  )   //diag function not enabled, go switching!
-	{
-		list_for_each_entry(f, &android_config_driver.functions, list)
-		{
-			if(!strcmp(f->name, "adb"))
-				is_usbdebugging_enabled_before_plugoff = !f->disabled;
-		}
-		printk("liuyuanyuan is_usbdebugging_enabled_before_plugoff is <%d>\n", is_usbdebugging_enabled_before_plugoff);
-	
-		printk("liuyuanyuan disable rndis in switchback_to_usbmassstorage\n");
-		list_for_each_entry(f, &android_config_driver.functions, list)
-		{
-			if(!strcmp(f->name, "rndis"))
-			android_enable_function(f, 0);
-		}
-		
-		printk("liuyuanyuan disable adb in switchback_to_usbmassstorage\n");
-		list_for_each_entry(f, &android_config_driver.functions, list)
-		{
-			if(!strcmp(f->name, "adb"))
-			android_enable_function(f, 0);
-		}
-		
-		printk("liuyuanyuan disable mtp in switchback_to_usbmassstorage\n");
-		list_for_each_entry(f, &android_config_driver.functions, list)
-		{
-			if(!strcmp(f->name, "mtp"))
-			android_enable_function(f, 0);
-		}
-
-		printk("liuyuanyuan enable usb_mass_storage in switchback_to_usbmassstorage\n");
-		list_for_each_entry(f, &android_config_driver.functions, list)
-		{
-			if(!strcmp(f->name, "usb_mass_storage"))
-			android_enable_function(f, 1);
-		}
-	}
-}
-
-
 #ifdef CONFIG_DEBUG_FS
 static int android_debugfs_open(struct inode *inode, struct file *file)
 {
@@ -1010,7 +895,6 @@ static void usb_switch_work(struct work_struct *w)
 	//mutex_lock(&_android_dev->lock);
 	wake_lock(&p->wlock);
 	//android_switch_composition((unsigned short)p->switch_pid);
-	switch_from_ms_to_mtp();
 	wake_unlock(&p->wlock);
 	//mutex_unlock(&_android_dev->lock);
 
