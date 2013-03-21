@@ -283,10 +283,16 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	struct kgsl_iommu_device *iommu_dev;
 	unsigned int ptbase, fsr;
 	unsigned int pid;
-
 	struct _mem_entry prev, next;
 	unsigned int fsynr0, fsynr1;
 	int write;
+	struct kgsl_device *device;
+	struct adreno_device *adreno_dev;
+	unsigned int no_page_fault_log = 0;
+	unsigned int curr_context_id = 0;
+	unsigned int curr_global_ts = 0;
+	static struct adreno_context *curr_context;
+	static struct kgsl_context *context;
 
 	ret = get_iommu_unit(dev, &mmu, &iommu_unit);
 	if (ret)
@@ -298,6 +304,8 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 		goto done;
 	}
 	iommu = mmu->priv;
+	device = mmu->device;
+	adreno_dev = ADRENO_DEVICE(device);
 
 	ptbase = KGSL_IOMMU_GET_CTX_REG(iommu, iommu_unit,
 					iommu_dev->ctx_id, TTBR0);
@@ -324,26 +332,54 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 		iommu_dev->ctx_id, fsr, fsynr0, fsynr1,
 		write ? "write" : "read");
 
-	_check_if_freed(iommu_dev, addr, pid);
+	if (adreno_dev->ft_pf_policy & KGSL_FT_PAGEFAULT_LOG_ONE_PER_PAGE)
+		no_page_fault_log = kgsl_mmu_log_fault_addr(mmu, ptbase, addr);
 
-	KGSL_LOG_DUMP(iommu_dev->kgsldev, "---- nearby memory ----\n");
+	if (!no_page_fault_log) {
+		KGSL_MEM_CRIT(iommu_dev->kgsldev,
+			"GPU PAGE FAULT: addr = %lX pid = %d\n",
+			addr, kgsl_mmu_get_ptname_from_ptbase(mmu, ptbase));
+		KGSL_MEM_CRIT(iommu_dev->kgsldev, "context = %d FSR = %X\n",
+			iommu_dev->ctx_id, fsr);
 
-	_find_mem_entries(mmu, addr, ptbase, &prev, &next);
+		_check_if_freed(iommu_dev, addr, pid);
 
-	if (prev.gpuaddr)
-		_print_entry(iommu_dev->kgsldev, &prev);
-	else
-		KGSL_LOG_DUMP(iommu_dev->kgsldev, "*EMPTY*\n");
+		KGSL_LOG_DUMP(iommu_dev->kgsldev, "---- nearby memory ----\n");
 
-	KGSL_LOG_DUMP(iommu_dev->kgsldev, " <- fault @ %8.8lX\n", addr);
+		_find_mem_entries(mmu, addr, ptbase, &prev, &next);
 
-	if (next.gpuaddr != 0xFFFFFFFF)
-		_print_entry(iommu_dev->kgsldev, &next);
-	else
-		KGSL_LOG_DUMP(iommu_dev->kgsldev, "*EMPTY*\n");
+		if (prev.gpuaddr)
+			_print_entry(iommu_dev->kgsldev, &prev);
+		else
+			KGSL_LOG_DUMP(iommu_dev->kgsldev, "*EMPTY*\n");
+
+		KGSL_LOG_DUMP(iommu_dev->kgsldev, " <- fault @ %8.8lX\n", addr);
+
+		if (next.gpuaddr != 0xFFFFFFFF)
+			_print_entry(iommu_dev->kgsldev, &next);
+		else
+			KGSL_LOG_DUMP(iommu_dev->kgsldev, "*EMPTY*\n");
+
+	}
 
 	mmu->fault = 1;
 	iommu_dev->fault = 1;
+
+	kgsl_sharedmem_readl(&device->memstore, &curr_context_id,
+		KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL, current_context));
+	context = idr_find(&device->context_idr, curr_context_id);
+	if (context != NULL)
+			curr_context = context->devctxt;
+
+	kgsl_sharedmem_readl(&device->memstore, &curr_global_ts,
+		KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL, eoptimestamp));
+
+	/*
+	 * Store pagefault's timestamp in adreno context,
+	 * this information will be used in GFT
+	 */
+	curr_context->pagefault = 1;
+	curr_context->pagefault_ts = curr_global_ts;
 
 	trace_kgsl_mmu_pagefault(iommu_dev->kgsldev, addr,
 			kgsl_mmu_get_ptname_from_ptbase(mmu, ptbase),
@@ -355,7 +391,8 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	 * the GPU and trigger a snapshot. To stall the transaction return
 	 * EBUSY error.
 	 */
-	ret = -EBUSY;
+	if (adreno_dev->ft_pf_policy & KGSL_FT_PAGEFAULT_GPUHALT_ENABLE)
+		ret = -EBUSY;
 done:
 	return ret;
 }

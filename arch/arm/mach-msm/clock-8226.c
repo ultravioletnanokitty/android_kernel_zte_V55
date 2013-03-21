@@ -1919,6 +1919,8 @@ static struct rcg_clk mmss_gp1_clk_src = {
 };
 
 static struct clk_freq_tbl ftbl_camss_mclk0_1_clk[] = {
+	F_MMSS(  19200000,         xo,   1,    0,    0),
+	F_MMSS(  24000000,      gpll0,   5,    1,    5),
 	F_MMSS(  66670000,      gpll0,   9,    0,    0),
 	F_END
 };
@@ -3062,7 +3064,8 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("a7sspll", a7sspll.c, "f9011050.qcom,acpuclk"),
 
 	/* WCNSS CLOCKS */
-	CLK_LOOKUP("xo", xo.c, "fb000000.qcom,wcnss-wlan"),
+	CLK_LOOKUP("xo", xo.c,         "fb000000.qcom,wcnss-wlan"),
+	CLK_LOOKUP("rf_clk", cxo_a2.c, "fb000000.qcom,wcnss-wlan"),
 
 	/* BUS DRIVER */
 	CLK_LOOKUP("bus_clk", cnoc_msmbus_clk.c, "msm_config_noc"),
@@ -3178,6 +3181,11 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("iface_clk",    gcc_ce1_ahb_clk.c,     "qseecom"),
 	CLK_LOOKUP("bus_clk",      gcc_ce1_axi_clk.c,     "qseecom"),
 	CLK_LOOKUP("core_clk_src", ce1_clk_src.c,         "qseecom"),
+
+	CLK_LOOKUP("core_clk",     gcc_ce1_clk.c,         "scm"),
+	CLK_LOOKUP("iface_clk",    gcc_ce1_ahb_clk.c,     "scm"),
+	CLK_LOOKUP("bus_clk",      gcc_ce1_axi_clk.c,     "scm"),
+	CLK_LOOKUP("core_clk_src", ce1_clk_src.c,         "scm"),
 
 	/* SDCC */
 	CLK_LOOKUP("iface_clk", gcc_sdcc1_ahb_clk.c, "f9824000.qcom,sdcc"),
@@ -3522,6 +3530,9 @@ static void __init msm8226_clock_pre_init(void)
 	 * access mmss clock controller registers.
 	 */
 	clk_set_rate(&mmssnoc_ahb_a_clk.c, 40000000);
+
+	/* Set an initial rate (fmax at nominal) on the MMSSNOC AXI clock */
+	clk_set_rate(&axi_clk_src.c, 200000000);
 
 	enable_rpm_scaling();
 
