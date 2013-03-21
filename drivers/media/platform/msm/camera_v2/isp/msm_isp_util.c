@@ -239,13 +239,15 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 				msm_camera_io_w(lo_val1, vfe_dev->vfe_base +
 					vfe_dev->hw_info->dmi_reg_offset + 0x4);
 			} else if (reg_cfg_cmd->cmd_type ==
-					VFE_WRITE_DMI_64BIT) {
-				hi_val = *hi_tbl_ptr++;
+					   VFE_WRITE_DMI_64BIT) {
+				lo_tbl_ptr++;
+				hi_val = *hi_tbl_ptr;
+				hi_tbl_ptr = hi_tbl_ptr + 2;
 				msm_camera_io_w(hi_val, vfe_dev->vfe_base +
-					   vfe_dev->hw_info->dmi_reg_offset);
+					vfe_dev->hw_info->dmi_reg_offset);
 			}
 			msm_camera_io_w(lo_val, vfe_dev->vfe_base +
-					vfe_dev->hw_info->dmi_reg_offset + 0x4);
+				vfe_dev->hw_info->dmi_reg_offset + 0x4);
 		}
 		break;
 	}
@@ -635,22 +637,21 @@ int msm_isp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 		mutex_unlock(&vfe_dev->mutex);
 		return -EINVAL;
 	}
+	vfe_dev->vfe_hw_version = msm_camera_io_r(vfe_dev->vfe_base);
+	ISP_DBG("%s: HW Version: 0x%x\n", __func__, vfe_dev->vfe_hw_version);
+
 	vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
 
 	for (i = 0; i < vfe_dev->hw_info->num_iommu_ctx; i++)
 		vfe_dev->buf_mgr->ops->attach_ctx(vfe_dev->buf_mgr,
 			vfe_dev->iommu_ctx[i]);
-	vfe_dev->buf_mgr->ops->buf_mgr_init(vfe_dev->buf_mgr, "msm_isp", 14);
+	vfe_dev->buf_mgr->ops->buf_mgr_init(vfe_dev->buf_mgr, "msm_isp", 28);
 
 	memset(&vfe_dev->axi_data, 0, sizeof(struct msm_vfe_axi_shared_data));
 	memset(&vfe_dev->stats_data, 0,
 		sizeof(struct msm_vfe_stats_shared_data));
 	memset(&vfe_dev->error_info, 0, sizeof(vfe_dev->error_info));
 	vfe_dev->axi_data.hw_info = vfe_dev->hw_info->axi_hw_info;
-
-	ISP_DBG("%s: HW Version: 0x%x\n",
-		__func__, msm_camera_io_r(vfe_dev->vfe_base));
-
 	vfe_dev->vfe_open_cnt++;
 	vfe_dev->taskletq_idx = 0;
 	mutex_unlock(&vfe_dev->mutex);

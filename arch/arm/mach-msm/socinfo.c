@@ -29,6 +29,7 @@
 #include <mach/socinfo.h>
 
 #include "smd_private.h"
+#include "boot_stats.h"
 
 #define BUILD_ID_LENGTH 32
 
@@ -341,6 +342,9 @@ static enum msm_cpu cpu_of_id[] = {
 
 	/* 8064AA IDs */
 	[172] = MSM_CPU_8064AA,
+
+	/* zinc IDs */
+	[178] = MSM_CPU_ZINC,
 
 	/* Uninitialized IDs are not known to run Linux.
 	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -863,6 +867,10 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 147;
 		strlcpy(dummy_socinfo.build_id, "msm8610 - ",
 			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msmzinc()) {
+		dummy_socinfo.id = 178;
+		strlcpy(dummy_socinfo.build_id, "msmzinc - ",
+			sizeof(dummy_socinfo.build_id));
 	}
 	strlcat(dummy_socinfo.build_id, "Dummy socinfo",
 		sizeof(dummy_socinfo.build_id));
@@ -1132,6 +1140,7 @@ int __init socinfo_init(void)
 	if (socinfo->v1.id < ARRAY_SIZE(cpu_of_id))
 		cur_cpu = cpu_of_id[socinfo->v1.id];
 
+	boot_stats_init();
 	socinfo_print();
 
 	return 0;

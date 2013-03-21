@@ -658,6 +658,11 @@ struct adm_cmd_connect_afe_port_v5 {
 #define SLIMBUS_3_TX		0x4007
 #define SLIMBUS_4_RX		0x4008
 #define SLIMBUS_4_TX		0x4009		/* index = 24 */
+#define SLIMBUS_5_RX		0x400a
+#define SLIMBUS_5_TX		0x400b
+#define SLIMBUS_6_RX		0x400c
+#define SLIMBUS_6_TX		0x400d
+#define SLIMBUS_PORT_LAST	SLIMBUS_6_TX
 #define INT_BT_SCO_RX 0x3000		/* index = 25 */
 #define INT_BT_SCO_TX 0x3001		/* index = 26 */
 #define INT_BT_A2DP_RX 0x3002		/* index = 27 */
@@ -798,6 +803,15 @@ struct adm_cmd_connect_afe_port_v5 {
 #define AFE_PORT_ID_SLIMBUS_MULTI_CHAN_4_RX      0x4008
 /* SLIMbus Tx port on channel 4. */
 #define AFE_PORT_ID_SLIMBUS_MULTI_CHAN_4_TX      0x4009
+/* SLIMbus Rx port on channel 5. */
+#define AFE_PORT_ID_SLIMBUS_MULTI_CHAN_5_RX      0x400a
+/* SLIMbus Tx port on channel 5. */
+#define AFE_PORT_ID_SLIMBUS_MULTI_CHAN_5_TX      0x400b
+/* SLIMbus Rx port on channel 6. */
+#define AFE_PORT_ID_SLIMBUS_MULTI_CHAN_6_RX      0x400c
+/* SLIMbus Tx port on channel 6. */
+#define AFE_PORT_ID_SLIMBUS_MULTI_CHAN_6_TX      0x400d
+
 /* Generic pseudoport 1. */
 #define AFE_PORT_ID_PSEUDOPORT_01      0x8001
 /* Generic pseudoport 2. */
@@ -1971,7 +1985,6 @@ struct afe_param_id_pseudo_port_cfg {
 	 * - #AFE_PORT_SAMPLE_RATE_192K @tablebulletend
 	 */
 } __packed;
-
 
 union afe_port_config {
 	struct afe_param_id_pcm_cfg               pcm;
@@ -6252,6 +6265,93 @@ struct cmd_set_topologies {
 	/* Size in bytes of the variable payload in shared memory */
 } __packed;
 
+/* This module represents the Rx processing of Feedback speaker protection.
+ * It contains the excursion control, thermal protection,
+ * analog clip manager features in it.
+ * This module id will support following param ids.
+ * - AFE_PARAM_ID_FBSP_MODE_RX_CFG
+ */
+
+#define AFE_MODULE_FB_SPKR_PROT_RX 0x0001021C
+
+#define AFE_PARAM_ID_FBSP_MODE_RX_CFG 0x0001021D
+
+struct asm_fbsp_mode_rx_cfg {
+	uint32_t minor_version;
+	uint32_t mode;
+} __packed;
+
+/* This module represents the VI processing of feedback speaker protection.
+ * It will receive Vsens and Isens from codec and generates necessary
+ * parameters needed by Rx processing.
+ * This module id will support following param ids.
+ * - AFE_PARAM_ID_SPKR_CALIB_VI_PROC_CFG
+ * - AFE_PARAM_ID_CALIB_RES_CFG
+ * - AFE_PARAM_ID_FEEDBACK_PATH_CFG
+ */
+
+#define AFE_MODULE_FB_SPKR_PROT_VI_PROC 0x00010226
+
+#define AFE_PARAM_ID_SPKR_CALIB_VI_PROC_CFG 0x0001022A
+
+struct asm_spkr_calib_vi_proc_cfg {
+	uint32_t minor_version;
+	int32_t	r0_cali_q24;
+	int16_t	t0_cali_q6;
+	int16_t	reserved;
+} __packed;
+
+#define AFE_PARAM_ID_CALIB_RES_CFG 0x0001022B
+
+struct asm_calib_res_cfg {
+	uint32_t minor_version;
+	int32_t	r0_cali_q24;
+	uint32_t th_vi_ca_state;
+} __packed;
+
+#define AFE_PARAM_ID_FEEDBACK_PATH_CFG 0x0001022C
+
+struct asm_feedback_path_cfg {
+	uint32_t minor_version;
+	int32_t	dst_portid;
+	int32_t	num_channels;
+	int32_t	chan_info[4];
+} __packed;
+
+#define AFE_PARAM_ID_MODE_VI_PROC_CFG 0x00010227
+
+struct asm_mode_vi_proc_cfg {
+	uint32_t minor_version;
+	uint32_t cal_mode;
+} __packed;
+
+union afe_spkr_prot_config {
+	struct asm_fbsp_mode_rx_cfg mode_rx_cfg;
+	struct asm_spkr_calib_vi_proc_cfg vi_proc_cfg;
+	struct asm_feedback_path_cfg feedback_path_cfg;
+	struct asm_mode_vi_proc_cfg mode_vi_proc_cfg;
+} __packed;
+
+struct afe_spkr_prot_config_command {
+	struct apr_hdr hdr;
+	struct afe_port_cmd_set_param_v2 param;
+	struct afe_port_param_data_v2 pdata;
+	union afe_spkr_prot_config prot_config;
+} __packed;
+
+struct afe_spkr_prot_get_vi_calib {
+	struct afe_port_cmd_get_param_v2 get_param;
+	struct afe_port_param_data_v2 pdata;
+	struct asm_calib_res_cfg res_cfg;
+} __packed;
+
+struct afe_spkr_prot_calib_get_resp {
+	uint32_t status;
+	struct afe_port_param_data_v2 pdata;
+	struct asm_calib_res_cfg res_cfg;
+} __packed;
+
+
 /* SRS TRUMEDIA start */
 /* topology */
 #define SRS_TRUMEDIA_TOPOLOGY_ID			0x00010D90
@@ -6355,7 +6455,55 @@ struct srs_trumedia_params {
 } __packed;
 /* SRS TruMedia end */
 
+/* LSM Specific */
+#define VW_FEAT_DIM					(39)
 
+#define APRV2_IDS_SERVICE_ID_ADSP_LSM_V			(0xD)
+#define APRV2_IDS_DOMAIN_ID_ADSP_V			(0x4)
+#define APRV2_IDS_DOMAIN_ID_APPS_V			(0x5)
+
+#define LSM_SESSION_CMD_SHARED_MEM_MAP_REGIONS		(0x00012A7F)
+#define LSM_SESSION_CMDRSP_SHARED_MEM_MAP_REGIONS	(0x00012A80)
+#define LSM_SESSION_CMD_SHARED_MEM_UNMAP_REGIONS	(0x00012A81)
+#define LSM_SESSION_CMD_OPEN_TX				(0x00012A82)
+#define LSM_SESSION_CMD_CLOSE_TX			(0x00012A88)
+#define LSM_SESSION_CMD_SET_PARAMS			(0x00012A83)
+#define LSM_SESSION_CMD_REGISTER_SOUND_MODEL		(0x00012A84)
+#define LSM_SESSION_CMD_DEREGISTER_SOUND_MODEL		(0x00012A85)
+#define LSM_SESSION_CMD_START				(0x00012A86)
+#define LSM_SESSION_CMD_STOP				(0x00012A87)
+
+#define LSM_SESSION_EVENT_DETECTION_STATUS		(0x00012B00)
+
+#define LSM_MODULE_ID_VOICE_WAKEUP			(0x00012C00)
+#define LSM_PARAM_ID_ENDPOINT_DETECT_THRESHOLD		(0x00012C01)
+#define LSM_PARAM_ID_OPERATION_MODE			(0x00012C02)
+#define LSM_PARAM_ID_GAIN				(0x00012C03)
+#define LSM_PARAM_ID_CONNECT_TO_PORT			(0x00012C04)
+#define LSM_PARAM_ID_KEYWORD_DETECT_SENSITIVITY		(0x00012C05)
+#define LSM_PARAM_ID_USER_DETECT_SENSITIVITY		(0x00012C06)
+#define LSM_PARAM_ID_FEATURE_COMPENSATION_DATA		(0x00012C07)
+
+
+/* HW MAD specific */
+#define AFE_MODULE_HW_MAD				(0x00010230)
+#define AFE_PARAM_ID_HW_MAD_CFG				(0x00010231)
+#define AFE_PARAM_ID_HW_MAD_CTRL			(0x00010232)
+#define AFE_PARAM_ID_SLIMBUS_SLAVE_PORT_CFG		(0x00010233)
+
+/* SW MAD specific */
+#define AFE_MODULE_SW_MAD				(0x0001022D)
+#define AFE_PARAM_ID_SW_MAD_CFG				(0x0001022E)
+#define AFE_PARAM_ID_SVM_MODEL				(0x0001022F)
+
+/* Commands/Params to pass the codec/slimbus data to DSP */
+#define AFE_SVC_CMD_SET_PARAM				(0x000100f3)
+#define AFE_MODULE_CDC_DEV_CFG				(0x00010234)
+#define AFE_PARAM_ID_CDC_SLIMBUS_SLAVE_CFG		(0x00010235)
+#define AFE_PARAM_ID_CDC_REG_CFG			(0x00010236)
+#define AFE_PARAM_ID_CDC_REG_CFG_INIT			(0x00010237)
+
+#define AFE_MAX_CDC_REGISTERS_TO_CONFIG			(20)
 
 /* ERROR CODES */
 /* Success. The operation completed with no errors. */
@@ -6582,6 +6730,106 @@ struct afe_dtmf_generation_command {
 	 * variable for 32 bit alignment of APR packet.
 	 */
 	uint16_t                  reserved;
+} __packed;
+
+enum afe_config_type {
+	AFE_SLIMBUS_SLAVE_PORT_CONFIG,
+	AFE_SLIMBUS_SLAVE_CONFIG,
+	AFE_CDC_REGISTERS_CONFIG,
+	AFE_MAX_CONFIG_TYPES,
+};
+
+struct afe_param_slimbus_slave_port_cfg {
+	uint32_t minor_version;
+	uint16_t slimbus_dev_id;
+	uint16_t slave_dev_pgd_la;
+	uint16_t slave_dev_intfdev_la;
+	uint16_t bit_width;
+	uint16_t data_format;
+	uint16_t num_channels;
+	uint16_t slave_port_mapping[AFE_PORT_MAX_AUDIO_CHAN_CNT];
+} __packed;
+
+struct afe_param_cdc_slimbus_slave_cfg {
+	uint32_t minor_version;
+	uint32_t device_enum_addr_lsw;
+	uint32_t device_enum_addr_msw;
+	uint16_t tx_slave_port_offset;
+	uint16_t rx_slave_port_offset;
+} __packed;
+
+struct afe_param_cdc_reg_cfg {
+	uint32_t minor_version;
+	uint32_t reg_logical_addr;
+	uint32_t reg_field_type;
+	uint32_t reg_field_bit_mask;
+	uint16_t reg_bit_width;
+	uint16_t reg_offset_scale;
+} __packed;
+
+struct afe_param_cdc_reg_cfg_data {
+	uint32_t num_registers;
+	struct afe_param_cdc_reg_cfg *reg_data;
+} __packed;
+
+struct afe_svc_cmd_set_param {
+	uint32_t payload_size;
+	uint32_t payload_address_lsw;
+	uint32_t payload_address_msw;
+	uint32_t mem_map_handle;
+} __packed;
+
+struct afe_param_hw_mad_ctrl {
+	uint32_t minor_version;
+	uint16_t mad_type;
+	uint16_t mad_enable;
+} __packed;
+
+struct afe_cmd_hw_mad_ctrl {
+	struct apr_hdr hdr;
+	struct afe_port_cmd_set_param_v2 param;
+	struct afe_port_param_data_v2 pdata;
+	struct afe_param_hw_mad_ctrl payload;
+} __packed;
+
+struct afe_cmd_hw_mad_slimbus_slave_port_cfg {
+	struct apr_hdr hdr;
+	struct afe_port_cmd_set_param_v2 param;
+	struct afe_port_param_data_v2 pdata;
+	struct afe_param_slimbus_slave_port_cfg sb_port_cfg;
+} __packed;
+
+struct afe_cmd_sw_mad_enable {
+	struct apr_hdr hdr;
+	struct afe_port_cmd_set_param_v2 param;
+	struct afe_port_param_data_v2 pdata;
+} __packed;
+
+struct afe_param_cdc_reg_cfg_payload {
+	struct afe_port_param_data_v2 common;
+	struct afe_param_cdc_reg_cfg  reg_cfg;
+} __packed;
+
+/*
+ * reg_data's size can be up to AFE_MAX_CDC_REGISTERS_TO_CONFIG
+ */
+struct afe_svc_cmd_cdc_reg_cfg {
+	struct apr_hdr hdr;
+	struct afe_svc_cmd_set_param param;
+	struct afe_param_cdc_reg_cfg_payload reg_data[0];
+} __packed;
+
+struct afe_svc_cmd_init_cdc_reg_cfg {
+	struct apr_hdr hdr;
+	struct afe_svc_cmd_set_param param;
+	struct afe_port_param_data_v2 init;
+} __packed;
+
+struct afe_svc_cmd_sb_slave_cfg {
+	struct apr_hdr hdr;
+	struct afe_svc_cmd_set_param param;
+	struct afe_port_param_data_v2 pdata;
+	struct afe_param_cdc_slimbus_slave_cfg sb_slave_cfg;
 } __packed;
 
 #endif /*_APR_AUDIO_V2_H_ */

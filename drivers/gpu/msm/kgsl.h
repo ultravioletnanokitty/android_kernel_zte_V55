@@ -149,6 +149,8 @@ struct kgsl_memdesc_ops {
 #define KGSL_MEMDESC_GUARD_PAGE BIT(0)
 /* Set if the memdesc is mapped into all pagetables */
 #define KGSL_MEMDESC_GLOBAL BIT(1)
+/* The memdesc is frozen during a snapshot */
+#define KGSL_MEMDESC_FROZEN BIT(2)
 
 /* shared memory allocation */
 struct kgsl_memdesc {
@@ -156,7 +158,7 @@ struct kgsl_memdesc {
 	void *hostptr; /* kernel virtual address */
 	unsigned long useraddr; /* userspace address */
 	unsigned int gpuaddr;
-	unsigned int physaddr;
+	phys_addr_t physaddr;
 	unsigned int size;
 	unsigned int priv; /* Internal flags and settings */
 	struct scatterlist *sg;
@@ -175,15 +177,10 @@ struct kgsl_memdesc {
 #define KGSL_MEM_ENTRY_ION    4
 #define KGSL_MEM_ENTRY_MAX    5
 
-/* List of flags */
-
-#define KGSL_MEM_ENTRY_FROZEN (1 << 0)
-
 struct kgsl_mem_entry {
 	struct kref refcount;
 	struct kgsl_memdesc memdesc;
 	int memtype;
-	int flags;
 	void *priv_data;
 	struct rb_node node;
 	unsigned int id;

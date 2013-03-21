@@ -2568,7 +2568,7 @@ static struct clk_freq_tbl ftbl_mmss_axi_v2_clk[] = {
 	F_MM( 75000000,  gpll0,     8,   0,   0),
 	F_MM(100000000,  gpll0,     6,   0,   0),
 	F_MM(150000000,  gpll0,     4,   0,   0),
-	F_MM(333430000, mmpll1,   3.5,   0,   0),
+	F_MM(291750000, mmpll1,     4,   0,   0),
 	F_MM(400000000, mmpll0,     2,   0,   0),
 	F_MM(466800000, mmpll1,   2.5,   0,   0),
 	F_END
@@ -2608,7 +2608,7 @@ static struct clk_freq_tbl ftbl_ocmemnoc_v2_clk[] = {
 	F_MM( 75000000,  gpll0,   8,   0,   0),
 	F_MM(100000000,  gpll0,   6,   0,   0),
 	F_MM(150000000,  gpll0,   4,   0,   0),
-	F_MM(333430000, mmpll1, 3.5,   0,   0),
+	F_MM(291750000, mmpll1,   4,   0,   0),
 	F_MM(400000000, mmpll0,   2,   0,   0),
 	F_END
 };
@@ -4851,6 +4851,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("phy_clk", gcc_usb_hsic_clk.c,	  "msm_hsic_host"),
 	CLK_LOOKUP("cal_clk", gcc_usb_hsic_io_cal_clk.c,  "msm_hsic_host"),
 	CLK_LOOKUP("core_clk", gcc_usb_hsic_system_clk.c, "msm_hsic_host"),
+	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.16384"),
 	CLK_LOOKUP("ref_clk", div_clk2.c, "msm_smsc_hub"),
 	CLK_LOOKUP("iface_clk", gcc_usb_hs_ahb_clk.c,     "msm_ehci_host"),
 	CLK_LOOKUP("core_clk", gcc_usb_hs_system_clk.c,   "msm_ehci_host"),
@@ -5375,8 +5376,8 @@ static void __init reg_init(void)
 static void __init msm8974_clock_post_init(void)
 {
 	if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) == 2) {
-		clk_set_rate(&axi_clk_src.c, 333430000);
-		clk_set_rate(&ocmemnoc_clk_src.c, 333430000);
+		clk_set_rate(&axi_clk_src.c, 291750000);
+		clk_set_rate(&ocmemnoc_clk_src.c, 291750000);
 	} else {
 		clk_set_rate(&axi_clk_src.c, 282000000);
 		clk_set_rate(&ocmemnoc_clk_src.c, 282000000);
@@ -5502,10 +5503,10 @@ static void __init msm8974_clock_pre_init(void)
 		mmpll1_clk_src.c.fmax[VDD_DIG_NOMINAL] = 1167000000;
 
 		ocmemnoc_clk_src.freq_tbl = ftbl_ocmemnoc_v2_clk;
-		ocmemnoc_clk_src.c.fmax[VDD_DIG_NOMINAL] = 333430000;
+		ocmemnoc_clk_src.c.fmax[VDD_DIG_NOMINAL] = 291750000;
 
 		axi_clk_src.freq_tbl = ftbl_mmss_axi_v2_clk;
-		axi_clk_src.c.fmax[VDD_DIG_NOMINAL] = 333430000;
+		axi_clk_src.c.fmax[VDD_DIG_NOMINAL] = 291750000;
 		axi_clk_src.c.fmax[VDD_DIG_HIGH] = 466800000;
 
 		vcodec0_clk_src.freq_tbl = ftbl_venus0_vcodec0_v2_clk;

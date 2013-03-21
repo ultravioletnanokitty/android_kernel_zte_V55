@@ -11,6 +11,7 @@
  *
  */
 
+#include <linux/jiffies.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <asm/div64.h>
@@ -21,7 +22,7 @@
 #include "msm_smem.h"
 #include "msm_vidc_debug.h"
 
-#define HW_RESPONSE_TIMEOUT (5 * 60 * 1000)
+#define HW_RESPONSE_TIMEOUT msecs_to_jiffies(200)
 
 #define IS_ALREADY_IN_STATE(__p, __d) ({\
 	int __rc = (__p >= __d);\
@@ -173,8 +174,8 @@ const struct msm_vidc_format *msm_comm_get_pixel_fmt_index(
 	}
 	return &fmt[i];
 }
-const struct msm_vidc_format *msm_comm_get_pixel_fmt_fourcc(
-	const struct msm_vidc_format fmt[], int size, int fourcc, int fmt_type)
+struct msm_vidc_format *msm_comm_get_pixel_fmt_fourcc(
+	struct msm_vidc_format fmt[], int size, int fourcc, int fmt_type)
 {
 	int i;
 	if (!fmt) {
@@ -313,7 +314,7 @@ static int wait_for_sess_signal_receipt(struct msm_vidc_inst *inst,
 	enum command_response cmd)
 {
 	int rc = 0;
-	rc = wait_for_completion_interruptible_timeout(
+	rc = wait_for_completion_timeout(
 		&inst->completions[SESSION_MSG_INDEX(cmd)],
 		msecs_to_jiffies(HW_RESPONSE_TIMEOUT));
 	if (!rc) {
@@ -349,7 +350,15 @@ static void handle_session_init_done(enum command_response cmd, void *data)
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
 	if (response) {
+		struct vidc_hal_session_init_done *session_init_done =
+			(struct vidc_hal_session_init_done *) response->data;
 		inst = (struct msm_vidc_inst *)response->session_id;
+
+		inst->capability.width = session_init_done->width;
+		inst->capability.height = session_init_done->height;
+		inst->capability.frame_rate =
+				session_init_done->frame_rate;
+		inst->capability.capability_set = true;
 		signal_session_msg_receipt(cmd, inst);
 	} else {
 		dprintk(VIDC_ERR,
@@ -393,8 +402,11 @@ static void handle_event_change(enum command_response cmd, void *data)
 		inst->reconfig_height = event_notify->height;
 		inst->reconfig_width = event_notify->width;
 		inst->in_reconfig = true;
-		v4l2_event_queue_fh(&inst->event_handler, &dqevent);
-		wake_up(&inst->kernel_event_queue);
+		rc = msm_vidc_check_session_supported(inst);
+		if (!rc) {
+			v4l2_event_queue_fh(&inst->event_handler, &dqevent);
+			wake_up(&inst->kernel_event_queue);
+		}
 		return;
 	} else {
 		dprintk(VIDC_ERR,
@@ -948,7 +960,7 @@ void msm_comm_scale_clocks_and_bus(struct msm_vidc_inst *inst)
 		dprintk(VIDC_WARN,
 				"Failed to scale DDR bus. Performance might be impacted\n");
 	}
-	if (call_hfi_op(hdev, is_ocmem_present, hdev->hfi_device_data)) {
+	if (core->resources.has_ocmem) {
 		if (msm_comm_scale_bus(core, inst->session_type,
 					OCMEM_MEM))
 			dprintk(VIDC_WARN,
@@ -1111,9 +1123,11 @@ static int msm_vidc_deinit_core(struct msm_vidc_inst *inst)
 	}
 	msm_comm_scale_clocks_and_bus(inst);
 	if (list_empty(&core->instances)) {
-		if (inst->state != MSM_VIDC_CORE_INVALID)
-			msm_comm_unset_ocmem(core);
-		call_hfi_op(hdev, free_ocmem, hdev->hfi_device_data);
+		if (core->resources.has_ocmem) {
+			if (inst->state != MSM_VIDC_CORE_INVALID)
+				msm_comm_unset_ocmem(core);
+			call_hfi_op(hdev, free_ocmem, hdev->hfi_device_data);
+		}
 		dprintk(VIDC_DBG, "Calling vidc_hal_core_release\n");
 		rc = call_hfi_op(hdev, core_release, hdev->hfi_device_data);
 		if (rc) {
@@ -1125,7 +1139,10 @@ static int msm_vidc_deinit_core(struct msm_vidc_inst *inst)
 		core->state = VIDC_CORE_UNINIT;
 		mutex_unlock(&core->lock);
 		call_hfi_op(hdev, unload_fw, hdev->hfi_device_data);
-		msm_comm_unvote_buses(core, DDR_MEM|OCMEM_MEM);
+		if (core->resources.has_ocmem)
+			msm_comm_unvote_buses(core, DDR_MEM|OCMEM_MEM);
+		else
+			msm_comm_unvote_buses(core, DDR_MEM);
 	}
 core_already_uninited:
 	change_inst_state(inst, MSM_VIDC_CORE_UNINIT);
@@ -1272,21 +1289,26 @@ static int msm_vidc_load_resources(int flipped_state,
 						inst, inst->state);
 		goto exit;
 	}
-	ocmem_sz = get_ocmem_requirement(inst->prop.height, inst->prop.width);
-	rc = msm_comm_scale_bus(inst->core, inst->session_type, OCMEM_MEM);
-	if (!rc) {
-		mutex_lock(&inst->core->sync_lock);
-		rc = call_hfi_op(hdev, alloc_ocmem, hdev->hfi_device_data,
-				ocmem_sz);
-		mutex_unlock(&inst->core->sync_lock);
-		if (rc) {
+	if (inst->core->resources.has_ocmem) {
+		ocmem_sz = get_ocmem_requirement(inst->prop.height,
+						inst->prop.width);
+		rc = msm_comm_scale_bus(inst->core, inst->session_type,
+					OCMEM_MEM);
+		if (!rc) {
+			mutex_lock(&inst->core->sync_lock);
+			rc = call_hfi_op(hdev, alloc_ocmem,
+					hdev->hfi_device_data,
+					ocmem_sz);
+			mutex_unlock(&inst->core->sync_lock);
+			if (rc) {
+				dprintk(VIDC_WARN,
+				"Failed to allocate OCMEM. Performance will be impacted\n");
+				msm_comm_unvote_buses(inst->core, OCMEM_MEM);
+			}
+		} else {
 			dprintk(VIDC_WARN,
-			"Failed to allocate OCMEM. Performance will be impacted\n");
-			msm_comm_unvote_buses(inst->core, OCMEM_MEM);
+			"Failed to vote for OCMEM BW. Performance will be impacted\n");
 		}
-	} else {
-		dprintk(VIDC_WARN,
-		"Failed to vote for OCMEM BW. Performance will be impacted\n");
 	}
 	rc = call_hfi_op(hdev, session_load_res, (void *) inst->session);
 	if (rc) {
@@ -1778,6 +1800,13 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 			mutex_unlock(&inst->sync_lock);
 	} else {
 		int64_t time_usec = timeval_to_ns(&vb->v4l2_buf.timestamp);
+
+		rc = msm_vidc_check_session_supported(inst);
+		if (rc) {
+			dprintk(VIDC_ERR,
+				"%s: session not supported\n", __func__);
+			goto err_no_mem;
+		}
 		do_div(time_usec, NSEC_PER_USEC);
 		memset(&frame_data, 0 , sizeof(struct vidc_frame_data));
 		frame_data.alloc_len = vb->v4l2_planes[0].length;
@@ -2346,5 +2375,56 @@ int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 	if (core->state == VIDC_CORE_INIT_DONE)
 		rc = call_hfi_op(hdev, core_trigger_ssr,
 				hdev->hfi_device_data, type);
+	return rc;
+}
+
+int msm_vidc_check_session_supported(struct msm_vidc_inst *inst)
+{
+	struct msm_vidc_core_capability *capability;
+	int rc = 0;
+	struct v4l2_event dqevent;
+
+	if (!inst) {
+		dprintk(VIDC_WARN, "%s: Invalid parameter\n", __func__);
+		return -EINVAL;
+	}
+	capability = &inst->capability;
+
+	if (inst->capability.capability_set) {
+		if (msm_vp8_low_tier &&
+			inst->fmts[OUTPUT_PORT]->fourcc == V4L2_PIX_FMT_VP8) {
+			capability->width.max = DEFAULT_WIDTH;
+			capability->height.max = DEFAULT_HEIGHT;
+		}
+		if (inst->prop.width < capability->width.min ||
+			inst->prop.width > capability->width.max ||
+			(inst->prop.width % capability->width.step_size != 0)) {
+			dprintk(VIDC_ERR,
+			"Unsupported width = %d range min(%u) - max(%u) step_size(%u)",
+			inst->prop.width, capability->width.min,
+			capability->width.max, capability->width.step_size);
+			rc = -ENOTSUPP;
+		}
+
+		if (inst->prop.height < capability->height.min ||
+			inst->prop.height > capability->height.max ||
+			(inst->prop.height %
+			capability->height.step_size != 0)) {
+			dprintk(VIDC_ERR,
+			"Unsupported height = %d range min(%u) - max(%u) step_size(%u)",
+			inst->prop.height, capability->height.min,
+			capability->height.max, capability->height.step_size);
+			rc = -ENOTSUPP;
+		}
+	}
+	if (rc) {
+		mutex_lock(&inst->sync_lock);
+		inst->state = MSM_VIDC_CORE_INVALID;
+		mutex_unlock(&inst->sync_lock);
+		dqevent.type = V4L2_EVENT_MSM_VIDC_SYS_ERROR;
+		dqevent.id = 0;
+		v4l2_event_queue_fh(&inst->event_handler, &dqevent);
+		wake_up(&inst->kernel_event_queue);
+	}
 	return rc;
 }

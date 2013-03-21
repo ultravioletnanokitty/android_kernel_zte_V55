@@ -409,9 +409,12 @@ void mmc_start_bkops(struct mmc_card *card, bool from_exception)
 		return;
 	}
 
+	mmc_rpm_hold(card->host, &card->dev);
 	/* In case of delayed bkops we might be in race with suspend. */
-	if (!mmc_try_claim_host(card->host))
+	if (!mmc_try_claim_host(card->host)) {
+		mmc_rpm_release(card->host, &card->dev);
 		return;
+	}
 
 	/*
 	 * Since the cancel_delayed_work can be changed while we are waiting
@@ -486,6 +489,7 @@ void mmc_start_bkops(struct mmc_card *card, bool from_exception)
 
 out:
 	mmc_release_host(card->host);
+	mmc_rpm_release(card->host, &card->dev);
 }
 EXPORT_SYMBOL(mmc_start_bkops);
 
@@ -515,6 +519,7 @@ void mmc_bkops_completion_polling(struct work_struct *work)
 	 * the host from getting into suspend
 	 */
 	do {
+		mmc_rpm_hold(card->host, &card->dev);
 		mmc_claim_host(card->host);
 
 		if (!mmc_card_doing_bkops(card))
@@ -541,6 +546,7 @@ void mmc_bkops_completion_polling(struct work_struct *work)
 		}
 
 		mmc_release_host(card->host);
+		mmc_rpm_release(card->host, &card->dev);
 
 		/*
 		 * Sleep before checking the card status again to allow the
@@ -559,6 +565,7 @@ void mmc_bkops_completion_polling(struct work_struct *work)
 	return;
 out:
 	mmc_release_host(card->host);
+	mmc_rpm_release(card->host, &card->dev);
 }
 
 /**
@@ -646,6 +653,11 @@ static bool mmc_should_stop_curr_req(struct mmc_host *host)
 {
 	int remainder;
 
+	if (host->areq->cmd_flags & REQ_URGENT ||
+	    !(host->areq->cmd_flags & REQ_WRITE) ||
+	    (host->areq->cmd_flags & REQ_FUA))
+		return false;
+
 	remainder = (host->ops->get_xfer_remain) ?
 		host->ops->get_xfer_remain(host) : -1;
 	return (remainder > 0);
@@ -732,14 +744,12 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 	unsigned long flags;
 
 	while (1) {
-		context_info->is_waiting = true;
 		wait_io_event_interruptible(context_info->wait,
 				(context_info->is_done_rcv ||
 				 context_info->is_new_req  ||
 				 context_info->is_urgent));
 		spin_lock_irqsave(&context_info->lock, flags);
 		is_urgent = context_info->is_urgent;
-		context_info->is_waiting = false;
 		context_info->is_waiting_last_req = false;
 		spin_unlock_irqrestore(&context_info->lock, flags);
 		if (context_info->is_done_rcv) {
@@ -758,7 +768,10 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 					 */
 					if ((err == MMC_BLK_PARTIAL) ||
 						(err == MMC_BLK_SUCCESS))
-						err = MMC_BLK_URGENT;
+						err = pending_is_urgent ?
+						       MMC_BLK_URGENT_DONE
+						       : MMC_BLK_URGENT;
+
 					/* reset is_urgent for next request */
 					context_info->is_urgent = false;
 				}
@@ -931,6 +944,8 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 	int err = 0;
 	int start_err = 0;
 	struct mmc_async_req *data = host->areq;
+	unsigned long flags;
+	bool is_urgent;
 
 	/* Prepare a new request */
 	if (areq) {
@@ -938,20 +953,29 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 		 * start waiting here for possible interrupt
 		 * because mmc_pre_req() taking long time
 		 */
-		host->context_info.is_waiting = true;
 		mmc_pre_req(host, areq->mrq, !host->areq);
 	}
 
 	if (host->areq) {
 		err = mmc_wait_for_data_req_done(host, host->areq->mrq,
 				areq);
-		if (err == MMC_BLK_URGENT) {
+		if (err == MMC_BLK_URGENT || err == MMC_BLK_URGENT_DONE) {
 			mmc_post_req(host, host->areq->mrq, 0);
-			if (areq) { /* reinsert ready request */
-				areq->reinsert_req(areq);
-				mmc_post_req(host, areq->mrq, 0);
-			}
 			host->areq = NULL;
+			if (areq) {
+				if (!(areq->cmd_flags & REQ_URGENT)) {
+					areq->reinsert_req(areq);
+					mmc_post_req(host, areq->mrq, 0);
+				} else {
+					start_err = __mmc_start_data_req(host,
+							areq->mrq);
+					if (start_err)
+						mmc_post_req(host, areq->mrq,
+								-EINVAL);
+					else
+						host->areq = areq;
+				}
+			}
 			goto exit;
 		} else if (err == MMC_BLK_NEW_REQUEST) {
 			if (error)
@@ -974,14 +998,32 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 				 mmc_hostname(host), __func__);
 		}
 	}
+	if (!err && areq) {
+		/* urgent notification may come again */
+		spin_lock_irqsave(&host->context_info.lock, flags);
+		is_urgent = host->context_info.is_urgent;
+		host->context_info.is_urgent = false;
+		spin_unlock_irqrestore(&host->context_info.lock, flags);
 
-	if (!err && areq)
-		start_err = __mmc_start_data_req(host, areq->mrq);
+		if (!is_urgent || (areq->cmd_flags & REQ_URGENT)) {
+			start_err = __mmc_start_data_req(host, areq->mrq);
+		} else {
+			/* previous request was done */
+			err = MMC_BLK_URGENT_DONE;
+			if (host->areq) {
+				mmc_post_req(host, host->areq->mrq, 0);
+				host->areq = NULL;
+			}
+			areq->reinsert_req(areq);
+			mmc_post_req(host, areq->mrq, 0);
+			goto exit;
+		}
+	}
 
 	if (host->areq)
 		mmc_post_req(host, host->areq->mrq, 0);
 
-	/* Cancel a prepared request if it was not started. */
+	 /* Cancel a prepared request if it was not started. */
 	if ((err || start_err) && areq)
 		mmc_post_req(host, areq->mrq, -EINVAL);
 
@@ -2751,8 +2793,9 @@ static void mmc_clk_scale_work(struct work_struct *work)
 	if (!host->card || !host->bus_ops ||
 			!host->bus_ops->change_bus_speed ||
 			!host->clk_scaling.enable || !host->ios.clock)
-		goto out;
+		return;
 
+	mmc_rpm_hold(host, &host->card->dev);
 	if (!mmc_try_claim_host(host)) {
 		/* retry after a timer tick */
 		queue_delayed_work(system_nrt_wq, &host->clk_scaling.work, 1);
@@ -2762,6 +2805,7 @@ static void mmc_clk_scale_work(struct work_struct *work)
 	mmc_clk_scaling(host, true);
 	mmc_release_host(host);
 out:
+	mmc_rpm_release(host, &host->card->dev);
 	return;
 }
 
@@ -2985,16 +3029,8 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 	/* Order's important: probe SDIO, then SD, then MMC */
 	if (!mmc_attach_sdio(host))
 		return 0;
-
-	if (!host->ios.vdd)
-		mmc_power_up(host);
-
 	if (!mmc_attach_sd(host))
 		return 0;
-
-	if (!host->ios.vdd)
-		mmc_power_up(host);
-
 	if (!mmc_attach_mmc(host))
 		return 0;
 
@@ -3112,11 +3148,12 @@ void mmc_rescan(struct work_struct *work)
 	if (host->ops->get_cd && host->ops->get_cd(host) == 0)
 		goto out;
 
+	mmc_rpm_hold(host, &host->class_dev);
 	mmc_claim_host(host);
 	if (!mmc_rescan_try_freq(host, host->f_min))
 		extend_wakelock = true;
 	mmc_release_host(host);
-
+	mmc_rpm_release(host, &host->class_dev);
  out:
 	if (extend_wakelock)
 		wake_lock_timeout(&host->detect_wake_lock, HZ / 2);
@@ -3339,9 +3376,6 @@ int mmc_suspend_host(struct mmc_host *host)
 	if (mmc_bus_needs_resume(host))
 		return 0;
 
-	cancel_delayed_work(&host->detect);
-	mmc_flush_scheduled_work();
-
 	mmc_bus_get(host);
 	if (host->bus_ops && !host->bus_dead) {
 		/*
@@ -3378,7 +3412,6 @@ int mmc_suspend_host(struct mmc_host *host)
 				 * It will be redetected on resume.  (Calling
 				 * bus_ops->remove() with a claimed host can
 				 * deadlock.)
-				 * It will be redetected on resume.
 				 */
 				if (host->bus_ops->remove)
 					host->bus_ops->remove(host);
@@ -3552,6 +3585,37 @@ void mmc_set_embedded_sdio_data(struct mmc_host *host,
 
 EXPORT_SYMBOL(mmc_set_embedded_sdio_data);
 #endif
+
+void mmc_rpm_hold(struct mmc_host *host, struct device *dev)
+{
+	int ret = 0;
+
+	if (!mmc_use_core_runtime_pm(host))
+		return;
+
+	ret = pm_runtime_get_sync(dev);
+	if (ret < 0) {
+		pr_err("%s: %s: %s: error resuming device: %d\n",
+		       dev_name(dev), mmc_hostname(host), __func__, ret);
+		if (pm_runtime_suspended(dev))
+			BUG_ON(1);
+	}
+}
+EXPORT_SYMBOL(mmc_rpm_hold);
+
+void mmc_rpm_release(struct mmc_host *host, struct device *dev)
+{
+	int ret = 0;
+
+	if (!mmc_use_core_runtime_pm(host))
+		return;
+
+	ret = pm_runtime_put_sync(dev);
+	if (ret < 0 && ret != -EBUSY)
+		pr_err("%s: %s: %s: put sync ret: %d\n",
+		       dev_name(dev), mmc_hostname(host), __func__, ret);
+}
+EXPORT_SYMBOL(mmc_rpm_release);
 
 /**
  * mmc_init_context_info() - init synchronization context

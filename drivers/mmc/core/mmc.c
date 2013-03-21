@@ -17,6 +17,7 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/mmc.h>
+#include <linux/pm_runtime.h>
 
 #include "core.h"
 #include "bus.h"
@@ -293,7 +294,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
 	if (card->ext_csd.rev > 7) {
-		printk(KERN_ERR "%s: unrecognised EXT_CSD revision %d\n",
+		pr_err("%s: unrecognised EXT_CSD revision %d\n",
 			mmc_hostname(card->host), card->ext_csd.rev);
 		err = -EINVAL;
 		goto out;
@@ -1495,6 +1496,7 @@ static void mmc_detect(struct mmc_host *host)
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
+	mmc_rpm_hold(host, &host->card->dev);
 	mmc_claim_host(host);
 
 	/*
@@ -1503,6 +1505,13 @@ static void mmc_detect(struct mmc_host *host)
 	err = _mmc_detect_card_removed(host);
 
 	mmc_release_host(host);
+
+	/*
+	 * if detect fails, the device would be removed anyway;
+	 * the rpm framework would mark the device state suspended.
+	 */
+	if (!err)
+		mmc_rpm_release(host, &host->card->dev);
 
 	if (err) {
 		mmc_remove(host);

@@ -18,6 +18,7 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
+#include <linux/pm_runtime.h>
 
 #include "core.h"
 #include "bus.h"
@@ -944,9 +945,9 @@ int mmc_sd_setup_card(struct mmc_host *host, struct mmc_card *card,
 		int ro = -1;
 
 		if (host->ops->get_ro) {
-			mmc_host_clk_hold(host);
+			mmc_host_clk_hold(card->host);
 			ro = host->ops->get_ro(host);
-			mmc_host_clk_release(host);
+			mmc_host_clk_release(card->host);
 		}
 
 		if (ro < 0) {
@@ -1067,9 +1068,9 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 		 * value registers for UHS-I cards.
 		 */
 		if (host->ops->enable_preset_value) {
-			mmc_host_clk_hold(host);
+			mmc_host_clk_hold(card->host);
 			host->ops->enable_preset_value(host, true);
-			mmc_host_clk_release(host);
+			mmc_host_clk_release(card->host);
 		}
 	} else {
 		/*
@@ -1145,7 +1146,8 @@ static void mmc_sd_detect(struct mmc_host *host)
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
-       
+
+	mmc_rpm_hold(host, &host->card->dev);
 	mmc_claim_host(host);
 
 	/*
@@ -1169,6 +1171,13 @@ static void mmc_sd_detect(struct mmc_host *host)
 	err = _mmc_detect_card_removed(host);
 #endif
 	mmc_release_host(host);
+
+	/*
+	 * if detect fails, the device would be removed anyway;
+	 * the rpm framework would mark the device state suspended.
+	 */
+	if (!err)
+		mmc_rpm_release(host, &host->card->dev);
 
 	if (err) {
 		mmc_sd_remove(host);

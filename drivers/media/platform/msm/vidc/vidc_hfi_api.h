@@ -281,7 +281,8 @@ enum hal_h264_profile {
 	HAL_H264_PROFILE_HIGH10   = 0x00000010,
 	HAL_H264_PROFILE_HIGH422  = 0x00000020,
 	HAL_H264_PROFILE_HIGH444  = 0x00000040,
-	HAL_H264_PROFILE_CONSTRAINED_HIGH  = 0x00000080,
+	HAL_H264_PROFILE_CONSTRAINED_BASE  = 0x00000080,
+	HAL_H264_PROFILE_CONSTRAINED_HIGH  = 0x00000100,
 	HAL_UNUSED_H264_PROFILE = 0x10000000,
 };
 
@@ -1046,7 +1047,6 @@ struct hfi_device {
 	int (*unset_ocmem)(void *dev);
 	int (*alloc_ocmem)(void *dev, unsigned long size);
 	int (*free_ocmem)(void *dev);
-	int (*is_ocmem_present)(void *dev);
 	int (*iommu_get_domain_partition)(void *dev, u32 flags, u32 buffer_type,
 			int *domain_num, int *partition_num);
 	int (*load_fw)(void *dev);

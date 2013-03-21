@@ -60,8 +60,6 @@ struct mmc_ios {
 #define MMC_TIMING_UHS_DDR50	5
 #define MMC_TIMING_MMC_HS200	6
 
-	unsigned char	ddr;			/* dual data rate used */
-
 #define MMC_SDR_MODE		0
 #define MMC_1_2V_DDR_MODE	1
 #define MMC_1_8V_DDR_MODE	2
@@ -150,6 +148,8 @@ struct device;
 struct mmc_async_req {
 	/* active mmc request */
 	struct mmc_request	*mrq;
+	unsigned int cmd_flags; /* copied from struct request */
+
 	/*
 	 * Check error status of completed mmc request.
 	 * Returns 0 if success otherwise non zero.
@@ -170,10 +170,6 @@ struct mmc_async_req {
  *			NULL fetched as second request. MMC_BLK_NEW_REQUEST
  *			notification will wake up mmc thread from waiting.
  * @is_urgent		wake up reason was urgent request
- * @is_waiting		is true, when first request is running on the bus,
- *			second request preparation started or mmc thread is
- *			waiting for the completion of the current request
- *			(latter case is like @is_waiting_last_req)
  * @wait		wait queue
  * @lock		lock to protect data fields
  */
@@ -182,7 +178,6 @@ struct mmc_context_info {
 	bool			is_new_req;
 	bool			is_waiting_last_req;
 	bool			is_urgent;
-	bool			is_waiting;
 	wait_queue_head_t	wait;
 	spinlock_t		lock;
 };
@@ -286,6 +281,8 @@ struct mmc_host {
 #define MMC_CAP2_INIT_BKOPS	    (1 << 16)	/* Need to set BKOPS_EN */
 #define MMC_CAP2_CLK_SCALE	(1 << 17)	/* Allow dynamic clk scaling */
 #define MMC_CAP2_STOP_REQUEST	(1 << 18)	/* Allow stop ongoing request */
+/* Use runtime PM framework provided by MMC core */
+#define MMC_CAP2_CORE_RUNTIME_PM (1 << 19)
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
 	int			clk_requests;	/* internal reference counter */
@@ -389,7 +386,6 @@ struct mmc_host {
 	} perf;
 	bool perf_enable;
 #endif
-
 	struct mmc_ios saved_ios;
 	struct {
 		unsigned long	busy_time_us;
@@ -486,9 +482,6 @@ int mmc_card_awake(struct mmc_host *host);
 int mmc_card_sleep(struct mmc_host *host);
 int mmc_card_can_sleep(struct mmc_host *host);
 
-int mmc_host_enable(struct mmc_host *host);
-int mmc_host_disable(struct mmc_host *host);
-int mmc_host_lazy_disable(struct mmc_host *host);
 int mmc_pm_notify(struct notifier_block *notify_block, unsigned long, void *);
 
 /* Module parameter */
@@ -546,4 +539,10 @@ static inline unsigned int mmc_host_clk_rate(struct mmc_host *host)
 	return host->ios.clock;
 }
 #endif
+
+static inline int mmc_use_core_runtime_pm(struct mmc_host *host)
+{
+	return host->caps2 & MMC_CAP2_CORE_RUNTIME_PM;
+}
+
 #endif /* LINUX_MMC_HOST_H */

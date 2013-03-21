@@ -4,7 +4,7 @@
  *  Copyright (C) 2003 Russell King, All Rights Reserved.
  *  Copyright (C) 2007-2008 Pierre Ossman
  *  Copyright (C) 2010 Linus Walleij
- *  Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ *  Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -21,6 +21,7 @@
 #include <linux/leds.h>
 #include <linux/slab.h>
 #include <linux/suspend.h>
+#include <linux/pm_runtime.h>
 
 #include <linux/mmc/host.h>
 #include <linux/mmc/card.h>
@@ -37,9 +38,85 @@ static void mmc_host_classdev_release(struct device *dev)
 	kfree(host);
 }
 
+static int mmc_host_runtime_suspend(struct device *dev)
+{
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+	int ret = 0;
+
+	if (!mmc_use_core_runtime_pm(host))
+		return 0;
+
+	ret = mmc_suspend_host(host);
+	if (ret < 0)
+		pr_err("%s: %s: suspend host failed: %d\n", mmc_hostname(host),
+		       __func__, ret);
+
+	return ret;
+}
+
+static int mmc_host_runtime_resume(struct device *dev)
+{
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+	int ret = 0;
+
+	if (!mmc_use_core_runtime_pm(host))
+		return 0;
+
+	ret = mmc_resume_host(host);
+	if (ret < 0) {
+		pr_err("%s: %s: resume host: failed: ret: %d\n",
+		       mmc_hostname(host), __func__, ret);
+		if (pm_runtime_suspended(dev))
+			BUG_ON(1);
+	}
+
+	return ret;
+}
+
+static int mmc_host_suspend(struct device *dev)
+{
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+	int ret = 0;
+
+	if (!mmc_use_core_runtime_pm(host))
+		return 0;
+
+	if (!pm_runtime_suspended(dev)) {
+		ret = mmc_suspend_host(host);
+		if (ret < 0)
+			pr_err("%s: %s: failed: ret: %d\n", mmc_hostname(host),
+			       __func__, ret);
+	}
+	return ret;
+}
+
+static int mmc_host_resume(struct device *dev)
+{
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
+	int ret = 0;
+
+	if (!mmc_use_core_runtime_pm(host))
+		return 0;
+
+	if (!pm_runtime_suspended(dev)) {
+		ret = mmc_resume_host(host);
+		if (ret < 0)
+			pr_err("%s: %s: failed: ret: %d\n", mmc_hostname(host),
+			       __func__, ret);
+	}
+	return ret;
+}
+
+static const struct dev_pm_ops mmc_host_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mmc_host_suspend, mmc_host_resume)
+	SET_RUNTIME_PM_OPS(mmc_host_runtime_suspend, mmc_host_runtime_resume,
+			   pm_generic_runtime_idle)
+};
+
 static struct class mmc_host_class = {
 	.name		= "mmc_host",
 	.dev_release	= mmc_host_classdev_release,
+	.pm		= &mmc_host_pm_ops,
 };
 
 int mmc_register_host_class(void)
@@ -60,8 +137,7 @@ static ssize_t clkgate_delay_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct mmc_host *host = cls_dev_to_mmc_host(dev);
-	return snprintf(buf, PAGE_SIZE, "%lu\n",
-			host->clkgate_delay);
+	return snprintf(buf, PAGE_SIZE, "%lu\n", host->clkgate_delay);
 }
 
 static ssize_t clkgate_delay_store(struct device *dev,
@@ -76,9 +152,6 @@ static ssize_t clkgate_delay_store(struct device *dev,
 	spin_lock_irqsave(&host->clk_lock, flags);
 	host->clkgate_delay = value;
 	spin_unlock_irqrestore(&host->clk_lock, flags);
-
-	pr_info("%s: clock gate delay set to %lu ms\n",
-			mmc_hostname(host), value);
 	return count;
 }
 
@@ -533,7 +606,7 @@ static struct attribute_group clk_scaling_attr_grp = {
 static ssize_t
 show_perf(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct mmc_host *host = dev_get_drvdata(dev);
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
 	int64_t rtime_drv, wtime_drv;
 	unsigned long rbytes_drv, wbytes_drv;
 
@@ -559,8 +632,8 @@ static ssize_t
 set_perf(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t count)
 {
+	struct mmc_host *host = cls_dev_to_mmc_host(dev);
 	int64_t value;
-	struct mmc_host *host = dev_get_drvdata(dev);
 
 	sscanf(buf, "%lld", &value);
 	spin_lock(&host->lock);
@@ -605,6 +678,14 @@ int mmc_add_host(struct mmc_host *host)
 	WARN_ON((host->caps & MMC_CAP_SDIO_IRQ) &&
 		!host->ops->enable_sdio_irq);
 
+	if (mmc_use_core_runtime_pm(host)) {
+		err = pm_runtime_set_active(&host->class_dev);
+		if (err)
+			pr_err("%s: %s: failed setting runtime active: err: %d\n",
+			       mmc_hostname(host), __func__, err);
+		else
+			pm_runtime_enable(&host->class_dev);
+	}
 	err = device_add(&host->class_dev);
 	if (err)
 		return err;
@@ -625,7 +706,7 @@ int mmc_add_host(struct mmc_host *host)
 		pr_err("%s: failed to create clk scale sysfs group with err %d\n",
 				__func__, err);
 
-	err = sysfs_create_group(&host->parent->kobj, &dev_attr_grp);
+	err = sysfs_create_group(&host->class_dev.kobj, &dev_attr_grp);
 	if (err)
 		pr_err("%s: failed to create sysfs group with err %d\n",
 							 __func__, err);

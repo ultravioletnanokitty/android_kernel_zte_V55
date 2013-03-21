@@ -448,6 +448,8 @@ __acquires(&port->port_lock)
 		prev_len = req->length;
 		port->nbytes_from_tty += req->length;
 
+		port->write_started++;
+
 	}
 
 	if (do_tty_wake && port->port_tty)
@@ -1046,6 +1048,13 @@ static void gs_unthrottle(struct tty_struct *tty)
 	struct gs_port		*port = tty->driver_data;
 	unsigned long		flags;
 
+	/*
+	 * tty's driver data is set to NULL during port close.  Nothing
+	 * to do here.
+	 */
+	if (!port)
+		return;
+
 	spin_lock_irqsave(&port->port_lock, flags);
 	if (port->port_usb) {
 		/* Kickstart read queue processing.  We don't do xon/xoff,
@@ -1296,7 +1305,8 @@ static void usb_debugfs_init(struct gs_port *ui_dev, int port_num)
 		return;
 
 	debugfs_create_file("readstatus", 0444, dent, ui_dev, &debug_adb_ops);
-	debugfs_create_file("reset", 0222, dent, ui_dev, &debug_rst_ops);
+	debugfs_create_file("reset", S_IRUGO | S_IWUSR,
+			dent, ui_dev, &debug_rst_ops);
 }
 #else
 static void usb_debugfs_init(struct gs_port *ui_dev) {}
@@ -1380,7 +1390,6 @@ int gserial_setup(struct usb_gadget *g, unsigned count)
 	/* export the driver ... */
 	status = tty_register_driver(gs_tty_driver);
 	if (status) {
-		put_tty_driver(gs_tty_driver);
 		pr_err("%s: cannot register, err %d\n",
 				__func__, status);
 		goto fail;

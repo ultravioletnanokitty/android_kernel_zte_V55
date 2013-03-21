@@ -17,7 +17,7 @@
 #include <mach/gpio.h>
 #include <mach/gpiomux.h>
 
-#define KS8851_IRQ_GPIO 75
+#define KS8851_IRQ_GPIO 115
 
 #if defined(CONFIG_KS8851) || defined(CONFIG_KS8851_MODULE)
 static struct gpiomux_setting gpio_eth_config = {
@@ -36,6 +36,42 @@ static struct msm_gpiomux_config msm_eth_configs[] = {
 };
 #endif
 
+static struct gpiomux_setting synaptics_int_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting synaptics_int_sus_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting synaptics_reset_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting synaptics_reset_sus_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting gpio_keys_active = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting gpio_keys_suspend = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct gpiomux_setting gpio_spi_config = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_8MA,
@@ -48,10 +84,63 @@ static struct gpiomux_setting gpio_spi_cs_config = {
 	.pull = GPIOMUX_PULL_DOWN,
 };
 
+static struct gpiomux_setting gpio_spi_cs_eth_config = {
+	.func = GPIOMUX_FUNC_4,
+	.drv = GPIOMUX_DRV_6MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
 static struct gpiomux_setting gpio_i2c_config = {
 	.func = GPIOMUX_FUNC_3,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct msm_gpiomux_config msm_keypad_configs[] __initdata = {
+	{
+		.gpio = 106,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gpio_keys_active,
+			[GPIOMUX_SUSPENDED] = &gpio_keys_suspend,
+		},
+	},
+	{
+		.gpio = 107,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gpio_keys_active,
+			[GPIOMUX_SUSPENDED] = &gpio_keys_suspend,
+		},
+	},
+	{
+		.gpio = 108,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &gpio_keys_active,
+			[GPIOMUX_SUSPENDED] = &gpio_keys_suspend,
+		},
+	},
+};
+
+static struct gpiomux_setting lcd_rst_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_LOW,
+};
+
+static struct gpiomux_setting lcd_rst_sus_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config msm_lcd_configs[] __initdata = {
+	{
+		.gpio = 25,
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &lcd_rst_act_cfg,
+			[GPIOMUX_SUSPENDED] = &lcd_rst_sus_cfg,
+		},
+	}
 };
 
 static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
@@ -91,6 +180,41 @@ static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
 		},
 	},
+	{
+		.gpio      = 18,		/* BLSP1 QUP5 I2C_SDA */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
+		},
+	},
+	{
+		.gpio      = 19,		/* BLSP1 QUP5 I2C_SCL */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
+		},
+	},
+	{
+		.gpio      = 22,		/* BLSP1 QUP1 SPI_CS_ETH */
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gpio_spi_cs_eth_config,
+		},
+	},
+};
+
+static struct msm_gpiomux_config msm_synaptics_configs[] __initdata = {
+	{
+		.gpio = 16,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &synaptics_reset_act_cfg,
+			[GPIOMUX_SUSPENDED] = &synaptics_reset_sus_cfg,
+		},
+	},
+	{
+		.gpio = 17,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &synaptics_int_act_cfg,
+			[GPIOMUX_SUSPENDED] = &synaptics_int_sus_cfg,
+		},
+	},
 };
 
 static struct gpiomux_setting sd_card_det_active_config = {
@@ -128,8 +252,14 @@ void __init msm8226_init_gpiomux(void)
 #if defined(CONFIG_KS8851) || defined(CONFIG_KS8851_MODULE)
 	msm_gpiomux_install(msm_eth_configs, ARRAY_SIZE(msm_eth_configs));
 #endif
+	msm_gpiomux_install(msm_keypad_configs,
+			ARRAY_SIZE(msm_keypad_configs));
 
 	msm_gpiomux_install(msm_blsp_configs, ARRAY_SIZE(msm_blsp_configs));
 
 	msm_gpiomux_install(&sd_card_det, 1);
+	msm_gpiomux_install(msm_synaptics_configs,
+			ARRAY_SIZE(msm_synaptics_configs));
+	msm_gpiomux_install_nowrite(msm_lcd_configs,
+			ARRAY_SIZE(msm_lcd_configs));
 }

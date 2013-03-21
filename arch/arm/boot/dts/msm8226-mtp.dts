@@ -12,6 +12,7 @@
 
 /dts-v1/;
 /include/ "msm8226.dtsi"
+/include/ "dsi-panel-nt35590-720p-video.dtsi"
 
 / {
 	model = "Qualcomm MSM 8226 MTP";
@@ -20,6 +21,76 @@
 
 	serial@f991f000 {
 		status = "ok";
+	};
+
+	qcom,mdss_dsi_nt35590_720p_video {
+		status = "ok";
+	};
+
+	i2c@f9927000 { /* BLSP1 QUP5 */
+		synaptics@20 {
+			compatible = "synaptics,rmi4";
+			reg = <0x20>;
+			interrupt-parent = <&msmgpio>;
+			interrupts = <17 0x2>;
+			vdd-supply = <&pm8226_l19>;
+			vcc_i2c-supply = <&pm8226_lvs1>;
+			synaptics,reset-gpio = <&msmgpio 16 0x00>;
+			synaptics,irq-gpio = <&msmgpio 17 0x00>;
+			synaptics,button-map = <139 102 158>;
+			synaptics,i2c-pull-up;
+			synaptics,reg-en;
+		};
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		input-name = "gpio-keys";
+
+		camera_focus {
+			label = "camera_focus";
+			gpios = <&msmgpio 108 0x1>;
+			linux,input-type = <1>;
+			linux,code = <0x210>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+
+		camera_snapshot {
+			label = "camera_snapshot";
+			gpios = <&msmgpio 107 0x1>;
+			linux,input-type = <1>;
+			linux,code = <0x2fe>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+
+		vol_up {
+			label = "volume_up";
+			gpios = <&msmgpio 106 0x1>;
+			linux,input-type = <1>;
+			linux,code = <115>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+	};
+
+	spi@f9923000 {
+		ethernet-switch@3 {
+			compatible = "micrel,ks8851";
+			reg = <3>;
+			interrupt-parent = <&msmgpio>;
+			interrupts = <0 115 0>;
+			spi-max-frequency = <4800000>;
+			rst-gpio = <&msmgpio 114 0>;
+			vdd-io-supply = <&pm8226_lvs1>;
+			vdd-phy-supply = <&pm8226_lvs1>;
+		};
+	};
+
+	sound {
+		qcom,cdc-mclk-gpios = <&pm8226_gpios 1 0>;
+		qcom,cdc-vdd-spkr-gpios = <&pm8226_gpios 2 0>;
 	};
 };
 
@@ -109,9 +180,24 @@
 
 &pm8226_gpios {
 	gpio@c000 { /* GPIO 1 */
+		/* XO_PMIC_CDC_MCLK enable for tapan codec */
+		qcom,mode = <1>;		/* Digital output */
+		qcom,output-type = <0>;	/* CMOS logic */
+		qcom,pull = <5>;		/* QPNP_PIN_PULL_NO*/
+		qcom,vin-sel = <2>;		/* QPNP_PIN_VIN2 */
+		qcom,out-strength = <3>;/* QPNP_PIN_OUT_STRENGTH_HIGH */
+		qcom,src-sel = <2>;		/* QPNP_PIN_SEL_FUNC_1 */
+		qcom,master-en = <1>;	/* Enable GPIO */
 	};
 
 	gpio@c100 { /* GPIO 2 */
+		qcom,mode = <1>;
+		qcom,output-type = <0>;
+		qcom,pull = <5>;
+		qcom,vin-sel = <2>;
+		qcom,out-strength = <3>;
+		qcom,src-sel = <2>;
+		qcom,master-en = <1>;
 	};
 
 	gpio@c200 { /* GPIO 3 */
@@ -147,6 +233,12 @@
 	};
 
 	mpp@a400 { /* MPP 5 */
+		/* PA_THERM0 config */
+		qcom,mode = <4>; /* AIN input */
+		qcom,invert = <1>; /* Enable MPP */
+		qcom,ain-route = <0>; /* AMUX 5 */
+		qcom,master-en = <1>;
+		qcom,src-sel = <0>; /* Function constant */
 	};
 
 	mpp@a500 { /* MPP 6 */
@@ -156,5 +248,35 @@
 	};
 
 	mpp@a700 { /* MPP 8 */
+		/* PA_THERM1 config */
+		qcom,mode = <4>; /* AIN input */
+		qcom,invert = <1>; /* Enable MPP */
+		qcom,ain-route = <3>; /* AMUX 8 */
+		qcom,master-en = <1>;
+		qcom,src-sel = <0>; /* Function constant */
+	};
+};
+
+&pm8226_vadc {
+	chan@14 {
+		label = "pa_therm0";
+		reg = <0x14>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <2>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+	};
+
+	chan@17 {
+		label = "pa_therm1";
+		reg = <0x17>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <2>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
 	};
 };

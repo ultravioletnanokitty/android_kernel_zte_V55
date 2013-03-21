@@ -110,6 +110,11 @@ static struct ion_heap_desc ion_heap_meta[] = {
 		.type	= ION_HEAP_TYPE_CARVEOUT,
 		.name	= ION_CAMERA_HEAP_NAME,
 	},
+	{
+		.id	= ION_ADSP_HEAP_ID,
+		.type	= ION_HEAP_TYPE_DMA,
+		.name	= ION_ADSP_HEAP_NAME,
+	}
 };
 #endif
 
@@ -167,7 +172,7 @@ int msm_ion_do_cache_op(struct ion_client *client, struct ion_handle *handle,
 }
 EXPORT_SYMBOL(msm_ion_do_cache_op);
 
-static unsigned long msm_ion_get_base(unsigned long size, int memory_type,
+static ion_phys_addr_t msm_ion_get_base(unsigned long size, int memory_type,
 				    unsigned int align)
 {
 	switch (memory_type) {
@@ -335,10 +340,10 @@ static void msm_ion_allocate(struct ion_platform_heap *heap)
 static int is_heap_overlapping(const struct ion_platform_heap *heap1,
 				const struct ion_platform_heap *heap2)
 {
-	unsigned long heap1_base = heap1->base;
-	unsigned long heap2_base = heap2->base;
-	unsigned long heap1_end = heap1->base + heap1->size - 1;
-	unsigned long heap2_end = heap2->base + heap2->size - 1;
+	ion_phys_addr_t heap1_base = heap1->base;
+	ion_phys_addr_t heap2_base = heap2->base;
+	ion_phys_addr_t heap1_end = heap1->base + heap1->size - 1;
+	ion_phys_addr_t heap2_end = heap2->base + heap2->size - 1;
 
 	if (heap1_base == heap2_base)
 		return 1;
@@ -787,9 +792,9 @@ static int msm_ion_probe(struct platform_device *pdev)
 			continue;
 		} else {
 			if (heap_data->size)
-				pr_info("ION heap %s created at %lx "
+				pr_info("ION heap %s created at %pa "
 					"with size %x\n", heap_data->name,
-							  heap_data->base,
+							  &heap_data->base,
 							  heap_data->size);
 			else
 				pr_info("ION heap %s created\n",

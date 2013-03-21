@@ -3094,6 +3094,24 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc33d000.etm"),
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc33e000.etm"),
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc33f000.etm"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc33c000.jtagmm"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc33d000.jtagmm"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc33e000.jtagmm"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc33f000.jtagmm"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc308000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc309000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc30a000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc30b000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc30c000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc30d000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc30e000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc30f000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc310000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc340000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc341000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc342000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc343000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc344000.cti"),
 
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc322000.tmc"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc318000.tpiu"),
@@ -3109,6 +3127,24 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33d000.etm"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33e000.etm"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc33f000.etm"),
+	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33c000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33d000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33e000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_clk.c, "fc33f000.jtagmm"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc308000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc309000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc30a000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc30b000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc30c000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc30d000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc30e000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc30f000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc310000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc340000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc341000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc342000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc343000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc344000.cti"),
 
 	/* HSUSB-OTG Clocks */
 	CLK_LOOKUP("xo",                          xo.c, "f9a55000.usb"),
@@ -3124,6 +3160,9 @@ static struct clk_lookup msm_clocks_8226[] = {
 	/* I2C Clocks */
 	CLK_LOOKUP("iface_clk",          gcc_blsp1_ahb_clk.c, "f9926000.i2c"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup4_i2c_apps_clk.c, "f9926000.i2c"),
+
+	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9927000.i2c"),
+	CLK_LOOKUP("core_clk", gcc_blsp1_qup5_i2c_apps_clk.c, "f9927000.i2c"),
 
 	/* lsuart-v14 Clocks */
 	CLK_LOOKUP("iface_clk",       gcc_blsp1_ahb_clk.c, "f991f000.serial"),
@@ -3339,7 +3378,7 @@ static struct clk_lookup msm_clocks_8226[] = {
 	"fdc84000.qcom,iommu"),
 	CLK_LOOKUP("iface_clk", venus0_ahb_clk.c, "fdc84000.qcom,iommu"),
 	CLK_LOOKUP("core_clk", venus0_axi_clk.c, "fdc84000.qcom,iommu"),
-
+	CLK_LOOKUP("iface_clk", gcc_prng_ahb_clk.c, "f9bff000.qcom,msm-rng"),
 	CLK_LOOKUP("cam_gp0_clk", camss_gp0_clk.c, ""),
 	CLK_LOOKUP("cam_gp1_clk", camss_gp1_clk.c, ""),
 	CLK_LOOKUP("iface_clk", camss_micro_ahb_clk.c, ""),
@@ -3347,6 +3386,15 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("", mmss_mmssnoc_bto_ahb_clk.c, ""),
 	CLK_LOOKUP("", mmss_mmssnoc_axi_clk.c, ""),
 	CLK_LOOKUP("", mmss_s0_axi_clk.c, ""),
+
+	/* Audio clocks */
+	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.224"),
+	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.4106"),
+	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.16384"),
+	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.16386"),
+	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.16390"),
+	CLK_LOOKUP("osr_clk", div_clk1.c, "msm-dai-q6-dev.16391"),
+
 };
 
 static struct clk_lookup msm_clocks_8226_rumi[] = {
@@ -3384,6 +3432,12 @@ static void __init reg_init(void)
 
 static void __init msm8226_clock_post_init(void)
 {
+	/*
+	 * Hold an active set vote for CXO; this is because CXO is expected
+	 * to remain on whenever CPUs aren't power collapsed.
+	 */
+	clk_prepare_enable(&xo_a_clk.c);
+
 	/* Set rates for single-rate clocks. */
 	clk_set_rate(&usb_hs_system_clk_src.c,
 			usb_hs_system_clk_src.freq_tbl[0].freq_hz);
@@ -3468,12 +3522,6 @@ static void __init msm8226_clock_pre_init(void)
 	 * access mmss clock controller registers.
 	 */
 	clk_set_rate(&mmssnoc_ahb_a_clk.c, 40000000);
-
-	/*
-	 * Hold an active set vote for CXO; this is because CXO is expected
-	 * to remain on whenever CPUs aren't power collapsed.
-	 */
-	clk_prepare_enable(&xo_a_clk.c);
 
 	enable_rpm_scaling();
 

@@ -95,11 +95,11 @@ struct msm_pm_sleep_ops {
 };
 
 enum msm_pm_pc_mode_type {
-	MSM_PM_PC_TZ_L2_INT = 0,   /*Power collapse terminates in TZ;
+	MSM_PM_PC_TZ_L2_INT,   /*Power collapse terminates in TZ;
 					integrated L2 cache controller */
-	MSM_PM_PC_NOTZ_L2_EXT = 1, /* Power collapse doesn't terminate in
+	MSM_PM_PC_NOTZ_L2_EXT, /* Power collapse doesn't terminate in
 					TZ; external L2 cache controller */
-	MSM_PM_PC_TZ_L2_EXT = 2,   /* Power collapse terminates in TZ;
+	MSM_PM_PC_TZ_L2_EXT,   /* Power collapse terminates in TZ;
 					external L2 cache controller */
 };
 
@@ -135,9 +135,11 @@ void msm_pm_enable_retention(bool enable);
 #ifdef CONFIG_MSM_PM8X60
 void msm_pm_set_rpm_wakeup_irq(unsigned int irq);
 void msm_pm_set_sleep_ops(struct msm_pm_sleep_ops *ops);
+int msm_pm_wait_cpu_shutdown(unsigned int cpu);
 #else
 static inline void msm_pm_set_rpm_wakeup_irq(unsigned int irq) {}
 static inline void msm_pm_set_sleep_ops(struct msm_pm_sleep_ops *ops) {}
+static inline int msm_pm_wait_cpu_shutdown(unsigned int cpu) { return 0; }
 #endif
 #ifdef CONFIG_HOTPLUG_CPU
 int msm_platform_secondary_init(unsigned int cpu);

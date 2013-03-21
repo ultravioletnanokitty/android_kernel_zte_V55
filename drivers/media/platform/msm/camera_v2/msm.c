@@ -268,6 +268,8 @@ int msm_create_stream(unsigned int session_id,
 	msm_enqueue(&session->stream_q, &stream->list);
 	session->stream_q.len++;
 
+	INIT_LIST_HEAD(&stream->queued_list);
+
 	return 0;
 }
 
@@ -353,7 +355,7 @@ int msm_sd_register(struct msm_sd_subdev *msm_subdev)
 	if (WARN_ON(!msm_subdev))
 		return -EINVAL;
 
-	if (WARN_ON(!msm_v4l2_dev) && WARN_ON(!msm_v4l2_dev->dev))
+	if (WARN_ON(!msm_v4l2_dev) || WARN_ON(!msm_v4l2_dev->dev))
 		return -EIO;
 
 	return __msm_sd_register_subdev(&msm_subdev->sd);
@@ -850,6 +852,31 @@ struct vb2_queue *msm_get_stream_vb2q(unsigned int session_id,
 		return NULL;
 
 	return stream->vb2_q;
+}
+
+struct msm_stream *msm_get_stream_from_vb2q(struct vb2_queue *q)
+{
+	struct msm_session *session;
+	struct msm_stream *stream;
+	unsigned long flags1;
+	unsigned long flags2;
+	spin_lock_irqsave(&msm_session_q->lock, flags1);
+	list_for_each_entry(session, &(msm_session_q->list), list) {
+		spin_lock_irqsave(&(session->stream_q.lock), flags2);
+		list_for_each_entry(
+			stream, &(session->stream_q.list), list) {
+			if (stream->vb2_q == q) {
+				spin_unlock_irqrestore
+					(&(session->stream_q.lock), flags2);
+				spin_unlock_irqrestore
+					(&msm_session_q->lock, flags1);
+				return stream;
+			}
+		}
+		spin_unlock_irqrestore(&(session->stream_q.lock), flags2);
+	}
+	spin_unlock_irqrestore(&msm_session_q->lock, flags1);
+	return NULL;
 }
 
 static struct v4l2_subdev *msm_sd_find(const char *name)

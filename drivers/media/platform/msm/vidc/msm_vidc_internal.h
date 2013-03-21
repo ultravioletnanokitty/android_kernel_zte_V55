@@ -37,6 +37,14 @@
 #define MSM_VIDC_VERSION KERNEL_VERSION(0, 0, 1);
 #define MAX_DEBUGFS_NAME 50
 #define DEFAULT_TIMEOUT 3
+#define DEFAULT_HEIGHT 1080
+#define DEFAULT_WIDTH 1920
+#define MIN_SUPPORTED_WIDTH 32
+#define MIN_SUPPORTED_HEIGHT 32
+#define MAX_SUPPORTED_WIDTH 3820
+#define MAX_SUPPORTED_HEIGHT 2160
+
+
 
 #define V4L2_EVENT_VIDC_BASE  10
 
@@ -166,6 +174,13 @@ enum msm_vidc_mode {
 	VIDC_SECURE,
 };
 
+struct msm_vidc_core_capability {
+	struct hal_capability_supported width;
+	struct hal_capability_supported height;
+	struct hal_capability_supported frame_rate;
+	u32 capability_set;
+};
+
 struct msm_vidc_core {
 	struct list_head list;
 	struct mutex sync_lock, lock;
@@ -189,7 +204,7 @@ struct msm_vidc_inst {
 	void *session;
 	struct session_prop prop;
 	int state;
-	const struct msm_vidc_format *fmts[MAX_PORT_NUM];
+	struct msm_vidc_format *fmts[MAX_PORT_NUM];
 	struct buf_queue bufq[MAX_PORT_NUM];
 	struct list_head pendingq;
 	struct list_head internalbufs;
@@ -212,6 +227,7 @@ struct msm_vidc_inst {
 	struct msm_vidc_debug debug;
 	struct buf_count count;
 	enum msm_vidc_mode mode;
+	struct msm_vidc_core_capability capability;
 };
 
 extern struct msm_vidc_drv *vidc_driver;
@@ -238,4 +254,5 @@ struct msm_vidc_ctrl {
 void handle_cmd_response(enum command_response cmd, void *data);
 int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 	enum hal_ssr_trigger_type type);
+int msm_vidc_check_session_supported(struct msm_vidc_inst *inst);
 #endif

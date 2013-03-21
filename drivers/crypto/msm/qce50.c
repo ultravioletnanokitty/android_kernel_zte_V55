@@ -353,6 +353,9 @@ go_proc:
 	pce = cmdlistinfo->auth_seg_size;
 	pce->data = sreq->size;
 
+	pce = cmdlistinfo->encr_seg_cfg;
+	pce->data = 0;
+
 	/* write auth seg size start*/
 	pce = cmdlistinfo->auth_seg_start;
 	pce->data = 0;
@@ -521,8 +524,12 @@ static int _ce_setup_cipher(struct qce_device *pce_dev, struct qce_req *creq,
 			pce->data = totallen_in - creq->authsize;
 		pce = cmdlistinfo->auth_seg_start;
 		pce->data = 0;
+	} else {
+		if (creq->op != QCE_REQ_AEAD) {
+			pce = cmdlistinfo->auth_seg_cfg;
+			pce->data = 0;
+		}
 	}
-
 	switch (creq->mode) {
 	case QCE_MODE_ECB:
 		encr_cfg |= (CRYPTO_ENCR_MODE_ECB << CRYPTO_ENCR_MODE);
@@ -1289,7 +1296,7 @@ static void _aead_sps_producer_callback(struct sps_event_notify *notify)
 					CRYPTO_RESULT_DUMP_SIZE,
 					  &pce_dev->ce_sps.out_transfer);
 		_qce_set_flag(&pce_dev->ce_sps.out_transfer,
-				SPS_IOVEC_FLAG_EOT|SPS_IOVEC_FLAG_INT);
+				SPS_IOVEC_FLAG_INT);
 		rc = sps_transfer(pce_dev->ce_sps.producer.pipe,
 					  &pce_dev->ce_sps.out_transfer);
 		if (rc) {
@@ -1364,7 +1371,7 @@ static void _ablk_cipher_sps_producer_callback(struct sps_event_notify *notify)
 					CRYPTO_RESULT_DUMP_SIZE,
 					  &pce_dev->ce_sps.out_transfer);
 		_qce_set_flag(&pce_dev->ce_sps.out_transfer,
-				SPS_IOVEC_FLAG_EOT|SPS_IOVEC_FLAG_INT);
+				SPS_IOVEC_FLAG_INT);
 		rc = sps_transfer(pce_dev->ce_sps.producer.pipe,
 					  &pce_dev->ce_sps.out_transfer);
 		if (rc) {

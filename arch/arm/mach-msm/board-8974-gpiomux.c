@@ -203,7 +203,6 @@ static struct gpiomux_setting hsic_sus_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
-	.dir = GPIOMUX_OUT_LOW,
 };
 
 static struct gpiomux_setting hsic_act_cfg = {
@@ -219,6 +218,19 @@ static struct gpiomux_setting hsic_hub_act_cfg = {
 	.dir = GPIOMUX_IN,
 };
 
+static struct gpiomux_setting hsic_resume_act_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+	.dir = GPIOMUX_OUT_LOW,
+};
+
+static struct gpiomux_setting hsic_resume_susp_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
 static struct msm_gpiomux_config msm_hsic_configs[] = {
 	{
 		.gpio = 144,               /*HSIC_STROBE */
@@ -232,6 +244,13 @@ static struct msm_gpiomux_config msm_hsic_configs[] = {
 		.settings = {
 			[GPIOMUX_ACTIVE] = &hsic_act_cfg,
 			[GPIOMUX_SUSPENDED] = &hsic_sus_cfg,
+		},
+	},
+	{
+		.gpio = 80,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &hsic_resume_act_cfg,
+			[GPIOMUX_SUSPENDED] = &hsic_resume_susp_cfg,
 		},
 	},
 };
@@ -644,7 +663,7 @@ static struct msm_gpiomux_config msm_sensor_configs[] __initdata = {
 	{
 		.gpio = 25, /* WEBCAM2_RESET_N */
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[0],
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
 			[GPIOMUX_SUSPENDED] = &gpio_suspend_config[1],
 		},
 	},
@@ -665,36 +684,36 @@ static struct msm_gpiomux_config msm_sensor_configs[] __initdata = {
 	{
 		.gpio = 28, /* WEBCAM1_STANDBY */
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[0],
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
 			[GPIOMUX_SUSPENDED] = &gpio_suspend_config[1],
 		},
 	},
 	{
 		.gpio = 89, /* CAM1_STANDBY_N */
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[0],
-			[GPIOMUX_SUSPENDED] = &cam_settings[1],
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &gpio_suspend_config[1],
 		},
 	},
 	{
 		.gpio = 90, /* CAM1_RST_N */
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[0],
-			[GPIOMUX_SUSPENDED] = &cam_settings[1],
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &gpio_suspend_config[1],
 		},
 	},
 	{
 		.gpio = 91, /* CAM2_STANDBY_N */
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[0],
-			[GPIOMUX_SUSPENDED] = &cam_settings[1],
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &gpio_suspend_config[1],
 		},
 	},
 	{
 		.gpio = 92, /* CAM2_RST_N */
 		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_settings[0],
-			[GPIOMUX_SUSPENDED] = &cam_settings[1],
+			[GPIOMUX_ACTIVE]    = &cam_settings[3],
+			[GPIOMUX_SUSPENDED] = &gpio_suspend_config[1],
 		},
 	},
 };

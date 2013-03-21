@@ -286,6 +286,24 @@ config ARCH_MSM8974
 	select MSM_LPM_TEST
 	select MSM_RPM_LOG
 
+config ARCH_MSMZINC
+	bool "MSMZINC"
+	select ARCH_MSM_KRAITMP
+	select GPIO_MSM_V3
+	select ARM_GIC
+	select CPU_V7
+	select MSM_SCM if SMP
+	select MSM_GPIOMUX
+	select MULTI_IRQ_HANDLER
+	select MSM_NATIVE_RESTART
+	select MSM_RESTART_V2
+	select MSM_PM8X60 if PM
+	select MAY_HAVE_SPARSE_IRQ
+	select SPARSE_IRQ
+	select REGULATOR
+	select ARM_HAS_SG_CHAIN
+	select ARCH_DMA_ADDR_T_64BIT if ARM_LPAE
+
 config ARCH_MPQ8092
 	bool "MPQ8092"
 	select ARCH_MSM_KRAITMP
@@ -390,16 +408,17 @@ config ARCH_MSM8610
 	select MSM_GPIOMUX
 	select MSM_NATIVE_RESTART
 	select MSM_RESTART_V2
-	select MEMORY_HOLE_CARVEOUT
-	select DONT_MAP_HOLE_AFTER_MEMBANK
-	select QMI_ENCDEC
 	select MSM_QDSP6_APRV2
 	select MSM_QDSP6V2_CODECS
 	select MSM_AUDIO_QDSP6V2 if SND_SOC
+	select QMI_ENCDEC
 	select MSM_RPM_SMD
 	select MSM_SPM_V2
 	select MSM_L2_SPM
 	select MSM_PM8X60 if PM
+	select MEMORY_HOLE_CARVEOUT
+	select DONT_MAP_HOLE_AFTER_MEMBANK0
+	select MSM_BUS_SCALING
 	select CPU_FREQ_MSM
 	select CPU_FREQ
 	select CPU_FREQ_GOV_USERSPACE
@@ -407,6 +426,8 @@ config ARCH_MSM8610
 	select MSM_PIL
 	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
+	select REGULATOR
+	select MSM_RPM_REGULATOR_SMD
 
 config ARCH_MSM8226
 	bool "MSM8226"
@@ -433,7 +454,16 @@ config ARCH_MSM8226
 	select MEMORY_HOLE_CARVEOUT
 	select DONT_MAP_HOLE_AFTER_MEMBANK0
 	select MSM_BUS_SCALING
+	select CPU_FREQ_MSM
+	select CPU_FREQ
+	select CPU_FREQ_GOV_USERSPACE
+	select CPU_FREQ_GOV_ONDEMAND
+	select MSM_PIL
+	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
+	select REGULATOR
+	select MSM_RPM_REGULATOR_SMD
+	select MSM_JTAG_MM if CORESIGHT_ETM
 endmenu
 
 choice
@@ -1032,6 +1062,7 @@ config PHYS_OFFSET
 	default "0x80200000" if ARCH_MSM8960
 	default "0x80200000" if ARCH_MSM8930
 	default "0x00000000" if ARCH_MSM8974
+	default "0x00000000" if ARCH_MSMZINC
 	default "0x00000000" if ARCH_MPQ8092
 	default "0x00000000" if ARCH_MSM8226
 	default "0x00000000" if ARCH_MSM8610
@@ -1182,6 +1213,14 @@ choice
                 help
                   Say Y here if you want the debug print routines to direct
                   their output to the serial port on MPQ8092 devices.
+
+	config DEBUG_MSMZINC_UART
+                bool "Kernel low-level debugging messages via MSMZINC UART"
+                depends on ARCH_MSMZINC
+                select MSM_HAS_DEBUG_UART_HS_V14
+                help
+                  Say Y here if you want the debug print routines to direct
+                  their output to the serial port on MSMZINC devices.
 endchoice
 
 choice
@@ -2806,12 +2845,12 @@ config MSM_RPC_PMAPP
 	 does not have a direct access to the PMIC.
 
 config MSM_ENABLE_WDOG_DEBUG_CONTROL
-	bool "MSM Watchdog driver to disable debug Image"
+	bool "Enable control of watchdog debug and boot partition select"
 	help
-	 This driver supports the configuration of the GCC_WDOG_DEBUG register
-	 used to control debug image.
-	 This support is currently required for MSM8974 to disable debug image
-	 on PS HOLD reset
+	  Enables support for controlling watchdog debug and boot partition
+	  select. This is currently used to bypass debug image for PS_HOLD reset
+	  by disabling watchdog debug and boot partition select. This allows
+	  for a clean MSM reset for reboot scenarios.
 
 config MSM_FIQ
 	bool "Enable FIQ for debugging"
@@ -2848,4 +2887,12 @@ config MSM_UARTDM_Core_v14
 	depends on SERIAL_MSM_HS
 	help
 		Select if BLSP based UART Core v.14 or higher is present.
+
+config MSM_BOOT_STATS
+	bool "Use MSM boot stats reporting"
+	help
+	 Use this to report msm boot stats such as bootloader throughput,
+	 display init, total boot time.
+	 This figures are reported in mpm sleep clock cycles and have a
+	 resolution of 31 bits as 1 bit is used as an overflow check.
 endif

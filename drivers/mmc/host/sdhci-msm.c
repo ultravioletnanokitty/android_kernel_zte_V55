@@ -32,6 +32,9 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/mmc/mmc.h>
+#include <linux/pm.h>
+#include <linux/pm_runtime.h>
+#include <linux/mmc/cd-gpio.h>
 #include <mach/gpio.h>
 #include <mach/msm_bus.h>
 
@@ -200,6 +203,7 @@ struct sdhci_msm_pltfm_data {
 	bool nonremovable;
 	struct sdhci_msm_pin_data *pin_data;
 	u32 cpu_dma_latency_us;
+	int status_gpio; /* card detection GPIO that is configured as IRQ */
 	struct sdhci_msm_bus_voting_data *voting_data;
 };
 
@@ -216,6 +220,7 @@ struct sdhci_msm_bus_vote {
 struct sdhci_msm_host {
 	struct platform_device	*pdev;
 	void __iomem *core_mem;    /* MSM SDCC mapped address */
+	int	pwr_irq;	/* power irq */
 	struct clk	 *clk;     /* main SD/MMC bus clock */
 	struct clk	 *pclk;    /* SDHC peripheral bus clock */
 	struct clk	 *bus_clk; /* SDHC bus voter clock */
@@ -1075,6 +1080,8 @@ static struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev)
 		goto out;
 	}
 
+	pdata->status_gpio = of_get_named_gpio_flags(np, "cd-gpios", 0, 0);
+
 	of_property_read_u32(np, "qcom,bus-width", &bus_width);
 	if (bus_width == 8)
 		pdata->mmc_bus_width = MMC_CAP_8_BIT_DATA;
@@ -1864,7 +1871,7 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 	struct sdhci_pltfm_host *pltfm_host;
 	struct sdhci_msm_host *msm_host;
 	struct resource *core_memres = NULL;
-	int ret = 0, pwr_irq = 0, dead = 0;
+	int ret = 0, dead = 0;
 	u32 vdd_max_current;
 	u32 host_version;
 
@@ -1987,18 +1994,18 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 	}
 
 	/* Setup PWRCTL irq */
-	pwr_irq = platform_get_irq_byname(pdev, "pwr_irq");
-	if (pwr_irq < 0) {
+	msm_host->pwr_irq = platform_get_irq_byname(pdev, "pwr_irq");
+	if (msm_host->pwr_irq < 0) {
 		dev_err(&pdev->dev, "Failed to get pwr_irq by name (%d)\n",
-				pwr_irq);
+				msm_host->pwr_irq);
 		goto vreg_deinit;
 	}
-	ret = devm_request_threaded_irq(&pdev->dev, pwr_irq, NULL,
+	ret = devm_request_threaded_irq(&pdev->dev, msm_host->pwr_irq, NULL,
 					sdhci_msm_pwr_irq, IRQF_ONESHOT,
 					dev_name(&pdev->dev), host);
 	if (ret) {
 		dev_err(&pdev->dev, "Request threaded irq(%d) failed (%d)\n",
-				pwr_irq, ret);
+				msm_host->pwr_irq, ret);
 		goto vreg_deinit;
 	}
 
@@ -2029,6 +2036,7 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 
 	msm_host->mmc->caps |= MMC_CAP_HW_RESET;
 	msm_host->mmc->caps2 |= msm_host->pdata->caps2;
+	msm_host->mmc->caps2 |= MMC_CAP2_CORE_RUNTIME_PM;
 	msm_host->mmc->caps2 |= MMC_CAP2_PACKED_WR;
 	msm_host->mmc->caps2 |= MMC_CAP2_PACKED_WR_CONTROL;
 	msm_host->mmc->caps2 |= (MMC_CAP2_BOOTPART_NOACC |
@@ -2051,10 +2059,20 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 		INIT_DELAYED_WORK(&msm_host->msm_bus_vote.vote_work,
 				  sdhci_msm_bus_work);
 
+	if (gpio_is_valid(msm_host->pdata->status_gpio)) {
+		ret = mmc_cd_gpio_request(msm_host->mmc,
+				msm_host->pdata->status_gpio);
+		if (ret) {
+			dev_err(&pdev->dev, "%s: Failed to request card detection IRQ %d\n",
+					__func__, ret);
+			goto bus_unregister;
+		}
+	}
+
 	ret = sdhci_add_host(host);
 	if (ret) {
 		dev_err(&pdev->dev, "Add host failed (%d)\n", ret);
-		goto bus_unregister;
+		goto free_cd_gpio;
 	}
 
 	 /* Set core clk rate, optionally override from dts */
@@ -2076,12 +2094,22 @@ static int __devinit sdhci_msm_probe(struct platform_device *pdev)
 	if (ret)
 		goto remove_host;
 
+	ret = pm_runtime_set_active(&pdev->dev);
+	if (ret)
+		pr_err("%s: %s: pm_runtime_set_active failed: err: %d\n",
+		       mmc_hostname(host->mmc), __func__, ret);
+	else
+		pm_runtime_enable(&pdev->dev);
+
 	/* Successful initialization */
 	goto out;
 
 remove_host:
 	dead = (readl_relaxed(host->ioaddr + SDHCI_INT_STATUS) == 0xffffffff);
 	sdhci_remove_host(host, dead);
+free_cd_gpio:
+	if (gpio_is_valid(msm_host->pdata->status_gpio))
+		mmc_cd_gpio_free(msm_host->mmc);
 bus_unregister:
 	sdhci_msm_bus_unregister(msm_host);
 vreg_deinit:
@@ -2114,7 +2142,12 @@ static int __devexit sdhci_msm_remove(struct platform_device *pdev)
 	pr_debug("%s: %s\n", dev_name(&pdev->dev), __func__);
 	device_remove_file(&pdev->dev, &msm_host->msm_bus_vote.max_bus_bw);
 	sdhci_remove_host(host, dead);
+	pm_runtime_disable(&pdev->dev);
 	sdhci_pltfm_free(pdev);
+
+	if (gpio_is_valid(msm_host->pdata->status_gpio))
+		mmc_cd_gpio_free(msm_host->mmc);
+
 	sdhci_msm_vreg_init(&pdev->dev, msm_host->pdata, false);
 
 	if (pdata->pin_data)
@@ -2127,6 +2160,92 @@ static int __devexit sdhci_msm_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int sdhci_msm_runtime_suspend(struct device *dev)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+
+	disable_irq(host->irq);
+	disable_irq(msm_host->pwr_irq);
+
+	return 0;
+}
+
+static int sdhci_msm_runtime_resume(struct device *dev)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+
+	enable_irq(msm_host->pwr_irq);
+	enable_irq(host->irq);
+
+	return 0;
+}
+
+#ifdef CONFIG_PM_SLEEP
+
+static int sdhci_msm_suspend(struct device *dev)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	int ret = 0;
+
+	if (gpio_is_valid(msm_host->pdata->status_gpio))
+		mmc_cd_gpio_free(msm_host->mmc);
+
+	if (pm_runtime_suspended(dev)) {
+		pr_debug("%s: %s: already runtime suspended\n",
+		mmc_hostname(host->mmc), __func__);
+		goto out;
+	}
+
+	return sdhci_msm_runtime_suspend(dev);
+out:
+	return ret;
+}
+
+static int sdhci_msm_resume(struct device *dev)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	int ret = 0;
+
+	if (gpio_is_valid(msm_host->pdata->status_gpio)) {
+		ret = mmc_cd_gpio_request(msm_host->mmc,
+				msm_host->pdata->status_gpio);
+		if (ret)
+			pr_err("%s: %s: Failed to request card detection IRQ %d\n",
+					mmc_hostname(host->mmc), __func__, ret);
+	}
+
+	if (pm_runtime_suspended(dev)) {
+		pr_debug("%s: %s: runtime suspended, defer system resume\n",
+		mmc_hostname(host->mmc), __func__);
+		goto out;
+	}
+
+	return sdhci_msm_runtime_resume(dev);
+out:
+	return ret;
+}
+#endif
+
+#ifdef CONFIG_PM
+static const struct dev_pm_ops sdhci_msm_pmops = {
+	SET_SYSTEM_SLEEP_PM_OPS(sdhci_msm_suspend, sdhci_msm_resume)
+	SET_RUNTIME_PM_OPS(sdhci_msm_runtime_suspend, sdhci_msm_runtime_resume,
+			   NULL)
+};
+
+#define SDHCI_MSM_PMOPS (&sdhci_msm_pmops)
+
+#else
+#define SDHCI_PM_OPS NULL
+#endif
 static const struct of_device_id sdhci_msm_dt_match[] = {
 	{.compatible = "qcom,sdhci-msm"},
 };
@@ -2139,6 +2258,7 @@ static struct platform_driver sdhci_msm_driver = {
 		.name	= "sdhci_msm",
 		.owner	= THIS_MODULE,
 		.of_match_table = sdhci_msm_dt_match,
+		.pm = SDHCI_MSM_PMOPS,
 	},
 };
 

@@ -351,11 +351,18 @@
 		hub_int-supply = <&pm8941_l10>;
 		hub_vbus-supply = <&ext_5v>;
 
-		hsic@f9a00000 {
+		hsic_host: hsic@f9a00000 {
 			compatible = "qcom,hsic-host";
 			reg = <0xf9a00000 0x400>;
-			interrupts = <0 136 0>, <0 148 0>;
-			interrupt-names = "core_irq", "async_irq";
+			#address-cells = <0>;
+	                interrupt-parent = <&hsic_host>;
+			interrupts = <0 1 2>;
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0xffffffff>;
+			interrupt-map = <0 &intc 0 136 0
+		                1 &intc 0 148 0
+		                2 &msmgpio 144 0x8>;
+			interrupt-names = "core_irq", "async_irq", "wakeup";
 			HSIC_VDDCX-supply = <&pm8841_s2>;
 			HSIC_GDSC-supply = <&gdsc_usb_hsic>;
 			hsic,strobe-gpio = <&msmgpio 144 0x00>;
@@ -363,6 +370,14 @@
 			hsic,ignore-cal-pad-config;
 			hsic,strobe-pad-offset = <0x2050>;
 			hsic,data-pad-offset = <0x2054>;
+
+			qcom,msm-bus,name = "hsic";
+			qcom,msm-bus,num-cases = <2>;
+			qcom,msm-bus,active-only = <0>;
+			qcom,msm-bus,num-paths = <1>;
+			qcom,msm-bus,vectors-KBps =
+					<85 512 0 0>,
+					<85 512 40000 160000>;
 		};
 	};
 };

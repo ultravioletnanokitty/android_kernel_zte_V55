@@ -236,7 +236,7 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	struct mdss_mdp_format_params *fmt;
 	struct mdss_mdp_pipe *pipe;
 	struct mdss_mdp_mixer *mixer = NULL;
-	u32 pipe_type, mixer_mux, len;
+	u32 pipe_type, mixer_mux, len, src_format;
 	int ret;
 
 	if (mfd == NULL || mfd->ctl == NULL)
@@ -255,9 +255,13 @@ static int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		return -ENOTSUPP;
 	}
 
-	fmt = mdss_mdp_get_format_params(req->src.format);
+	src_format = req->src.format;
+	if (req->flags & MDP_SOURCE_ROTATED_90)
+		src_format = mdss_mdp_get_rotator_dst_format(src_format);
+
+	fmt = mdss_mdp_get_format_params(src_format);
 	if (!fmt) {
-		pr_err("invalid pipe format %d\n", req->src.format);
+		pr_err("invalid pipe format %d\n", src_format);
 		return -EINVAL;
 	}
 
@@ -539,9 +543,9 @@ int mdss_mdp_copy_splash_screen(struct mdss_panel_data *pdata)
 	virt = ion_map_kernel(iclient, ihdl);
 	ion_phys(iclient, ihdl, &phys, &size);
 
-	pr_debug("%s %d Allocating %u bytes at 0x%lx (%lx phys)\n",
+	pr_debug("%s %d Allocating %u bytes at 0x%lx (%pa phys)\n",
 			__func__, __LINE__, size,
-			(unsigned long int)virt, phys);
+			(unsigned long int)virt, &phys);
 
 	bl_fb_addr_va = (unsigned long *)ioremap(bl_fb_addr, size);
 
@@ -560,6 +564,8 @@ int mdss_mdp_reconfigure_splash_done(struct mdss_mdp_ctl *ctl)
 	struct ion_client *iclient = mdss_get_ionclient();
 	struct mdss_panel_data *pdata;
 	int ret = 0, off;
+	int mdss_mdp_rev = MDSS_MDP_REG_READ(MDSS_MDP_REG_HW_VERSION);
+	int mdss_v2_intf_off = 0;
 
 	off = 0;
 
@@ -572,9 +578,13 @@ int mdss_mdp_reconfigure_splash_done(struct mdss_mdp_ctl *ctl)
 	mdss_mdp_ctl_write(ctl, 0, MDSS_MDP_LM_BORDER_COLOR);
 	off = MDSS_MDP_REG_INTF_OFFSET(ctl->intf_num);
 
+	if (mdss_mdp_rev == MDSS_MDP_HW_REV_102)
+		mdss_v2_intf_off =  0xEC00;
+
 	/* wait for 1 VSYNC for the pipe to be unstaged */
 	msleep(20);
-	MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 0);
+	MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_INTF_TIMING_ENGINE_EN -
+			mdss_v2_intf_off, 0);
 	ret = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_CONT_SPLASH_FINISH,
 			NULL);
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
@@ -1148,7 +1158,7 @@ static ssize_t mdss_mdp_vsync_show_event(struct device *dev,
 	ret = wait_for_completion_interruptible_timeout(&mfd->vsync_comp,
 			timeout);
 	if (ret <= 0) {
-		pr_warn("Sending current time as vsync timestamp for fb%d\n",
+		pr_debug("Sending current time as vsync timestamp for fb%d\n",
 				mfd->index);
 		mfd->vsync_time = ktime_get();
 	}

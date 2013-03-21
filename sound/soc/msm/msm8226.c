@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -84,8 +84,9 @@ static int msm_btsco_rate = BTSCO_RATE_8KHZ;
 static int msm_btsco_ch = 1;
 
 static struct mutex cdc_mclk_mutex;
-static struct q_clkdiv *codec_clk;
+static struct clk *codec_clk;
 static int clk_users;
+static int vdd_spkr_gpio = -1;
 
 static int msm_snd_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 					bool dapm)
@@ -98,7 +99,7 @@ static int msm_snd_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 	if (enable) {
 		if (!codec_clk) {
 			dev_err(codec->dev, "%s: did not get Taiko MCLK\n",
-				__func__);
+					__func__);
 			ret = -EINVAL;
 			goto exit;
 		}
@@ -106,17 +107,25 @@ static int msm_snd_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 		clk_users++;
 		if (clk_users != 1)
 			goto exit;
-		/* TODO: qpnp_clkdiv_enable */
-		tapan_mclk_enable(codec, 1, dapm);
+		if (codec_clk) {
+			clk_set_rate(codec_clk, TAPAN_EXT_CLK_RATE);
+			clk_prepare_enable(codec_clk);
+			tapan_mclk_enable(codec, 1, dapm);
+		} else {
+			pr_err("%s: Error setting Tapan MCLK\n", __func__);
+			clk_users--;
+			ret = -EINVAL;
+			goto exit;
+		}
 	} else {
 		if (clk_users > 0) {
 			clk_users--;
 			if (clk_users == 0) {
 				tapan_mclk_enable(codec, 0, dapm);
-				/* TODO: qpnp_clkdiv_disable */
+				clk_disable_unprepare(codec_clk);
 			}
 		} else {
-			pr_err("%s: Error releasing Tabla MCLK\n", __func__);
+			pr_err("%s: Error releasing Tapan MCLK\n", __func__);
 			ret = -EINVAL;
 			goto exit;
 		}
@@ -141,6 +150,30 @@ static int msm8226_mclk_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int msm8226_vdd_spkr_event(struct snd_soc_dapm_widget *w,
+		struct snd_kcontrol *kcontrol, int event)
+{
+	pr_debug("%s: event = %d\n", __func__, event);
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		if (vdd_spkr_gpio >= 0) {
+			gpio_direction_output(vdd_spkr_gpio, 1);
+			pr_debug("%s: Enabled 5V external supply for speaker\n",
+					__func__);
+		}
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		if (vdd_spkr_gpio >= 0) {
+			gpio_direction_output(vdd_spkr_gpio, 0);
+			pr_debug("%s: Disabled 5V external supply for speaker\n",
+					__func__);
+		}
+		break;
+	}
+	return 0;
+}
+
 static const struct snd_soc_dapm_widget msm8226_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SUPPLY("MCLK",  SND_SOC_NOPM, 0, 0,
@@ -157,6 +190,9 @@ static const struct snd_soc_dapm_widget msm8226_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Digital Mic4", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic5", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic6", NULL),
+
+	SND_SOC_DAPM_SUPPLY("EXT_VDD_SPKR",  SND_SOC_NOPM, 0, 0,
+	msm8226_vdd_spkr_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 };
 
 static const char *const slim0_rx_ch_text[] = {"One", "Two"};
@@ -268,23 +304,6 @@ static int msm_proxy_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
-static int msm8226_hdmi_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-					struct snd_pcm_hw_params *params)
-{
-	struct snd_interval *rate = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_RATE);
-
-	struct snd_interval *channels = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_CHANNELS);
-
-	pr_debug("%s channels->min %u channels->max %u ()\n", __func__,
-			channels->min, channels->max);
-
-	rate->min = rate->max = 48000;
-
-	return 0;
-}
-
 static int msm_slim_0_rx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 					    struct snd_pcm_hw_params *params)
 {
@@ -335,9 +354,9 @@ static const struct soc_enum msm_snd_enum[] = {
 };
 
 static const struct snd_kcontrol_new msm_snd_controls[] = {
-	SOC_ENUM_EXT("SLIM_0_RX Channels", msm_snd_enum[1],
+	SOC_ENUM_EXT("SLIM_0_RX Channels", msm_snd_enum[0],
 		     msm_slim_0_rx_ch_get, msm_slim_0_rx_ch_put),
-	SOC_ENUM_EXT("SLIM_0_TX Channels", msm_snd_enum[2],
+	SOC_ENUM_EXT("SLIM_0_TX Channels", msm_snd_enum[1],
 		     msm_slim_0_tx_ch_get, msm_slim_0_tx_ch_put),
 };
 
@@ -373,13 +392,21 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	snd_soc_dapm_sync(dapm);
 
+	codec_clk = clk_get(cpu_dai->dev, "osr_clk");
+	if (codec_clk < 0)
+		pr_err("%s() Failed to get clock for %s\n",
+			   __func__, dev_name(cpu_dai->dev));
+
 	snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tx_ch),
 				    tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
 
 	/* start mbhc */
 	mbhc_cfg.calibration = def_tapan_mbhc_cal();
-	if (mbhc_cfg.calibration)
-		err = tapan_hs_detect(codec, &mbhc_cfg);
+	if (mbhc_cfg.calibration) {
+		pr_info("%s: WCD9306: Headset detection disabled\n",
+				__func__);
+	}
+
 	else
 		err = -ENOMEM;
 
@@ -550,7 +577,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.name = "MSM8226 Media1",
 		.stream_name = "MultiMedia1",
 		.cpu_dai_name	= "MultiMedia1",
-		.platform_name  = "msm-pcm-dsp",
+		.platform_name  = "msm-pcm-dsp.0",
 		.dynamic = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
 			SND_SOC_DPCM_TRIGGER_POST},
@@ -565,7 +592,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.name = "MSM8226 Media2",
 		.stream_name = "MultiMedia2",
 		.cpu_dai_name   = "MultiMedia2",
-		.platform_name  = "msm-pcm-dsp",
+		.platform_name  = "msm-pcm-dsp.0",
 		.dynamic = 1,
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
@@ -744,6 +771,37 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
+	{
+		.name = "VoLTE",
+		.stream_name = "VoLTE",
+		.cpu_dai_name   = "VoLTE",
+		.platform_name  = "msm-pcm-voice",
+		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+				SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.be_id = MSM_FRONTEND_DAI_VOLTE,
+	},
+	{
+		.name = "MSM8226 LowLatency",
+		.stream_name = "MultiMedia5",
+		.cpu_dai_name   = "MultiMedia5",
+		.platform_name  = "msm-pcm-dsp.1",
+		.dynamic = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+				SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA5,
+	},
 	/* Backend BT/FM DAI Links */
 	{
 		.name = LPASS_BE_INT_BT_SCO_RX,
@@ -757,6 +815,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_hw_params_fixup = msm_btsco_be_hw_params_fixup,
 		/* this dainlink has playback support */
 		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_INT_BT_SCO_TX,
@@ -768,6 +827,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_INT_BT_SCO_TX,
 		.be_hw_params_fixup = msm_btsco_be_hw_params_fixup,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_INT_FM_RX,
@@ -781,6 +841,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		/* this dainlink has playback support */
 		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_INT_FM_TX,
@@ -792,6 +853,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_INT_FM_TX,
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ignore_suspend = 1,
 	},
 	/* Backend AFE DAI Links */
 	{
@@ -806,6 +868,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_hw_params_fixup = msm_proxy_be_hw_params_fixup,
 		/* this dainlink has playback support */
 		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_AFE_PCM_TX,
@@ -817,6 +880,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_AFE_PCM_TX,
 		.be_hw_params_fixup = msm_proxy_be_hw_params_fixup,
+		.ignore_suspend = 1,
 	},
 	/* HDMI Hostless */
 	{
@@ -833,19 +897,6 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
-	/* HDMI BACK END DAI Link */
-	{
-		.name = LPASS_BE_HDMI,
-		.stream_name = "HDMI Playback",
-		.cpu_dai_name = "msm-dai-q6-hdmi.8",
-		.platform_name = "msm-pcm-routing",
-		.codec_name     = "msm-stub-codec.1",
-		.codec_dai_name = "msm-stub-rx",
-		.no_pcm = 1,
-		.be_id = MSM_BACKEND_DAI_HDMI_RX,
-		.be_hw_params_fixup = msm8226_hdmi_be_hw_params_fixup,
-		.ignore_pmdown_time = 1,
-	},
 	/* Backend DAI Links */
 	{
 		.name = LPASS_BE_SLIMBUS_0_RX,
@@ -860,6 +911,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_hw_params_fixup = msm_slim_0_rx_be_hw_params_fixup,
 		.ops = &msm8226_be_ops,
 		.ignore_pmdown_time = 1, /* dai link has playback support */
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_SLIMBUS_0_TX,
@@ -872,6 +924,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_id = MSM_BACKEND_DAI_SLIMBUS_0_TX,
 		.be_hw_params_fixup = msm_slim_0_tx_be_hw_params_fixup,
 		.ops = &msm8226_be_ops,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_SLIMBUS_1_RX,
@@ -886,6 +939,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.ops = &msm8226_be_ops,
 		/* dai link has playback support */
 		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_SLIMBUS_1_TX,
@@ -898,6 +952,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_id = MSM_BACKEND_DAI_SLIMBUS_1_TX,
 		.be_hw_params_fixup = msm_slim_0_tx_be_hw_params_fixup,
 		.ops = &msm8226_be_ops,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_SLIMBUS_3_RX,
@@ -912,6 +967,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.ops = &msm8226_be_ops,
 		/* dai link has playback support */
 		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_SLIMBUS_3_TX,
@@ -924,6 +980,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_id = MSM_BACKEND_DAI_SLIMBUS_3_TX,
 		.be_hw_params_fixup = msm_slim_0_tx_be_hw_params_fixup,
 		.ops = &msm8226_be_ops,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_SLIMBUS_4_RX,
@@ -938,6 +995,7 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.ops = &msm8226_be_ops,
 		/* dai link has playback support */
 		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = LPASS_BE_SLIMBUS_4_TX,
@@ -950,6 +1008,46 @@ static struct snd_soc_dai_link msm8226_dai[] = {
 		.be_id = MSM_BACKEND_DAI_SLIMBUS_4_TX,
 		.be_hw_params_fixup = msm_slim_0_tx_be_hw_params_fixup,
 		.ops = &msm8226_be_ops,
+		.ignore_suspend = 1,
+	},
+	/* Incall Record Uplink BACK END DAI Link */
+	{
+		.name = LPASS_BE_INCALL_RECORD_TX,
+		.stream_name = "Voice Uplink Capture",
+		.cpu_dai_name = "msm-dai-q6-dev.32772",
+		.platform_name = "msm-pcm-routing",
+		.codec_name     = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INCALL_RECORD_TX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ignore_suspend = 1,
+	},
+	/* Incall Record Downlink BACK END DAI Link */
+	{
+		.name = LPASS_BE_INCALL_RECORD_RX,
+		.stream_name = "Voice Downlink Capture",
+		.cpu_dai_name = "msm-dai-q6-dev.32771",
+		.platform_name = "msm-pcm-routing",
+		.codec_name     = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-tx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_INCALL_RECORD_RX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ignore_suspend = 1,
+	},
+	/* Incall Music BACK END DAI Link */
+	{
+		.name = LPASS_BE_VOICE_PLAYBACK_TX,
+		.stream_name = "Voice Farend Playback",
+		.cpu_dai_name = "msm-dai-q6-dev.32773",
+		.platform_name = "msm-pcm-routing",
+		.codec_name     = "msm-stub-codec.1",
+		.codec_dai_name = "msm-stub-rx",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_VOICE_PLAYBACK_TX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ignore_suspend = 1,
 	},
 };
 
@@ -961,6 +1059,17 @@ struct snd_soc_card snd_soc_card_msm8226 = {
 
 static int msm8226_prepare_codec_mclk(struct snd_soc_card *card)
 {
+	struct msm8226_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+	int ret;
+	if (pdata->mclk_gpio) {
+		ret = gpio_request(pdata->mclk_gpio, "TAPAN_CODEC_PMIC_MCLK");
+		if (ret) {
+			dev_err(card->dev,
+				"%s: Failed to request taiko mclk gpio %d\n",
+				__func__, pdata->mclk_gpio);
+			return ret;
+		}
+	}
 	return 0;
 }
 
@@ -1012,22 +1121,62 @@ static __devinit int msm8226_asoc_machine_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	/* TODO: MCLK GPIO */
+	pdata->mclk_gpio = of_get_named_gpio(pdev->dev.of_node,
+				"qcom,cdc-mclk-gpios", 0);
+	if (pdata->mclk_gpio < 0) {
+		dev_err(&pdev->dev,
+			"Looking up %s property in node %s failed %d\n",
+			"qcom, cdc-mclk-gpios", pdev->dev.of_node->full_name,
+			pdata->mclk_gpio);
+		ret = -ENODEV;
+		goto err;
+	}
+
+	vdd_spkr_gpio = of_get_named_gpio(pdev->dev.of_node,
+				"qcom,cdc-vdd-spkr-gpios", 0);
+	if (vdd_spkr_gpio < 0) {
+		dev_err(&pdev->dev,
+			"Looking up %s property in node %s failed %d\n",
+			"qcom, cdc-vdd-spkr-gpios",
+			pdev->dev.of_node->full_name, vdd_spkr_gpio);
+	} else {
+		ret = gpio_request(vdd_spkr_gpio, "TAPAN_CODEC_VDD_SPKR");
+		if (ret) {
+			/* GPIO to enable EXT VDD exists, but failed request */
+			dev_err(card->dev,
+					"%s: Failed to request tapan vdd spkr gpio %d\n",
+					__func__, vdd_spkr_gpio);
+			goto err;
+		}
+	}
 
 	ret = msm8226_prepare_codec_mclk(card);
 	if (ret)
-		goto err;
+		goto err_vdd_spkr;
 
 	ret = snd_soc_register_card(card);
 	if (ret) {
 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n",
 			ret);
-		goto err;
+		goto err_vdd_spkr;
 	}
 	mutex_init(&cdc_mclk_mutex);
 
 	return 0;
+
+err_vdd_spkr:
+	if (vdd_spkr_gpio >= 0) {
+		gpio_free(vdd_spkr_gpio);
+		vdd_spkr_gpio = -1;
+	}
+
 err:
+	if (pdata->mclk_gpio > 0) {
+		dev_dbg(&pdev->dev, "%s free gpio %d\n",
+			__func__, pdata->mclk_gpio);
+		gpio_free(pdata->mclk_gpio);
+		pdata->mclk_gpio = 0;
+	}
 	devm_kfree(&pdev->dev, pdata);
 	return ret;
 }
@@ -1035,8 +1184,11 @@ err:
 static int __devexit msm8226_asoc_machine_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
+	struct msm8226_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
 
-	/* TODO: GPIO MCLK */
+	gpio_free(pdata->mclk_gpio);
+	gpio_free(vdd_spkr_gpio);
+	vdd_spkr_gpio = -1;
 	snd_soc_unregister_card(card);
 
 	return 0;

@@ -402,6 +402,7 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_DIVX_311  v4l2_fourcc('D', 'I', 'V', '3') /* DIVX311     */
 #define V4L2_PIX_FMT_DIVX      v4l2_fourcc('D', 'I', 'V', 'X') /* DIVX        */
 #define V4L2_PIX_FMT_VP8 v4l2_fourcc('V', 'P', '8', '0') /* ON2 VP8 stream */
+#define V4L2_PIX_FMT_HEVC v4l2_fourcc('H', 'E', 'V', 'C') /* for HEVC stream */
 
 /*  Vendor-specific formats   */
 #define V4L2_PIX_FMT_CPIA1    v4l2_fourcc('C', 'P', 'I', 'A') /* cpia1 YUV */
@@ -1491,6 +1492,7 @@ enum v4l2_mpeg_video_header_mode {
 	V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE			= 0,
 	V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME	= 1,
 	V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_I_FRAME		= 2,
+
 };
 #define V4L2_CID_MPEG_VIDEO_MAX_REF_PIC			(V4L2_CID_MPEG_BASE+217)
 #define V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE		(V4L2_CID_MPEG_BASE+218)
@@ -1602,7 +1604,6 @@ enum v4l2_mpeg_video_h264_vui_sar_idc {
 #define V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP	(V4L2_CID_MPEG_BASE+403)
 #define V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP	(V4L2_CID_MPEG_BASE+404)
 #define V4L2_CID_MPEG_VIDEO_MPEG4_LEVEL		(V4L2_CID_MPEG_BASE+405)
-
 enum v4l2_mpeg_video_mpeg4_level {
 	V4L2_MPEG_VIDEO_MPEG4_LEVEL_0	= 0,
 	V4L2_MPEG_VIDEO_MPEG4_LEVEL_0B	= 1,
@@ -1851,6 +1852,8 @@ enum v4l2_mpeg_vidc_perf_level {
 };
 #define V4L2_CID_MPEG_VIDEO_MULTI_SLICE_GOB		\
 		(V4L2_CID_MPEG_MSM_VIDC_BASE+27)
+#define V4L2_CID_MPEG_VIDEO_MULTI_SLICE_DELIVERY_MODE	\
+	(V4L2_CID_MPEG_MSM_VIDC_BASE+28)
 /*  Camera class control IDs */
 #define V4L2_CID_CAMERA_CLASS_BASE 	(V4L2_CTRL_CLASS_CAMERA | 0x900)
 #define V4L2_CID_CAMERA_CLASS 		(V4L2_CTRL_CLASS_CAMERA | 1)

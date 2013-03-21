@@ -22,6 +22,11 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
+		qcom,revid@100 {
+			compatible = "qcom,qpnp-revid";
+			reg = <0x100 0x100>;
+		};
+
 		qcom,temp-alarm@2400 {
 			compatible = "qcom,qpnp-temp-alarm";
 			reg = <0x2400 0x100>;
@@ -80,6 +85,11 @@
 			qcom,sample-rate = <4>;
 		};
 
+		pm8941_coincell: qcom,coincell@2800 {
+			compatible = "qcom,qpnp-coincell";
+			reg = <0x2800 0x100>;
+		};
+
 		pm8941_bms: qcom,bms {
 			spmi-dev-container;
 			compatible = "qcom,qpnp-bms";
@@ -101,6 +111,7 @@
 			qcom,calculate-soc-ms = <20000>;
 			qcom,chg-term-ua = <100000>;
 			qcom,batt-type = <0>;
+			qcom,low-voltage-threshold = <3420000>;
 
 			qcom,bms-iadc@3800 {
 				reg = <0x3800 0x100>;
@@ -156,11 +167,16 @@
 			qcom,chg-vddmax-mv = <4200>;
 			qcom,chg-vddsafe-mv = <4200>;
 			qcom,chg-vinmin-mv = <4200>;
-			qcom,chg-vbatdet-mv = <4100>;
 			qcom,chg-ibatmax-ma = <1500>;
-			qcom,chg-ibatterm-ma = <200>;
 			qcom,chg-ibatsafe-ma = <1500>;
 			qcom,chg-thermal-mitigation = <1500 700 600 325>;
+			qcom,chg-cool-bat-degc = <10>;
+			qcom,chg-cool-bat-mv = <4100>;
+			qcom,chg-ibatmax-warm-ma = <350>;
+			qcom,chg-warm-bat-degc = <45>;
+			qcom,chg-warm-bat-mv = <4100>;
+			qcom,chg-ibatmax-cool-ma = <350>;
+			qcom,chg-vbatdet-delta-mv = <350>;
 
 			qcom,chg-chgr@1000 {
 				status = "disabled";

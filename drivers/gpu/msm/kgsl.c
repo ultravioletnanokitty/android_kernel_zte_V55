@@ -18,7 +18,7 @@
 #include <linux/uaccess.h>
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
-#include <linux/android_pmem.h>
+
 #include <linux/vmalloc.h>
 #include <linux/pm_runtime.h>
 #include <linux/genlock.h>
@@ -1447,11 +1447,10 @@ static int kgsl_get_phys_file(int fd, unsigned long *start, unsigned long *len,
 	dev_t rdev;
 	struct fb_info *info;
 
+	*start = 0;
+	*vstart = 0;
+	*len = 0;
 	*filep = NULL;
-#ifdef CONFIG_ANDROID_PMEM
-	if (!get_pmem_file(fd, start, vstart, len, filep))
-		return 0;
-#endif
 
 	fbfile = fget(fd);
 	if (fbfile == NULL) {
@@ -1534,9 +1533,6 @@ static int kgsl_setup_phys_file(struct kgsl_mem_entry *entry,
 
 	return 0;
 err:
-#ifdef CONFIG_ANDROID_PMEM
-	put_pmem_file(filep);
-#endif
 	return ret;
 }
 
@@ -1875,10 +1871,7 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	else if (entry->memdesc.size >= SZ_64K)
 		kgsl_memdesc_set_align(&entry->memdesc, ilog2(SZ_64));
 
-	result = kgsl_mmu_map(private->pagetable,
-			      &entry->memdesc,
-			      GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
-
+	result = kgsl_mmu_map(private->pagetable, &entry->memdesc);
 	if (result)
 		goto error_put_file_ptr;
 
@@ -2069,8 +2062,7 @@ kgsl_ioctl_gpumem_alloc(struct kgsl_device_private *dev_priv,
 	if (result)
 		return result;
 
-	result = kgsl_mmu_map(private->pagetable, &entry->memdesc,
-				kgsl_memdesc_protflags(&entry->memdesc));
+	result = kgsl_mmu_map(private->pagetable, &entry->memdesc);
 	if (result)
 		goto err;
 
@@ -2108,8 +2100,7 @@ kgsl_ioctl_gpumem_alloc_id(struct kgsl_device_private *dev_priv,
 		goto err;
 
 	if (!kgsl_memdesc_use_cpu_map(&entry->memdesc)) {
-		result = kgsl_mmu_map(private->pagetable, &entry->memdesc,
-				kgsl_memdesc_protflags(&entry->memdesc));
+		result = kgsl_mmu_map(private->pagetable, &entry->memdesc);
 		if (result)
 			goto err;
 	}
@@ -2486,7 +2477,11 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		mutex_unlock(&dev_priv->device->mutex);
 	}
 
-	if (ret == 0 && (cmd & IOC_OUT)) {
+	/*
+	 * Still copy back on failure, but assume function took
+	 * all necessary precautions sanitizing the return values.
+	 */
+	if (cmd & IOC_OUT) {
 		if (copy_to_user((void __user *) arg, uptr, _IOC_SIZE(cmd)))
 			ret = -EFAULT;
 	}
@@ -2723,8 +2718,7 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 	if (kgsl_memdesc_use_cpu_map(&entry->memdesc)) {
 		entry->memdesc.gpuaddr = vma->vm_start;
 
-		ret = kgsl_mmu_map(private->pagetable, &entry->memdesc,
-				   kgsl_memdesc_protflags(&entry->memdesc));
+		ret = kgsl_mmu_map(private->pagetable, &entry->memdesc);
 		if (ret) {
 			kgsl_mem_entry_put(entry);
 			return ret;
@@ -2757,6 +2751,29 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 
 	vma->vm_ops = &kgsl_gpumem_vm_ops;
+
+	if (cache == KGSL_CACHEMODE_WRITEBACK
+		|| cache == KGSL_CACHEMODE_WRITETHROUGH) {
+		struct scatterlist *s;
+		int i;
+		int sglen = entry->memdesc.sglen;
+		unsigned long addr = vma->vm_start;
+
+		/* don't map in the guard page, it should always fault */
+		if (kgsl_memdesc_has_guard_page(&entry->memdesc))
+			sglen--;
+
+		for_each_sg(entry->memdesc.sg, s, sglen, i) {
+			int j;
+			for (j = 0; j < (sg_dma_len(s) >> PAGE_SHIFT); j++) {
+				struct page *page = sg_page(s);
+				page = nth_page(page, j);
+				vm_insert_page(vma, addr, page);
+				addr += PAGE_SIZE;
+			}
+		}
+	}
+
 	vma->vm_file = file;
 
 	entry->memdesc.useraddr = vma->vm_start;

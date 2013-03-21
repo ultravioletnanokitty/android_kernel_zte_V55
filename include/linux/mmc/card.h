@@ -215,6 +215,7 @@ enum mmc_blk_status {
 	MMC_BLK_NOMEDIUM,
 	MMC_BLK_NEW_REQUEST,
 	MMC_BLK_URGENT,
+	MMC_BLK_URGENT_DONE,
 };
 
 struct mmc_wr_pack_stats {
@@ -384,6 +385,9 @@ struct mmc_card {
 	struct mmc_wr_pack_stats wr_pack_stats; /* packed commands stats*/
 
 	struct mmc_bkops_info	bkops_info;
+
+	struct device_attribute rpm_attrib;
+	unsigned int		idle_timeout;
 };
 
 /*

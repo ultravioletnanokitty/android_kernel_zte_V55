@@ -1,7 +1,7 @@
 /*
  * f_qdss.c -- QDSS function Driver
  *
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -410,7 +410,6 @@ static void qdss_unbind(struct usb_configuration *c, struct usb_function *f)
 
 	clear_eps(f);
 	clear_desc(c->cdev->gadget, f);
-	msm_dwc3_restart_usb_session();
 }
 
 static void qdss_eps_disable(struct usb_function *f)
@@ -447,8 +446,8 @@ static void usb_qdss_disconnect_work(struct work_struct *work)
 		qdss->ch.notify(qdss->ch.priv, USB_QDSS_DISCONNECT, NULL,
 			NULL);
 		/* If the app was never started, we can skip USB BAM reset */
-		status = set_qdss_data_connection(qdss->data,
-			qdss->data->address, 0);
+		status = set_qdss_data_connection(qdss->cdev->gadget,
+			qdss->data, qdss->data->address, 0);
 		if (status)
 			pr_err("qdss_disconnect error");
 	}
@@ -467,12 +466,12 @@ static void qdss_disable(struct usb_function *f)
 	qdss->usb_connected = 0;
 	spin_unlock_irqrestore(&qdss->lock, flags);
 
+	/*cancell all active xfers*/
+	qdss_eps_disable(f);
+
 	status = uninit_data(qdss->data);
 	if (status)
 		pr_err("%s: uninit_data error\n", __func__);
-
-	/*cancell all active xfers*/
-	qdss_eps_disable(f);
 
 	schedule_work(&qdss->disconnect_w);
 }
@@ -490,7 +489,7 @@ static void usb_qdss_connect_work(struct work_struct *work)
 		return;
 	}
 
-	status = set_qdss_data_connection(qdss->data,
+	status = set_qdss_data_connection(qdss->cdev->gadget, qdss->data,
 		qdss->data->address, 1);
 	if (status) {
 		pr_err("set_qdss_data_connection error");

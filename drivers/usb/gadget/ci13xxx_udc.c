@@ -379,6 +379,11 @@ static int hw_device_state(u32 dma)
 			hw_cwrite(CAP_USBMODE, USBMODE_SDIS, USBMODE_SDIS);
 
 		hw_cwrite(CAP_ENDPTLISTADDR, ~0, dma);
+
+		if (udc->udc_driver->notify_event)
+			udc->udc_driver->notify_event(udc,
+				CI13XXX_CONTROLLER_CONNECT_EVENT);
+
 		/* interrupt, error, port change, reset, sleep/suspend */
 		hw_cwrite(CAP_USBINTR, ~0,
 			     USBi_UI|USBi_UEI|USBi_PCI|USBi_URI|USBi_SLI);
@@ -1386,9 +1391,6 @@ static ssize_t show_registers(struct device *dev,
 		dev_err(dev, "[%s] EINVAL\n", __func__);
 		return 0;
 	}
-	dump = kmalloc(2048, GFP_KERNEL);
-	if (dump == NULL)
-		return -ENOMEM;
 
 	dump = kmalloc(sizeof(u32) * DUMP_ENTRIES, GFP_KERNEL);
 	if (!dump) {
@@ -3267,12 +3269,8 @@ static int ci13xxx_pullup(struct usb_gadget *_gadget, int is_active)
 	}
 	spin_unlock_irqrestore(udc->lock, flags);
 
-	if (is_active) {
+	if (is_active)
 		hw_device_state(udc->ep0out.qh.dma);
-		if (udc->udc_driver->notify_event)
-			udc->udc_driver->notify_event(udc,
-				CI13XXX_CONTROLLER_CONNECT_EVENT);
-	}
 	else
 		hw_device_state(0);
 
@@ -3282,6 +3280,7 @@ static int ci13xxx_pullup(struct usb_gadget *_gadget, int is_active)
 static int ci13xxx_start(struct usb_gadget_driver *driver,
 		int (*bind)(struct usb_gadget *));
 static int ci13xxx_stop(struct usb_gadget_driver *driver);
+
 /**
  * Device operations part of the API to the USB controller hardware,
  * which don't involve endpoints (or i/o)

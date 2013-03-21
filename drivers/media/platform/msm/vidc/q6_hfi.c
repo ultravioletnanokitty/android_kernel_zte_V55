@@ -1105,14 +1105,6 @@ static int q6_hfi_free_ocmem(void *dev)
 	return 0;
 }
 
-static int q6_hfi_is_ocmem_present(void *dev)
-{
-	(void)dev;
-
-	/* Q6 does not support ocmem */
-	return 0;
-}
-
 static int q6_hfi_iommu_get_domain_partition(void *dev, u32 flags,
 	u32 buffer_type, int *domain, int *partition)
 {
@@ -1188,6 +1180,13 @@ static int q6_hfi_get_fw_info(void *dev, enum fw_info info)
 	return 0;
 }
 
+static int q6_hfi_get_stride_scanline(int color_fmt,
+	int width, int height, int *stride, int *scanlines) {
+	*stride = VENUS_Y_STRIDE(color_fmt, width);
+	*scanlines = VENUS_Y_SCANLINES(color_fmt, height);
+	return 0;
+}
+
 static void q6_init_hfi_callbacks(struct hfi_device *hdev)
 {
 	hdev->core_init = q6_hfi_core_init;
@@ -1218,11 +1217,11 @@ static void q6_init_hfi_callbacks(struct hfi_device *hdev)
 	hdev->unset_ocmem = q6_hfi_unset_ocmem;
 	hdev->alloc_ocmem = q6_hfi_alloc_ocmem;
 	hdev->free_ocmem = q6_hfi_free_ocmem;
-	hdev->is_ocmem_present = q6_hfi_is_ocmem_present;
 	hdev->iommu_get_domain_partition = q6_hfi_iommu_get_domain_partition;
 	hdev->load_fw = q6_hfi_load_fw;
 	hdev->unload_fw = q6_hfi_unload_fw;
 	hdev->get_fw_info = q6_hfi_get_fw_info;
+	hdev->get_stride_scanline = q6_hfi_get_stride_scanline;
 }
 
 
