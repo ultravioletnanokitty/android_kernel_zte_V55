@@ -28,6 +28,7 @@
 #define BUF_TYPE_INPUT V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE
 
 static struct ion_client *venc_ion_client;
+static long venc_secure(struct v4l2_subdev *sd);
 
 struct index_bitmap {
 	unsigned long *bitmap;
@@ -46,6 +47,12 @@ struct venc_inst {
 	bool callback_thread_running;
 	struct completion dq_complete, cmd_complete;
 	bool secure;
+};
+
+static const int subscribed_events[] = {
+	V4L2_EVENT_MSM_VIDC_CLOSE_DONE,
+	V4L2_EVENT_MSM_VIDC_FLUSH_DONE,
+	V4L2_EVENT_MSM_VIDC_SYS_ERROR,
 };
 
 int venc_load_fw(struct v4l2_subdev *sd)
@@ -134,13 +141,21 @@ static int venc_vidc_callback_thread(void *data)
 			bool bail_out = false;
 
 			msm_vidc_dqevent(inst->vidc_context, &event);
-			if (event.type == V4L2_EVENT_MSM_VIDC_CLOSE_DONE) {
+
+			switch (event.type) {
+			case V4L2_EVENT_MSM_VIDC_CLOSE_DONE:
 				WFD_MSG_DBG("enc callback thread shutting " \
 						"down normally\n");
 				bail_out = true;
-			} else {
-				WFD_MSG_ERR("Got unknown event %d, ignoring\n",
-						event.id);
+				break;
+			case V4L2_EVENT_MSM_VIDC_SYS_ERROR:
+				inst->vmops.on_event(inst->vmops.cbdata,
+						VENC_EVENT_HARDWARE_ERROR);
+				bail_out = true;
+				break;
+			default:
+				WFD_MSG_INFO("Got unknown event %d, ignoring\n",
+						event.type);
 			}
 
 			complete_all(&inst->cmd_complete);
@@ -251,11 +266,43 @@ static long set_default_properties(struct venc_inst *inst)
 	return msm_vidc_s_ctrl(inst->vidc_context, &ctrl);
 }
 
+static int subscribe_events(struct venc_inst *inst)
+{
+	struct v4l2_event_subscription event = {0};
+	int c = 0, rc = 0;
+
+	for (c = 0; c < ARRAY_SIZE(subscribed_events); c++) {
+		event.type = subscribed_events[c];
+		rc = msm_vidc_subscribe_event(inst->vidc_context, &event);
+		if (rc) {
+			WFD_MSG_ERR("Failed to subscribe to event 0x%x\n",
+					subscribed_events[c]);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
+static void unsubscribe_events(struct venc_inst *inst)
+{
+	struct v4l2_event_subscription event = {0};
+	int c = 0, rc = 0;
+	for (c = 0; c < ARRAY_SIZE(subscribed_events); c++) {
+		event.type = subscribed_events[c];
+		rc = msm_vidc_unsubscribe_event(inst->vidc_context, &event);
+		if (rc) {
+			/* Just log and ignore failiures */
+			WFD_MSG_WARN("Failed to unsubscribe to event 0x%x\n",
+					subscribed_events[c]);
+		}
+	}
+}
+
 static long venc_open(struct v4l2_subdev *sd, void *arg)
 {
 	struct venc_inst *inst = NULL;
 	struct venc_msg_ops *vmops = arg;
-	struct v4l2_event_subscription event = {0};
 	int rc = 0;
 
 	if (!vmops) {
@@ -275,8 +322,9 @@ static long venc_open(struct v4l2_subdev *sd, void *arg)
 		goto venc_open_fail;
 	}
 
-	inst->secure = false;
 	inst->vmops = *vmops;
+	inst->secure = vmops->secure; /* We need to inform vidc, but defer
+					 until after s_fmt() */
 	INIT_LIST_HEAD(&inst->registered_output_bufs.list);
 	INIT_LIST_HEAD(&inst->registered_input_bufs.list);
 	init_completion(&inst->dq_complete);
@@ -289,17 +337,9 @@ static long venc_open(struct v4l2_subdev *sd, void *arg)
 		goto vidc_open_fail;
 	}
 
-	event.type = V4L2_EVENT_MSM_VIDC_CLOSE_DONE;
-	rc = msm_vidc_subscribe_event(inst->vidc_context, &event);
+	rc = subscribe_events(inst);
 	if (rc) {
-		WFD_MSG_ERR("Failed to subscribe to CLOSE_DONE event\n");
-		goto vidc_subscribe_fail;
-	}
-
-	event.type = V4L2_EVENT_MSM_VIDC_FLUSH_DONE;
-	rc = msm_vidc_subscribe_event(inst->vidc_context, &event);
-	if (rc) {
-		WFD_MSG_ERR("Failed to subscribe to FLUSH_DONE event\n");
+		WFD_MSG_ERR("Failed to subscribe to events\n");
 		goto vidc_subscribe_fail;
 	}
 
@@ -317,11 +357,7 @@ static long venc_open(struct v4l2_subdev *sd, void *arg)
 	vmops->cookie = inst;
 	return 0;
 vidc_kthread_create_fail:
-	event.type = V4L2_EVENT_MSM_VIDC_CLOSE_DONE;
-	msm_vidc_unsubscribe_event(inst->vidc_context, &event);
-
-	event.type = V4L2_EVENT_MSM_VIDC_FLUSH_DONE;
-	msm_vidc_unsubscribe_event(inst->vidc_context, &event);
+	unsubscribe_events(inst);
 vidc_subscribe_fail:
 	msm_vidc_close(inst->vidc_context);
 vidc_open_fail:
@@ -333,7 +369,6 @@ venc_open_fail:
 static long venc_close(struct v4l2_subdev *sd, void *arg)
 {
 	struct venc_inst *inst = NULL;
-	struct v4l2_event_subscription event = {0};
 	struct v4l2_encoder_cmd enc_cmd = {0};
 	int rc = 0;
 
@@ -352,15 +387,7 @@ static long venc_close(struct v4l2_subdev *sd, void *arg)
 	if (inst->callback_thread && inst->callback_thread_running)
 		kthread_stop(inst->callback_thread);
 
-	event.type = V4L2_EVENT_MSM_VIDC_CLOSE_DONE;
-	rc = msm_vidc_unsubscribe_event(inst->vidc_context, &event);
-	if (rc)
-		WFD_MSG_WARN("Failed to unsubscribe close event\n");
-
-	event.type = V4L2_EVENT_MSM_VIDC_FLUSH_DONE;
-	rc = msm_vidc_unsubscribe_event(inst->vidc_context, &event);
-	if (rc)
-		WFD_MSG_WARN("Failed to unsubscribe flush event\n");
+	unsubscribe_events(inst);
 
 	rc = msm_vidc_close(inst->vidc_context);
 	if (rc)
@@ -742,6 +769,7 @@ static int venc_unmap_user_to_kernel(struct venc_inst *inst,
 	if (inst->secure)
 		msm_ion_unsecure_buffer(venc_ion_client, mregion->ion_handle);
 
+	ion_free(venc_ion_client, mregion->ion_handle);
 	return rc;
 }
 
@@ -876,6 +904,15 @@ static long venc_set_format(struct v4l2_subdev *sd, void *arg)
 	if (rc) {
 		WFD_MSG_ERR("Failed to format for input port\n");
 		goto venc_set_format_fail;
+	}
+
+	/* If the device was secured previously, we need to inform vidc _now_ */
+	if (inst->secure) {
+		rc = venc_secure(sd);
+		if (rc) {
+			WFD_MSG_ERR("Failed secure vidc\n");
+			goto venc_set_format_fail;
+		}
 	}
 venc_set_format_fail:
 	return rc;
@@ -1261,9 +1298,11 @@ long venc_munmap(struct v4l2_subdev *sd, void *arg)
 		return rc;
 	}
 
-	if (mregion->paddr)
+	if (mregion->paddr) {
 		ion_unmap_iommu(mmap->ion_client, mregion->ion_handle,
 			domain, partition);
+		mregion->paddr = NULL;
+	}
 
 	if (inst->secure)
 		msm_ion_unsecure_buffer(mmap->ion_client, mregion->ion_handle);
@@ -1301,12 +1340,6 @@ static long venc_secure(struct v4l2_subdev *sd)
 		rc = -EEXIST;
 	}
 
-	if (inst->secure) {
-		/* Nothing to do! */
-		rc = 0;
-		goto secure_fail;
-	}
-
 	ctrl.id = V4L2_CID_MPEG_VIDC_VIDEO_SECURE;
 	rc = msm_vidc_s_ctrl(inst->vidc_context, &ctrl);
 	if (rc) {
@@ -1314,7 +1347,6 @@ static long venc_secure(struct v4l2_subdev *sd)
 		goto secure_fail;
 	}
 
-	inst->secure = true;
 secure_fail:
 	return rc;
 }
@@ -1390,9 +1422,6 @@ long venc_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		break;
 	case SET_FRAMERATE_MODE:
 		rc = venc_set_framerate_mode(sd, arg);
-		break;
-	case ENC_SECURE:
-		rc = venc_secure(sd);
 		break;
 	default:
 		WFD_MSG_ERR("Unknown ioctl %d to enc-subdev\n", cmd);

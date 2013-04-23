@@ -39,8 +39,8 @@
 #include "qcryptohw_50.h"
 
 #define CRYPTO_CONFIG_RESET 0xE001F
-#define QCE_MAX_NUM_DSCR    0x400
-#define QCE_SIZE_BAM_DSCR   0x08
+#define QCE_MAX_NUM_DSCR    0x500
+#define QCE_SECTOR_SIZE	    0x200
 
 static DEFINE_MUTEX(bam_register_cnt);
 struct bam_registration_info {
@@ -445,6 +445,7 @@ static int _ce_setup_cipher(struct qce_device *pce_dev, struct qce_req *creq,
 	uint32_t enck_size_in_word = 0;
 	uint32_t key_size;
 	bool use_hw_key = false;
+	bool use_pipe_key = false;
 	uint32_t encr_cfg = 0;
 	uint32_t ivsize = creq->ivsize;
 	int i;
@@ -456,6 +457,7 @@ static int _ce_setup_cipher(struct qce_device *pce_dev, struct qce_req *creq,
 		key_size = creq->encklen;
 
 	_byte_stream_to_net_words(enckey32, creq->enckey, key_size);
+	pce = cmdlistinfo->go_proc;
 
 	/* check for null key. If null, use hw key*/
 	enck_size_in_word = key_size/sizeof(uint32_t);
@@ -463,15 +465,22 @@ static int _ce_setup_cipher(struct qce_device *pce_dev, struct qce_req *creq,
 		if (enckey32[i] != 0)
 			break;
 	}
-	pce = cmdlistinfo->go_proc;
 	if (i == enck_size_in_word) {
 		use_hw_key = true;
 		pce->addr = (uint32_t)(CRYPTO_GOPROC_QC_KEY_REG +
 						pce_dev->phy_iobase);
-	} else {
+	}
+	if (use_hw_key == false) {
+		for (i = 0; i < enck_size_in_word; i++) {
+			if (enckey32[i] != 0xFFFFFFFF)
+				break;
+		}
+		if (i == enck_size_in_word)
+			use_pipe_key = true;
+	}
+	if (use_hw_key == false)
 		pce->addr = (uint32_t)(CRYPTO_GOPROC_REG +
 						pce_dev->phy_iobase);
-	}
 
 	if ((creq->op == QCE_REQ_AEAD) && (creq->mode == QCE_MODE_CCM)) {
 		uint32_t authklen32 = creq->encklen/sizeof(uint32_t);
@@ -600,7 +609,11 @@ static int _ce_setup_cipher(struct qce_device *pce_dev, struct qce_req *creq,
 
 			/* write xts du size */
 			pce = cmdlistinfo->encr_xts_du_size;
-			pce->data = creq->cryptlen;
+			if (use_pipe_key == true)
+				pce->data = min((unsigned int)QCE_SECTOR_SIZE,
+						creq->cryptlen);
+			else
+				pce->data = creq->cryptlen;
 		}
 		if (creq->mode !=  QCE_MODE_ECB) {
 			if (creq->mode ==  QCE_MODE_XTS)
@@ -652,6 +665,10 @@ static int _ce_setup_cipher(struct qce_device *pce_dev, struct qce_req *creq,
 		} /* else of if (creq->op == QCE_REQ_ABLK_CIPHER_NO_KEY) */
 		break;
 	} /* end of switch (creq->mode)  */
+
+	if (use_pipe_key)
+		encr_cfg |= (CRYPTO_USE_PIPE_KEY_ENCR_ENABLED
+					<< CRYPTO_USE_PIPE_KEY_ENCR);
 
 	/* write encr seg cfg */
 	pce = cmdlistinfo->encr_seg_cfg;
@@ -902,17 +919,23 @@ static void _qce_set_flag(struct sps_transfer *sps_bam_pipe, uint32_t flag)
 	iovec->flags |= flag;
 }
 
-static void _qce_sps_add_data(uint32_t addr, uint32_t len,
+static int _qce_sps_add_data(uint32_t addr, uint32_t len,
 		struct sps_transfer *sps_bam_pipe)
 {
 	struct sps_iovec *iovec = sps_bam_pipe->iovec +
 					sps_bam_pipe->iovec_count;
+	if (sps_bam_pipe->iovec_count == QCE_MAX_NUM_DSCR) {
+		pr_err("Num of descrptor %d exceed max (%d)",
+			sps_bam_pipe->iovec_count, (uint32_t)QCE_MAX_NUM_DSCR);
+		return -ENOMEM;
+	}
 	if (len) {
 		iovec->size = len;
 		iovec->addr = addr;
 		iovec->flags = 0;
 		sps_bam_pipe->iovec_count++;
 	}
+	return 0;
 }
 
 static int _qce_sps_add_sg_data(struct qce_device *pce_dev,
@@ -930,6 +953,12 @@ static int _qce_sps_add_sg_data(struct qce_device *pce_dev,
 		if (pce_dev->ce_sps.minor_version == 0)
 			len = ALIGN(len, pce_dev->ce_sps.ce_burst_size);
 		while (len > 0) {
+			if (sps_bam_pipe->iovec_count == QCE_MAX_NUM_DSCR) {
+				pr_err("Num of descrptor %d exceed max (%d)",
+						sps_bam_pipe->iovec_count,
+						(uint32_t)QCE_MAX_NUM_DSCR);
+				return -ENOMEM;
+			}
 			if (len > SPS_MAX_PKT_SIZE) {
 				data_cnt = SPS_MAX_PKT_SIZE;
 				iovec->size = data_cnt;
@@ -1048,7 +1077,7 @@ static int qce_sps_init_ep_conn(struct qce_device *pce_dev,
 		/* Producer pipe will handle this connection */
 		sps_connect_info->mode = SPS_MODE_SRC;
 		sps_connect_info->options =
-			SPS_O_AUTO_ENABLE | SPS_O_EOT | SPS_O_DESC_DONE;
+			SPS_O_AUTO_ENABLE | SPS_O_DESC_DONE;
 	} else {
 		/* For CE consumer transfer, source should be
 		 * system memory where as destination should
@@ -1078,7 +1107,8 @@ static int qce_sps_init_ep_conn(struct qce_device *pce_dev,
 	 * descriptor memory (256 bytes + 8 bytes). But in order to be
 	 * in power of 2, we are allocating 512 bytes of memory.
 	 */
-	sps_connect_info->desc.size = QCE_MAX_NUM_DSCR * QCE_SIZE_BAM_DSCR;
+	sps_connect_info->desc.size = QCE_MAX_NUM_DSCR *
+					sizeof(struct sps_iovec);
 	sps_connect_info->desc.base = dma_alloc_coherent(pce_dev->pdev,
 					sps_connect_info->desc.size,
 					&sps_connect_info->desc.phys_base,
@@ -1307,19 +1337,6 @@ static void _aead_sps_producer_callback(struct sps_event_notify *notify)
 	}
 };
 
-static void _aead_sps_consumer_callback(struct sps_event_notify *notify)
-{
-	struct qce_device *pce_dev = (struct qce_device *)
-		((struct sps_event_notify *)notify)->user;
-
-	pce_dev->ce_sps.notify = *notify;
-	pr_debug("sps ev_id=%d, addr=0x%x, size=0x%x, flags=0x%x\n",
-			notify->event_id,
-			notify->data.transfer.iovec.addr,
-			notify->data.transfer.iovec.size,
-			notify->data.transfer.iovec.flags);
-};
-
 static void _sha_sps_producer_callback(struct sps_event_notify *notify)
 {
 	struct qce_device *pce_dev = (struct qce_device *)
@@ -1333,19 +1350,6 @@ static void _sha_sps_producer_callback(struct sps_event_notify *notify)
 			notify->data.transfer.iovec.flags);
 	/* done */
 	_sha_complete(pce_dev);
-};
-
-static void _sha_sps_consumer_callback(struct sps_event_notify *notify)
-{
-	struct qce_device *pce_dev = (struct qce_device *)
-		((struct sps_event_notify *)notify)->user;
-
-	pce_dev->ce_sps.notify = *notify;
-	pr_debug("sps ev_id=%d, addr=0x%x, size=0x%x, flags=0x%x\n",
-			notify->event_id,
-			notify->data.transfer.iovec.addr,
-			notify->data.transfer.iovec.size,
-			notify->data.transfer.iovec.flags);
 };
 
 static void _ablk_cipher_sps_producer_callback(struct sps_event_notify *notify)
@@ -1380,19 +1384,6 @@ static void _ablk_cipher_sps_producer_callback(struct sps_event_notify *notify)
 				(u32)pce_dev->ce_sps.producer.pipe, rc);
 		}
 	}
-};
-
-static void _ablk_cipher_sps_consumer_callback(struct sps_event_notify *notify)
-{
-	struct qce_device *pce_dev = (struct qce_device *)
-		((struct sps_event_notify *)notify)->user;
-
-	pce_dev->ce_sps.notify = *notify;
-	pr_debug("sps ev_id=%d, addr=0x%x, size=0x%x, flags=0x%x\n",
-			notify->event_id,
-			notify->data.transfer.iovec.addr,
-			notify->data.transfer.iovec.size,
-			notify->data.transfer.iovec.flags);
 };
 
 static void qce_add_cmd_element(struct qce_device *pdev,
@@ -2199,12 +2190,12 @@ static int qce_setup_ce_sps_data(struct qce_device *pce_dev)
 	pce_dev->ce_sps.in_transfer.iovec = (struct sps_iovec *)vaddr;
 	pce_dev->ce_sps.in_transfer.iovec_phys =
 					(uint32_t)GET_PHYS_ADDR(vaddr);
-	vaddr += MAX_BAM_DESCRIPTORS * 8;
+	vaddr += QCE_MAX_NUM_DSCR * sizeof(struct sps_iovec);
 
 	pce_dev->ce_sps.out_transfer.iovec = (struct sps_iovec *)vaddr;
 	pce_dev->ce_sps.out_transfer.iovec_phys =
 					(uint32_t)GET_PHYS_ADDR(vaddr);
-	vaddr += MAX_BAM_DESCRIPTORS * 8;
+	vaddr += QCE_MAX_NUM_DSCR * sizeof(struct sps_iovec);
 
 	qce_setup_cmdlistptrs(pce_dev, &vaddr);
 	vaddr = (unsigned char *) ALIGN(((unsigned int)vaddr),
@@ -2334,36 +2325,30 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 
 	/* Register callback event for EOT (End of transfer) event. */
 	pce_dev->ce_sps.producer.event.callback = _aead_sps_producer_callback;
+	pce_dev->ce_sps.producer.event.options = SPS_O_DESC_DONE;
 	rc = sps_register_event(pce_dev->ce_sps.producer.pipe,
 					&pce_dev->ce_sps.producer.event);
 	if (rc) {
 		pr_err("Producer callback registration failed rc = %d\n", rc);
 		goto bad;
 	}
-	/* Register callback event for EOT (End of transfer) event. */
-	pce_dev->ce_sps.consumer.event.callback = _aead_sps_consumer_callback;
-	rc = sps_register_event(pce_dev->ce_sps.consumer.pipe,
-					&pce_dev->ce_sps.consumer.event);
-	if (rc) {
-		pr_err("Consumer callback registration failed rc = %d\n", rc);
-		goto bad;
-	}
-
 	_qce_sps_iovec_count_init(pce_dev);
 
 	_qce_sps_add_cmd(pce_dev, SPS_IOVEC_FLAG_LOCK, cmdlistinfo,
 					&pce_dev->ce_sps.in_transfer);
 
 	if (pce_dev->ce_sps.minor_version == 0) {
-		_qce_sps_add_sg_data(pce_dev, areq->src, totallen_in,
-					&pce_dev->ce_sps.in_transfer);
+		if (_qce_sps_add_sg_data(pce_dev, areq->src, totallen_in,
+					&pce_dev->ce_sps.in_transfer))
+			goto bad;
 
 		_qce_set_flag(&pce_dev->ce_sps.in_transfer,
 				SPS_IOVEC_FLAG_EOT|SPS_IOVEC_FLAG_NWD);
 
-		_qce_sps_add_sg_data(pce_dev, areq->dst, out_len +
+		if (_qce_sps_add_sg_data(pce_dev, areq->dst, out_len +
 					areq->assoclen + hw_pad_out,
-				&pce_dev->ce_sps.out_transfer);
+				&pce_dev->ce_sps.out_transfer))
+			goto bad;
 		if (totallen_in > SPS_MAX_PKT_SIZE) {
 			_qce_set_flag(&pce_dev->ce_sps.out_transfer,
 							SPS_IOVEC_FLAG_INT);
@@ -2371,44 +2356,52 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 							SPS_O_DESC_DONE;
 			pce_dev->ce_sps.producer_state = QCE_PIPE_STATE_IDLE;
 		} else {
-			_qce_sps_add_data(GET_PHYS_ADDR(
+			if (_qce_sps_add_data(GET_PHYS_ADDR(
 					pce_dev->ce_sps.result_dump),
 					CRYPTO_RESULT_DUMP_SIZE,
-					  &pce_dev->ce_sps.out_transfer);
+					&pce_dev->ce_sps.out_transfer))
+				goto bad;
 			_qce_set_flag(&pce_dev->ce_sps.out_transfer,
 							SPS_IOVEC_FLAG_INT);
 			pce_dev->ce_sps.producer_state = QCE_PIPE_STATE_COMP;
 		}
 	} else {
-		_qce_sps_add_sg_data(pce_dev, areq->assoc, areq->assoclen,
-					 &pce_dev->ce_sps.in_transfer);
-		_qce_sps_add_data((uint32_t)pce_dev->phy_iv_in, ivsize,
-					&pce_dev->ce_sps.in_transfer);
-		_qce_sps_add_sg_data(pce_dev, areq->src, areq->cryptlen,
-					&pce_dev->ce_sps.in_transfer);
+		if (_qce_sps_add_sg_data(pce_dev, areq->assoc, areq->assoclen,
+					 &pce_dev->ce_sps.in_transfer))
+			goto bad;
+		if (_qce_sps_add_data((uint32_t)pce_dev->phy_iv_in, ivsize,
+					&pce_dev->ce_sps.in_transfer))
+			goto bad;
+		if (_qce_sps_add_sg_data(pce_dev, areq->src, areq->cryptlen,
+					&pce_dev->ce_sps.in_transfer))
+			goto bad;
 		_qce_set_flag(&pce_dev->ce_sps.in_transfer,
 				SPS_IOVEC_FLAG_EOT|SPS_IOVEC_FLAG_NWD);
 
 		/* Pass through to ignore associated (+iv, if applicable) data*/
-		_qce_sps_add_data(GET_PHYS_ADDR(pce_dev->ce_sps.ignore_buffer),
+		if (_qce_sps_add_data(
+				GET_PHYS_ADDR(pce_dev->ce_sps.ignore_buffer),
 				(ivsize + areq->assoclen),
-				&pce_dev->ce_sps.out_transfer);
-		_qce_sps_add_sg_data(pce_dev, areq->dst, out_len,
-					&pce_dev->ce_sps.out_transfer);
+				&pce_dev->ce_sps.out_transfer))
+			goto bad;
+		if (_qce_sps_add_sg_data(pce_dev, areq->dst, out_len,
+					&pce_dev->ce_sps.out_transfer))
+			goto bad;
 		/* Pass through to ignore hw_pad (padding of the MAC data) */
-		_qce_sps_add_data(GET_PHYS_ADDR(pce_dev->ce_sps.ignore_buffer),
-				hw_pad_out, &pce_dev->ce_sps.out_transfer);
+		if (_qce_sps_add_data(
+				GET_PHYS_ADDR(pce_dev->ce_sps.ignore_buffer),
+				hw_pad_out, &pce_dev->ce_sps.out_transfer))
+			goto bad;
 		if (totallen_in > SPS_MAX_PKT_SIZE) {
 			_qce_set_flag(&pce_dev->ce_sps.out_transfer,
 							SPS_IOVEC_FLAG_INT);
-			pce_dev->ce_sps.producer.event.options =
-							SPS_O_DESC_DONE;
 			pce_dev->ce_sps.producer_state = QCE_PIPE_STATE_IDLE;
 		} else {
-			_qce_sps_add_data(
+			if (_qce_sps_add_data(
 				GET_PHYS_ADDR(pce_dev->ce_sps.result_dump),
 					CRYPTO_RESULT_DUMP_SIZE,
-					  &pce_dev->ce_sps.out_transfer);
+					  &pce_dev->ce_sps.out_transfer))
+				goto bad;
 			_qce_set_flag(&pce_dev->ce_sps.out_transfer,
 							SPS_IOVEC_FLAG_INT);
 			pce_dev->ce_sps.producer_state = QCE_PIPE_STATE_COMP;
@@ -2490,43 +2483,37 @@ int qce_ablk_cipher_req(void *handle, struct qce_req *c_req)
 	/* Register callback event for EOT (End of transfer) event. */
 	pce_dev->ce_sps.producer.event.callback =
 				_ablk_cipher_sps_producer_callback;
+	pce_dev->ce_sps.producer.event.options = SPS_O_DESC_DONE;
 	rc = sps_register_event(pce_dev->ce_sps.producer.pipe,
 					&pce_dev->ce_sps.producer.event);
 	if (rc) {
 		pr_err("Producer callback registration failed rc = %d\n", rc);
 		goto bad;
 	}
-	/* Register callback event for EOT (End of transfer) event. */
-	pce_dev->ce_sps.consumer.event.callback =
-			_ablk_cipher_sps_consumer_callback;
-	rc = sps_register_event(pce_dev->ce_sps.consumer.pipe,
-					&pce_dev->ce_sps.consumer.event);
-	if (rc) {
-		pr_err("Consumer callback registration failed rc = %d\n", rc);
-		goto bad;
-	}
-
 	_qce_sps_iovec_count_init(pce_dev);
 
 	_qce_sps_add_cmd(pce_dev, SPS_IOVEC_FLAG_LOCK, cmdlistinfo,
 					&pce_dev->ce_sps.in_transfer);
-	_qce_sps_add_sg_data(pce_dev, areq->src, areq->nbytes,
-					&pce_dev->ce_sps.in_transfer);
+	if (_qce_sps_add_sg_data(pce_dev, areq->src, areq->nbytes,
+					&pce_dev->ce_sps.in_transfer))
+		goto bad;
 	_qce_set_flag(&pce_dev->ce_sps.in_transfer,
 				SPS_IOVEC_FLAG_EOT|SPS_IOVEC_FLAG_NWD);
 
-	_qce_sps_add_sg_data(pce_dev, areq->dst, areq->nbytes,
-					&pce_dev->ce_sps.out_transfer);
+	if (_qce_sps_add_sg_data(pce_dev, areq->dst, areq->nbytes,
+					&pce_dev->ce_sps.out_transfer))
+		goto bad;
 	if (areq->nbytes > SPS_MAX_PKT_SIZE) {
 		_qce_set_flag(&pce_dev->ce_sps.out_transfer,
 							SPS_IOVEC_FLAG_INT);
-		pce_dev->ce_sps.producer.event.options = SPS_O_DESC_DONE;
 		pce_dev->ce_sps.producer_state = QCE_PIPE_STATE_IDLE;
 	} else {
 		pce_dev->ce_sps.producer_state = QCE_PIPE_STATE_COMP;
-		_qce_sps_add_data(GET_PHYS_ADDR(pce_dev->ce_sps.result_dump),
-					CRYPTO_RESULT_DUMP_SIZE,
-					  &pce_dev->ce_sps.out_transfer);
+		if (_qce_sps_add_data(
+				GET_PHYS_ADDR(pce_dev->ce_sps.result_dump),
+				CRYPTO_RESULT_DUMP_SIZE,
+				&pce_dev->ce_sps.out_transfer))
+			goto bad;
 		_qce_set_flag(&pce_dev->ce_sps.out_transfer,
 							SPS_IOVEC_FLAG_INT);
 	}
@@ -2572,34 +2559,27 @@ int qce_process_sha_req(void *handle, struct qce_sha_req *sreq)
 
 	/* Register callback event for EOT (End of transfer) event. */
 	pce_dev->ce_sps.producer.event.callback = _sha_sps_producer_callback;
+	pce_dev->ce_sps.producer.event.options = SPS_O_DESC_DONE;
 	rc = sps_register_event(pce_dev->ce_sps.producer.pipe,
 					&pce_dev->ce_sps.producer.event);
 	if (rc) {
 		pr_err("Producer callback registration failed rc = %d\n", rc);
 		goto bad;
 	}
-
-	/* Register callback event for EOT (End of transfer) event. */
-	pce_dev->ce_sps.consumer.event.callback = _sha_sps_consumer_callback;
-	rc = sps_register_event(pce_dev->ce_sps.consumer.pipe,
-					&pce_dev->ce_sps.consumer.event);
-	if (rc) {
-		pr_err("Consumer callback registration failed rc = %d\n", rc);
-		goto bad;
-	}
-
 	_qce_sps_iovec_count_init(pce_dev);
 
 	_qce_sps_add_cmd(pce_dev, SPS_IOVEC_FLAG_LOCK, cmdlistinfo,
 					&pce_dev->ce_sps.in_transfer);
-	_qce_sps_add_sg_data(pce_dev, areq->src, areq->nbytes,
-						 &pce_dev->ce_sps.in_transfer);
+	if (_qce_sps_add_sg_data(pce_dev, areq->src, areq->nbytes,
+						 &pce_dev->ce_sps.in_transfer))
+		goto bad;
 	_qce_set_flag(&pce_dev->ce_sps.in_transfer,
 				SPS_IOVEC_FLAG_EOT|SPS_IOVEC_FLAG_NWD);
 
-	_qce_sps_add_data(GET_PHYS_ADDR(pce_dev->ce_sps.result_dump),
+	if (_qce_sps_add_data(GET_PHYS_ADDR(pce_dev->ce_sps.result_dump),
 					CRYPTO_RESULT_DUMP_SIZE,
-					  &pce_dev->ce_sps.out_transfer);
+					  &pce_dev->ce_sps.out_transfer))
+		goto bad;
 	_qce_set_flag(&pce_dev->ce_sps.out_transfer, SPS_IOVEC_FLAG_INT);
 	rc = _qce_sps_transfer(pce_dev);
 	if (rc)
@@ -2708,6 +2688,7 @@ static int __qce_init_clk(struct qce_device *pce_dev)
 		rc = clk_set_rate(pce_dev->ce_core_src_clk, 100000000);
 		if (rc) {
 			clk_put(pce_dev->ce_core_src_clk);
+			pce_dev->ce_core_src_clk = NULL;
 			pr_err("Unable to set the core src clk @100Mhz.\n");
 			goto err_clk;
 		}
@@ -2752,45 +2733,84 @@ static int __qce_init_clk(struct qce_device *pce_dev)
 	}
 	pce_dev->ce_bus_clk = ce_bus_clk;
 
-	/* Enable CE core clk */
-	rc = clk_prepare_enable(pce_dev->ce_core_clk);
-	if (rc) {
-		pr_err("Unable to enable/prepare CE core clk\n");
-		if (pce_dev->ce_core_src_clk != NULL)
-			clk_put(pce_dev->ce_core_src_clk);
-		clk_put(pce_dev->ce_core_clk);
-		clk_put(pce_dev->ce_clk);
-		goto err_clk;
-	} else {
-		/* Enable CE clk */
-		rc = clk_prepare_enable(pce_dev->ce_clk);
-		if (rc) {
-			pr_err("Unable to enable/prepare CE iface clk\n");
-			clk_disable_unprepare(pce_dev->ce_core_clk);
-			if (pce_dev->ce_core_src_clk != NULL)
-				clk_put(pce_dev->ce_core_src_clk);
-			clk_put(pce_dev->ce_core_clk);
-			clk_put(pce_dev->ce_clk);
-			goto err_clk;
-		}
-		/* Enable AXI clk */
-		rc = clk_prepare_enable(pce_dev->ce_bus_clk);
-		if (rc) {
-			pr_err("Unable to enable/prepare CE BUS clk\n");
-			clk_disable_unprepare(pce_dev->ce_core_clk);
-			if (pce_dev->ce_core_src_clk != NULL)
-				clk_put(pce_dev->ce_core_src_clk);
-			clk_put(pce_dev->ce_core_clk);
-			clk_put(pce_dev->ce_clk);
-			clk_put(pce_dev->ce_bus_clk);
-			goto err_clk;
-		}
-	}
 err_clk:
 	if (rc)
 		pr_err("Unable to init CE clks, rc = %d\n", rc);
 	return rc;
 }
+
+static void __qce_deinit_clk(struct qce_device *pce_dev)
+{
+	if (pce_dev->ce_clk  != NULL) {
+		clk_put(pce_dev->ce_clk);
+		pce_dev->ce_clk  = NULL;
+	}
+	if (pce_dev->ce_core_clk != NULL) {
+		clk_put(pce_dev->ce_core_clk);
+		pce_dev->ce_core_clk = NULL;
+	}
+	if (pce_dev->ce_bus_clk != NULL) {
+		clk_put(pce_dev->ce_bus_clk);
+		pce_dev->ce_bus_clk = NULL;
+	}
+	if (pce_dev->ce_core_src_clk != NULL) {
+		clk_put(pce_dev->ce_core_src_clk);
+		pce_dev->ce_core_src_clk = NULL;
+	}
+}
+
+int qce_enable_clk(void *handle)
+{
+	struct qce_device *pce_dev = (struct qce_device *) handle;
+	int rc = 0;
+
+	/* Enable CE core clk */
+	if (pce_dev->ce_core_clk != NULL) {
+		rc = clk_prepare_enable(pce_dev->ce_core_clk);
+		if (rc) {
+			pr_err("Unable to enable/prepare CE core clk\n");
+			return rc;
+		}
+	}
+
+	/* Enable CE clk */
+	if (pce_dev->ce_clk != NULL) {
+		rc = clk_prepare_enable(pce_dev->ce_clk);
+		if (rc) {
+			pr_err("Unable to enable/prepare CE iface clk\n");
+			clk_disable_unprepare(pce_dev->ce_core_clk);
+			return rc;
+		}
+	}
+	/* Enable AXI clk */
+	if (pce_dev->ce_bus_clk != NULL) {
+		rc = clk_prepare_enable(pce_dev->ce_bus_clk);
+		if (rc) {
+			pr_err("Unable to enable/prepare CE BUS clk\n");
+			clk_disable_unprepare(pce_dev->ce_clk);
+			clk_disable_unprepare(pce_dev->ce_core_clk);
+			return rc;
+		}
+	}
+	return rc;
+}
+EXPORT_SYMBOL(qce_enable_clk);
+
+int qce_disable_clk(void *handle)
+{
+	struct qce_device *pce_dev = (struct qce_device *) handle;
+	int rc = 0;
+
+	if (pce_dev->ce_clk != NULL)
+		clk_disable_unprepare(pce_dev->ce_clk);
+	if (pce_dev->ce_core_clk != NULL)
+		clk_disable_unprepare(pce_dev->ce_core_clk);
+	if (pce_dev->ce_bus_clk != NULL)
+		clk_disable_unprepare(pce_dev->ce_bus_clk);
+
+	return rc;
+}
+EXPORT_SYMBOL(qce_disable_clk);
 
 /* crypto engine open function. */
 void *qce_open(struct platform_device *pdev, int *rc)
@@ -2828,6 +2848,10 @@ void *qce_open(struct platform_device *pdev, int *rc)
 	if (*rc)
 		goto err_mem;
 
+	*rc = qce_enable_clk(pce_dev);
+	if (*rc)
+		goto err;
+
 	if (_probe_ce_engine(pce_dev)) {
 		*rc = -ENXIO;
 		goto err;
@@ -2836,15 +2860,12 @@ void *qce_open(struct platform_device *pdev, int *rc)
 	qce_setup_ce_sps_data(pce_dev);
 	qce_sps_init(pce_dev);
 
+	qce_disable_clk(pce_dev);
+
 	return pce_dev;
 err:
-	clk_disable_unprepare(pce_dev->ce_clk);
-	clk_disable_unprepare(pce_dev->ce_core_clk);
+	__qce_deinit_clk(pce_dev);
 
-	if (pce_dev->ce_core_src_clk != NULL)
-		clk_put(pce_dev->ce_core_src_clk);
-	clk_put(pce_dev->ce_clk);
-	clk_put(pce_dev->ce_core_clk);
 err_mem:
 	if (pce_dev->coh_vmem)
 		dma_free_coherent(pce_dev->pdev, pce_dev->memsize,
@@ -2874,14 +2895,8 @@ int qce_close(void *handle)
 		dma_free_coherent(pce_dev->pdev, pce_dev->memsize,
 				pce_dev->coh_vmem, pce_dev->coh_pmem);
 
-	clk_disable_unprepare(pce_dev->ce_clk);
-	clk_disable_unprepare(pce_dev->ce_core_clk);
-	clk_disable_unprepare(pce_dev->ce_bus_clk);
-	if (pce_dev->ce_core_src_clk != NULL)
-		clk_put(pce_dev->ce_core_src_clk);
-	clk_put(pce_dev->ce_clk);
-	clk_put(pce_dev->ce_core_clk);
-	clk_put(pce_dev->ce_bus_clk);
+	qce_disable_clk(pce_dev);
+	__qce_deinit_clk(pce_dev);
 
 	qce_sps_exit(pce_dev);
 	kfree(handle);

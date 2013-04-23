@@ -6,6 +6,8 @@ Required properties:
 - qcom,hfi : supported Host-Firmware Interface, one of:
 	- "venus"
 	- "q6"
+- qcom,max-hw-load: The maximum load the hardware can support expressed in units
+  of macroblocks per second.
 
 Optional properties:
 - reg : offset and length of the register set for the device.
@@ -73,4 +75,5 @@ Example:
 		qcom,iommu-group-buffer-types = <0xfff 0x1ff>;
 		qcom,buffer-type-tz-usage-table = <0x1 0x1>,
 						<0x1fe 0x2>;
+		qcom,max-hw-load = <1224450>; /* 4k @ 30 + 1080p @ 30*/
 	};

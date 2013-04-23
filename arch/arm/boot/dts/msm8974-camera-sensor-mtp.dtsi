@@ -15,7 +15,14 @@
 
 	actuator0: qcom,actuator@18 {
 		cell-index = <0>;
-		reg = <0x18 0x0>;
+		reg = <0x18>;
+		compatible = "qcom,actuator";
+		qcom,cci-master = <0>;
+	};
+
+	actuator1: qcom,actuator@36 {
+		cell-index = <1>;
+		reg = <0x36>;
 		compatible = "qcom,actuator";
 		qcom,cci-master = <0>;
 	};
@@ -27,6 +34,7 @@
 		qcom,csiphy-sd-index = <0>;
 		qcom,csid-sd-index = <0>;
 		qcom,actuator-src = <&actuator0>;
+		qcom,led-flash-src = <&led_flash0>;
 		qcom,mount-angle = <90>;
 		qcom,sensor-name = "s5k3l1yx";
 		cam_vdig-supply = <&pm8941_l3>;
@@ -64,11 +72,12 @@
     qcom,camera@20 {
 		compatible = "qcom,imx135";
 		reg = <0x20>;
-		qcom,slave-id = <0x20 0x0 0x1210>;
+		qcom,slave-id = <0x20 0x0016 0x0135>;
 		qcom,csiphy-sd-index = <0>;
 		qcom,csid-sd-index = <0>;
 		qcom,mount-angle = <90>;
 		qcom,sensor-name = "imx135";
+		qcom,actuator-src = <&actuator1>;
 		cam_vdig-supply = <&pm8941_l3>;
 		cam_vana-supply = <&pm8941_l17>;
 		cam_vio-supply = <&pm8941_lvs3>;
@@ -136,7 +145,7 @@
 
 	qcom,camera@90 {
 		compatible = "qcom,mt9m114";
-		reg = <0x90 0x0>;
+		reg = <0x90>;
 		qcom,slave-id = <0x90 0x0 0x2481>;
 		qcom,csiphy-sd-index = <1>;
 		qcom,csid-sd-index = <0>;

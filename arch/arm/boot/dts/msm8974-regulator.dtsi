@@ -26,15 +26,33 @@
 
 		pm8941_mvs1: regulator@8300 {
 			parent-supply = <&pm8941_boost>;
-			qcom,enable-time = <200>;
+			qcom,enable-time = <1000>;
 			qcom,pull-down-enable = <1>;
+			interrupts = <0x1 0x83 0x2>;
+			interrupt-names = "ocp";
+			qcom,ocp-enable = <1>;
+			qcom,ocp-max-retries = <10>;
+			qcom,ocp-retry-delay = <30>;
+			qcom,soft-start-enable = <1>;
+			qcom,vs-soft-start-strength = <0>;
+			qcom,hpm-enable = <1>;
+			qcom,auto-mode-enable = <0>;
 			status = "okay";
 		};
 
 		pm8941_mvs2: regulator@8400 {
 			parent-supply = <&pm8941_boost>;
-			qcom,enable-time = <200>;
+			qcom,enable-time = <1000>;
 			qcom,pull-down-enable = <1>;
+			interrupts = <0x1 0x84 0x2>;
+			interrupt-names = "ocp";
+			qcom,ocp-enable = <1>;
+			qcom,ocp-max-retries = <10>;
+			qcom,ocp-retry-delay = <30>;
+			qcom,soft-start-enable = <1>;
+			qcom,vs-soft-start-strength = <0>;
+			qcom,hpm-enable = <1>;
+			qcom,auto-mode-enable = <0>;
 			status = "okay";
 		};
 	};
@@ -93,6 +111,15 @@
 			qcom,use-voltage-corner;
 			compatible = "qcom,rpm-regulator-smd";
 		};
+		pm8841_s2_floor_corner: regulator-s2-floor-corner {
+			compatible = "qcom,rpm-regulator-smd";
+			regulator-name = "8841_s2_floor_corner";
+			qcom,set = <3>;
+			regulator-min-microvolt = <1>;
+			regulator-max-microvolt = <7>;
+			qcom,use-voltage-floor-corner;
+			qcom,always-send-voltage;
+		};
 	};
 
 	rpm-regulator-smpb3 {
@@ -120,6 +147,15 @@
 			regulator-min-microvolt = <1>;
 			regulator-max-microvolt = <7>;
 			qcom,init-voltage-corner = <3>; /* SVS SOC */
+		};
+		pm8841_s4_floor_corner: regulator-s4-floor-corner {
+			compatible = "qcom,rpm-regulator-smd";
+			regulator-name = "8841_s4_floor_corner";
+			qcom,set = <3>;
+			regulator-min-microvolt = <1>;
+			regulator-max-microvolt = <7>;
+			qcom,use-voltage-floor-corner;
+			qcom,always-send-voltage;
 		};
 	};
 
@@ -501,5 +537,16 @@
 		regulator-name = "ethernet_phy";
 		gpio = <&pm8941_mpps 5 0>;
 		enable-active-high;
+	};
+
+	/*
+	 * vph_pwr_vreg represents the unregulated battery voltage supply
+	 * VPH_PWR that is present whenever the device is powered on.
+	 */
+	vph_pwr_vreg: vph_pwr_vreg {
+		compatible = "regulator-fixed";
+		status = "disabled";
+		regulator-name = "vph_pwr";
+		regulator-always-on;
 	};
 };

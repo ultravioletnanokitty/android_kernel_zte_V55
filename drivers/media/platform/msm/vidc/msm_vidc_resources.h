@@ -74,8 +74,17 @@ struct msm_vidc_platform_resources {
 	struct iommu_set iommu_group_set;
 	struct buffer_usage_set buffer_usage_set;
 	bool has_ocmem;
+	uint32_t max_load;
 	struct platform_device *pdev;
 };
+
+static inline int is_iommu_present(struct msm_vidc_platform_resources *res)
+{
+	if (res)
+		return (res->iommu_group_set.count > 0 &&
+				res->iommu_group_set.iommu_maps != NULL);
+	return 0;
+}
 
 #endif
 

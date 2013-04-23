@@ -130,6 +130,7 @@ enum hal_property {
 	HAL_PARAM_VENC_H264_DEBLOCK_CONTROL,
 	HAL_PARAM_VENC_TEMPORAL_SPATIAL_TRADEOFF,
 	HAL_PARAM_VENC_SESSION_QP,
+	HAL_PARAM_VENC_SESSION_QP_RANGE,
 	HAL_CONFIG_VENC_INTRA_PERIOD,
 	HAL_CONFIG_VENC_IDR_PERIOD,
 	HAL_CONFIG_VPE_OPERATIONS,
@@ -165,6 +166,10 @@ enum hal_property {
 	HAL_PARAM_VENC_LOW_LATENCY,
 	HAL_PARAM_VENC_SYNC_FRAME_SEQUENCE_HEADER,
 	HAL_PARAM_VDEC_SYNC_FRAME_DECODE,
+	HAL_PARAM_VENC_H264_ENTROPY_CABAC_MODEL,
+	HAL_CONFIG_VENC_MAX_BITRATE,
+	HAL_PARAM_VENC_H264_VUI_TIMING_INFO,
+	HAL_PARAM_VENC_H264_GENERATE_AUDNAL,
 };
 
 enum hal_domain {
@@ -189,6 +194,7 @@ enum hal_video_codec {
 	HAL_VIDEO_CODEC_VP6      = 0x00000400,
 	HAL_VIDEO_CODEC_VP7      = 0x00000800,
 	HAL_VIDEO_CODEC_VP8      = 0x00001000,
+	HAL_VIDEO_CODEC_HEVC     = 0x00010000,
 	HAL_UNUSED_CODEC = 0x10000000,
 };
 
@@ -533,15 +539,15 @@ struct hal_profile_level_supported {
 };
 */
 enum hal_h264_entropy {
-	HAL_H264_ENTROPY_CAVLC,
-	HAL_H264_ENTROPY_CABAC,
+	HAL_H264_ENTROPY_CAVLC = 1,
+	HAL_H264_ENTROPY_CABAC = 2,
 	HAL_UNUSED_ENTROPY = 0x10000000,
 };
 
 enum hal_h264_cabac_model {
-	HAL_H264_CABAC_MODEL_0,
-	HAL_H264_CABAC_MODEL_1,
-	HAL_H264_CABAC_MODEL_2,
+	HAL_H264_CABAC_MODEL_0 = 1,
+	HAL_H264_CABAC_MODEL_1 = 2,
+	HAL_H264_CABAC_MODEL_2 = 4,
 	HAL_UNUSED_CABAC = 0x10000000,
 };
 
@@ -588,6 +594,12 @@ struct hal_quantization {
 	u32 qpi;
 	u32 qpp;
 	u32 qpb;
+	u32 layer_id;
+};
+
+struct hal_quantization_range {
+	u32 min_qp;
+	u32 max_qp;
 	u32 layer_id;
 };
 
@@ -760,6 +772,13 @@ struct hal_multi_view_select {
 
 struct hal_timestamp_scale {
 	u32 time_stamp_scale;
+};
+
+
+struct hal_h264_vui_timing_info {
+	u32 enable;
+	u32 fixed_frame_rate;
+	u32 time_scale;
 };
 
 enum vidc_resource_id {

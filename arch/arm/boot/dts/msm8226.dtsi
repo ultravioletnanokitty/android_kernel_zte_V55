@@ -12,6 +12,7 @@
 
 /include/ "skeleton.dtsi"
 /include/ "msm8226-ion.dtsi"
+/include/ "msm8226-camera.dtsi"
 /include/ "msm-gdsc.dtsi"
 /include/ "msm8226-iommu.dtsi"
 /include/ "msm8226-pm.dtsi"
@@ -48,6 +49,8 @@
 
 	aliases {
 		spi0 = &spi_0;
+		sdhc1 = &sdhc_1; /* SDC1 eMMC slot */
+		sdhc2 = &sdhc_2; /* SDC2 SD card slot */
 	};
 
 	memory {
@@ -62,6 +65,65 @@
 		compatible = "arm,armv7-timer";
 		interrupts = <1 2 0 1 3 0>;
 		clock-frequency = <19200000>;
+	};
+
+	timer@f9020000 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		compatible = "arm,armv7-timer-mem";
+		reg = <0xf9020000 0x1000>;
+		clock-frequency = <19200000>;
+
+		frame@f9021000 {
+			frame-number = <0>;
+			interrupts = <0 8 0x4>,
+				     <0 7 0x4>;
+			reg = <0xf9021000 0x1000>,
+			      <0xf9022000 0x1000>;
+		};
+
+		frame@f9023000 {
+			frame-number = <1>;
+			interrupts = <0 9 0x4>;
+			reg = <0xf9023000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9024000 {
+			frame-number = <2>;
+			interrupts = <0 10 0x4>;
+			reg = <0xf9024000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9025000 {
+			frame-number = <3>;
+			interrupts = <0 11 0x4>;
+			reg = <0xf9025000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9026000 {
+			frame-number = <4>;
+			interrupts = <0 12 0x4>;
+			reg = <0xf9026000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9027000 {
+			frame-number = <5>;
+			interrupts = <0 13 0x4>;
+			reg = <0xf9027000 0x1000>;
+			status = "disabled";
+		};
+
+		frame@f9028000 {
+			frame-number = <6>;
+			interrupts = <0 14 0x4>;
+			reg = <0xf9028000 0x1000>;
+			status = "disabled";
+		};
 	};
 
 	qcom,vidc@fdc00000 {
@@ -95,6 +157,7 @@
 		qcom,iommu-group-buffer-types = <0xfff 0x1ff>;
 		qcom,buffer-type-tz-usage-table = <0x1 0x1>,
 			<0x1fe 0x2>;
+		qcom,max-hw-load = <352800>; /* 720p @ 30 + 1080p @ 30 */
 	};
 
 	qcom,wfd {
@@ -127,6 +190,35 @@
 		interrupts = <0 94 0>;
 	};
 
+	qcom,usbbam@f9a44000 {
+		compatible = "qcom,usb-bam-msm";
+		reg = <0xf9a44000 0x11000>;
+		reg-names = "hsusb";
+		interrupts = <0 135 0>;
+		interrupt-names = "hsusb";
+		qcom,usb-bam-num-pipes = <16>;
+		qcom,usb-bam-fifo-baseaddr = <0xfe803000>;
+		qcom,ignore-core-reset-ack;
+		qcom,disable-clk-gating;
+
+		qcom,pipe0 {
+			label = "hsusb-qdss-in-0";
+			qcom,usb-bam-mem-type = <3>;
+			qcom,bam-type = <1>;
+			qcom,dir = <1>;
+			qcom,pipe-num = <0>;
+			qcom,peer-bam = <1>;
+			qcom,src-bam-physical-address = <0xfc37c000>;
+			qcom,src-bam-pipe-index = <0>;
+			qcom,dst-bam-physical-address = <0xf9a44000>;
+			qcom,dst-bam-pipe-index = <2>;
+			qcom,data-fifo-offset = <0x0>;
+			qcom,data-fifo-size = <0x600>;
+			qcom,descriptor-fifo-offset = <0x600>;
+			qcom,descriptor-fifo-size = <0x200>;
+		};
+	};
+
         usb@f9a55000 {
 		compatible = "qcom,hsusb-otg";
 		reg = <0xf9a55000 0x400>;
@@ -145,7 +237,6 @@
 
 		qcom,msm-bus,name = "usb2";
 		qcom,msm-bus,num-cases = <2>;
-		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<87 512 0 0>,
@@ -204,6 +295,12 @@
 			qcom,cdc-vdd-cx-voltage = <1200000 1200000>;
 			qcom,cdc-vdd-cx-current = <10000>;
 
+			qcom,cdc-static-supplies = "cdc-vdd-buck",
+						   "cdc-vdd-h",
+						   "cdc-vdd-px",
+						   "cdc-vdd-a-1p2v",
+						   "cdc-vdd-cx";
+
 			qcom,cdc-micbias-ldoh-v = <0x3>;
 			qcom,cdc-micbias-cfilt1-mv = <1800>;
 			qcom,cdc-micbias-cfilt2-mv = <1800>;
@@ -227,29 +324,6 @@
 	sound {
 		compatible = "qcom,msm8226-audio-tapan";
 		qcom,model = "msm8226-tapan-snd-card";
-
-		qcom,audio-routing =
-			"RX_BIAS", "MCLK",
-			"LDO_H", "MCLK",
-			"SPK_OUT", "MCLK",
-			"SPK_OUT", "EXT_VDD_SPKR",
-			"AMIC1", "MIC BIAS1 Internal1",
-			"MIC BIAS1 Internal1", "Handset Mic",
-			"AMIC2", "MIC BIAS2 External",
-			"MIC BIAS2 External", "Headset Mic",
-			"AMIC3", "MIC BIAS2 External",
-			"MIC BIAS2 External", "ANCRight Headset Mic",
-			"AMIC4", "MIC BIAS2 External",
-			"MIC BIAS2 External", "ANCLeft Headset Mic",
-			"DMIC1", "MIC BIAS1 External",
-			"MIC BIAS1 External", "Digital Mic1",
-			"DMIC2", "MIC BIAS1 External",
-			"MIC BIAS1 External", "Digital Mic2",
-			"DMIC3", "MIC BIAS3 External",
-			"MIC BIAS3 External", "Digital Mic3",
-			"DMIC4", "MIC BIAS3 External",
-			"MIC BIAS3 External", "Digital Mic4";
-
 		qcom,tapan-mclk-clk-freq = <9600000>;
 	};
 
@@ -403,6 +477,34 @@
 		compatible = "qcom,msm-pcm-hostless";
 	};
 
+	qcom,wcnss-wlan@fb000000 {
+		compatible = "qcom,wcnss_wlan";
+		reg = <0xfb000000 0x280000>,
+			<0xf9011008 0x04>;
+		reg-names = "wcnss_mmio", "wcnss_fiq";
+		interrupts = <0 145 0 0 146 0>;
+		interrupt-names = "wcnss_wlantx_irq", "wcnss_wlanrx_irq";
+
+		qcom,pronto-vddmx-supply = <&pm8226_l3>;
+		qcom,pronto-vddcx-supply = <&pm8226_s1>;
+		qcom,pronto-vddpx-supply = <&pm8226_l6>;
+		qcom,iris-vddxo-supply = <&pm8226_l10>;
+		qcom,iris-vddrfa-supply = <&pm8226_l24>;
+		qcom,iris-vddpa-supply = <&pm8226_l16>;
+		qcom,iris-vdddig-supply = <&pm8226_l24>;
+
+		gpios = <&msmgpio 40 0>, <&msmgpio 41 0>, <&msmgpio 42 0>, <&msmgpio 43 0>, <&msmgpio 44 0>;
+		qcom,has_pronto_hw;
+	};
+
+	qcom,msm-adsp-sensors {
+		compatible = "qcom,msm-adsp-sensors";
+		qcom,src-id = <11>;
+		qcom,dst-id = <604>;
+		qcom,ab = <32505856>;
+		qcom,ib = <32505856>;
+	};
+
 	qcom,wdt@f9017000 {
 		compatible = "qcom,msm-watchdog";
 		reg = <0xf9017000 0x1000>;
@@ -501,6 +603,18 @@
 		status = "disabled";
 	};
 
+	sdhc_1: sdhci@f9824900 {
+		compatible = "qcom,sdhci-msm";
+		reg = <0xf9824900 0x11c>, <0xf9824000 0x800>;
+		reg-names = "hc_mem", "core_mem";
+
+		interrupts = <0 123 0>, <0 138 0>;
+		interrupt-names = "hc_irq", "pwr_irq";
+
+		qcom,bus-width = <8>;
+		status = "disabled";
+	};
+
 	sdcc2: qcom,sdcc@f98a4000 {
 		cell-index = <2>; /* SDC2 SD card slot */
 		compatible = "qcom,msm-sdcc";
@@ -511,6 +625,18 @@
 		reg-names = "core_mem", "dml_mem", "bam_mem";
 		interrupts = <0 125 0>, <0 220 0>;
 		interrupt-names = "core_irq", "bam_irq";
+
+		qcom,bus-width = <4>;
+		status = "disabled";
+	};
+
+	sdhc_2: sdhci@f98a4900 {
+		compatible = "qcom,sdhci-msm";
+		reg = <0xf98a4900 0x11c>, <0xf98a4000 0x800>;
+		reg-names = "hc_mem", "core_mem";
+
+		interrupts = <0 125 0>, <0 221 0>;
+		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <4>;
 		status = "disabled";
@@ -559,7 +685,7 @@
 		compatible = "qcom,acpuclk-a7";
 		reg = <0xf9011050 0x8>;
 		reg-names = "rcg_base";
-		a7_cpu-supply = <&pm8226_s2>;
+		a7_cpu-supply = <&apc_vreg_corner>;
 		a7_mem-supply = <&pm8226_l3>;
 	};
 
@@ -606,6 +732,17 @@
 		vdd_pronto_pll-supply = <&pm8226_l8>;
 
 		qcom,firmware-name = "wcnss";
+
+		/* GPIO inputs from wcnss */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_4_in 0 0>;
+		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_4_in 2 0>;
+
+		/* GPIO output to wcnss */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_4_out 0 0>;
+	};
+
+	qcom,iris-fm {
+		compatible = "qcom,iris_fm";
 	};
 
 	qcom,lpass@fe200000 {
@@ -618,6 +755,12 @@
 		interrupts = <0 162 1>;
 
 		qcom,firmware-name = "adsp";
+
+		/* GPIO input from lpass */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_2_in 0 0>;
+
+		/* GPIO output to lpass */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_2_out 0 0>;
 	};
 
 	qcom,mss@fc880000 {
@@ -626,10 +769,9 @@
 		      <0xfd485000 0x400>,
 		      <0xfc820000 0x020>,
 		      <0xfc401680 0x004>,
-		      <0x0d1fc000 0x4000>,
 		      <0xfd485194 0x4>;
 		reg-names = "qdsp6_base", "halt_base", "rmb_base",
-			    "restart_reg", "metadata_base", "cxrail_bhs_reg";
+			    "restart_reg", "cxrail_bhs_reg";
 
 		interrupts = <0 24 1>;
 		vdd_mss-supply = <&pm8226_s1>;
@@ -641,6 +783,13 @@
 		qcom,is-loadable;
 		qcom,firmware-name = "mba";
 		qcom,pil-self-auth;
+
+		/* GPIO inputs from mss */
+		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_1_in 0 0>;
+		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_1_in 2 0>;
+
+		/* GPIO output to mss */
+		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
 	};
 
 	qcom,msm-mem-hole {
@@ -709,9 +858,9 @@
                 qcom,msm-rng-iface-clk;
 	};
 
-	qcom,tz-log@fc5b82c {
+	qcom,tz-log@fe805720 {
 		compatible = "qcom,tz-log";
-		reg = <0x0fc5b82c 0x1000>;
+		reg = <0x0fe805720 0x1000>;
 	};
 
 	jtag_mm0: jtagmm@fc33c000 {
@@ -746,6 +895,24 @@
 		compatible = "qcom,ipc-spinlock-sfpb";
 		reg = <0xfd484000 0x400>;
 		qcom,num-locks = <8>;
+	};
+
+	qcom,qseecom@d980000 {
+		compatible = "qcom,qseecom";
+		reg = <0xd980000 0x256000>;
+		reg-names = "secapp-region";
+		qcom,disk-encrypt-pipe-pair = <2>;
+		qcom,hlos-ce-hw-instance = <0>;
+		qcom,qsee-ce-hw-instance = <0>;
+		qcom,msm-bus,name = "qseecom-noc";
+		qcom,msm-bus,num-cases = <4>;
+		qcom,msm-bus,active-only = <0>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps =
+				<55 512 0 0>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>;
 	};
 };
 
@@ -866,28 +1033,38 @@
 		qcom,fast-avg-setup = <0>;
 	};
 
+	chan@39 {
+		label = "usb_id_nopull";
+		reg = <0x39>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <0>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+	};
 };
 
 &pm8226_chg {
 	status = "ok";
 
-	qcom,chg-chgr@1000 {
+	qcom,chgr@1000 {
 		status = "ok";
 	};
 
-	qcom,chg-buck@1100 {
+	qcom,buck@1100 {
 		status = "ok";
 	};
 
-	qcom,chg-bat-if@1200 {
+	qcom,bat-if@1200 {
 		status = "ok";
 	};
 
-	qcom,chg-usb-chgpth@1300 {
+	qcom,usb-chgpth@1300 {
 		status = "ok";
 	};
 
-	qcom,chg-boost@1500 {
+	qcom,boost@1500 {
 		status = "ok";
 	};
 

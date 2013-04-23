@@ -60,9 +60,8 @@ struct mdss_data_type {
 	u32 mdp_rev;
 	struct clk *mdp_clk[MDSS_MAX_CLK];
 	struct regulator *fs;
+	u32 max_mdp_clk_rate;
 
-	struct workqueue_struct *clk_ctrl_wq;
-	struct work_struct clk_ctrl_worker;
 	struct platform_device *pdev;
 	char __iomem *mdp_base;
 	size_t mdp_reg_size;
@@ -72,21 +71,25 @@ struct mdss_data_type {
 	u32 irq_mask;
 	u32 irq_ena;
 	u32 irq_buzy;
+	u32 has_bwc;
+	u32 has_decimation;
 
 	u32 mdp_irq_mask;
 	u32 mdp_hist_irq_mask;
 
 	int suspend_fs_ena;
-	atomic_t clk_ref;
 	u8 clk_ena;
 	u8 fs_ena;
 	u8 vsync_ena;
+	unsigned long min_mdp_clk;
 
 	u32 res_init;
 	u32 bus_hdl;
 
 	u32 smp_mb_cnt;
 	u32 smp_mb_size;
+
+	u32 rot_block_size;
 
 	struct mdss_hw_settings *hw_settings;
 
@@ -131,6 +134,7 @@ struct mdss_hw {
 	irqreturn_t (*irq_handler)(int irq, void *ptr);
 };
 
+int mdss_register_irq(struct mdss_hw *hw);
 void mdss_enable_irq(struct mdss_hw *hw);
 void mdss_disable_irq(struct mdss_hw *hw);
 void mdss_disable_irq_nosync(struct mdss_hw *hw);

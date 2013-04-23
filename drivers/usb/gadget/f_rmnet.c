@@ -301,6 +301,7 @@ static int rmnet_gport_setup(void)
 	int	ret;
 	int	port_idx;
 	int	i;
+	u8 base;
 
 	pr_debug("%s: bam ports: %u bam2bam ports: %u data hsic ports: %u data hsuart ports: %u"
 		" smd ports: %u ctrl hsic ports: %u ctrl hsuart ports: %u"
@@ -317,9 +318,13 @@ static int rmnet_gport_setup(void)
 	}
 
 	if (no_ctrl_smd_ports) {
-		ret = gsmd_ctrl_setup(no_ctrl_smd_ports);
+		ret = gsmd_ctrl_setup(FRMNET_CTRL_CLIENT,
+				no_ctrl_smd_ports, &base);
 		if (ret)
 			return ret;
+		for (i = 0; i < nr_rmnet_ports; i++)
+			if (rmnet_ports[i].port)
+				rmnet_ports[i].port->port_num += base;
 	}
 
 	if (no_data_hsic_ports) {
@@ -387,7 +392,7 @@ static int gport_rmnet_connect(struct f_rmnet *dev)
 	unsigned		port_num;
 	enum transport_type	cxport = rmnet_ports[dev->port_num].ctrl_xport;
 	enum transport_type	dxport = rmnet_ports[dev->port_num].data_xport;
-	u8			src_connection_idx, dst_connection_idx;
+	int			src_connection_idx = 0, dst_connection_idx = 0;
 	struct usb_gadget	*gadget = dev->cdev->gadget;
 
 	pr_debug("%s: ctrl xport: %s data xport: %s dev: %p portno: %d\n",
@@ -439,7 +444,6 @@ static int gport_rmnet_connect(struct f_rmnet *dev)
 	port_num = rmnet_ports[dev->port_num].data_xport_num;
 
 	switch (dxport) {
-	case USB_GADGET_XPORT_BAM:
 	case USB_GADGET_XPORT_BAM2BAM:
 		src_connection_idx = usb_bam_get_connection_idx(gadget->name,
 			A2_P_BAM, USB_TO_PEER_PERIPHERAL, port_num);
@@ -451,6 +455,7 @@ static int gport_rmnet_connect(struct f_rmnet *dev)
 			gsmd_ctrl_disconnect(&dev->port, port_num);
 			return ret;
 		}
+	case USB_GADGET_XPORT_BAM:
 		ret = gbam_connect(&dev->port, port_num,
 			dxport, src_connection_idx, dst_connection_idx);
 		if (ret) {

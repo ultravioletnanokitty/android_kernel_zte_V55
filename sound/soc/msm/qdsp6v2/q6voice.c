@@ -16,6 +16,7 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/mutex.h>
+#include <linux/msm_audio_ion.h>
 
 #include <asm/mach-types.h>
 #include <mach/qdsp6v2/rtac.h>
@@ -34,10 +35,6 @@
 
 #define CMD_STATUS_SUCCESS 0
 #define CMD_STATUS_FAIL 1
-
-#define VOC_PATH_PASSIVE 0
-#define VOC_PATH_FULL 1
-#define VOC_PATH_VOLTE_PASSIVE 2
 
 /* CVP CAL Size: 245760 = 240 * 1024 */
 #define CVP_CAL_SIZE 245760
@@ -180,6 +177,9 @@ uint16_t voc_get_session_id(char *name)
 	if (name != NULL) {
 		if (!strncmp(name, "Voice session", 13))
 			session_id = common.voice[VOC_PATH_PASSIVE].session_id;
+		else if (!strncmp(name, "Voice2 session", 14))
+			session_id =
+			common.voice[VOC_PATH_VOICE2_PASSIVE].session_id;
 		else if (!strncmp(name, "VoLTE session", 13))
 			session_id =
 			common.voice[VOC_PATH_VOLTE_PASSIVE].session_id;
@@ -221,6 +221,11 @@ static bool is_voip_session(u16 session_id)
 static bool is_volte_session(u16 session_id)
 {
 	return (session_id == common.voice[VOC_PATH_VOLTE_PASSIVE].session_id);
+}
+
+static bool is_voice2_session(u16 session_id)
+{
+	return (session_id == common.voice[VOC_PATH_VOICE2_PASSIVE].session_id);
 }
 
 static int voice_apr_register(void)
@@ -347,7 +352,8 @@ static int voice_send_dual_control_cmd(struct voice_data *v)
 	}
 	pr_debug("%s: VoLTE command to MVM\n", __func__);
 	if (is_volte_session(v->session_id) ||
-		is_voice_session(v->session_id)) {
+		is_voice_session(v->session_id) ||
+		is_voice2_session(v->session_id)) {
 		mvm_handle = voice_get_mvm_handle(v);
 		mvm_voice_ctl_cmd.hdr.hdr_field = APR_HDR_FIELD(
 						APR_MSG_TYPE_SEQ_CMD,
@@ -421,7 +427,8 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 
 	if (!mvm_handle) {
 		if (is_voice_session(v->session_id) ||
-				is_volte_session(v->session_id)) {
+			is_volte_session(v->session_id) ||
+			is_voice2_session(v->session_id)) {
 			mvm_session_cmd.hdr.hdr_field = APR_HDR_FIELD(
 						APR_MSG_TYPE_SEQ_CMD,
 						APR_HDR_LEN(APR_HDR_SIZE),
@@ -441,8 +448,12 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 				strlcpy(mvm_session_cmd.mvm_session.name,
 				"default volte voice",
 				sizeof(mvm_session_cmd.mvm_session.name));
+			} else if (is_voice2_session(v->session_id)) {
+				strlcpy(mvm_session_cmd.mvm_session.name,
+				VOICE2_SESSION_VSID,
+				sizeof(mvm_session_cmd.mvm_session.name));
 			} else {
-			strlcpy(mvm_session_cmd.mvm_session.name,
+				strlcpy(mvm_session_cmd.mvm_session.name,
 				"default modem voice",
 				sizeof(mvm_session_cmd.mvm_session.name));
 			}
@@ -503,7 +514,8 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 	/* send cmd to create cvs session */
 	if (!cvs_handle) {
 		if (is_voice_session(v->session_id) ||
-			is_volte_session(v->session_id)) {
+			is_volte_session(v->session_id) ||
+			is_voice2_session(v->session_id)) {
 			pr_debug("%s: creating CVS passive session\n",
 				 __func__);
 
@@ -523,6 +535,10 @@ static int voice_create_mvm_cvs_session(struct voice_data *v)
 			if (is_volte_session(v->session_id)) {
 				strlcpy(cvs_session_cmd.cvs_session.name,
 				"default volte voice",
+				sizeof(cvs_session_cmd.cvs_session.name));
+			} else if (is_voice2_session(v->session_id)) {
+				strlcpy(cvs_session_cmd.cvs_session.name,
+				VOICE2_SESSION_VSID,
 				sizeof(cvs_session_cmd.cvs_session.name));
 			} else {
 			strlcpy(cvs_session_cmd.cvs_session.name,
@@ -2517,14 +2533,8 @@ static int voice_send_netid_timing_cmd(struct voice_data *v)
 	mvm_set_voice_timing.hdr.opcode = VSS_ICOMMON_CMD_SET_VOICE_TIMING;
 	mvm_set_voice_timing.timing.mode = 0;
 	mvm_set_voice_timing.timing.enc_offset = 8000;
-	if ((machine_is_apq8064_sim()) || (machine_is_msm8974_sim())) {
-		pr_debug("%s: Machine is MSM8974 sim\n", __func__);
-		mvm_set_voice_timing.timing.dec_req_offset = 0;
-		mvm_set_voice_timing.timing.dec_offset = 18000;
-	} else {
-		mvm_set_voice_timing.timing.dec_req_offset = 3300;
-		mvm_set_voice_timing.timing.dec_offset = 8300;
-	}
+	mvm_set_voice_timing.timing.dec_req_offset = 3300;
+	mvm_set_voice_timing.timing.dec_offset = 8300;
 
 	v->mvm_state = CMD_STATUS_FAIL;
 
@@ -4106,6 +4116,11 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 			if (v != NULL)
 				v->voc_state = VOC_ERROR;
 
+			session_id = voc_get_session_id(VOICE2_SESSION_NAME);
+			v = voice_get_session(session_id);
+			if (v != NULL)
+				v->voc_state = VOC_ERROR;
+
 			session_id = voc_get_session_id(VOLTE_SESSION_NAME);
 			v = voice_get_session(session_id);
 			if (v != NULL)
@@ -4167,6 +4182,7 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 			case VSS_IMVM_CMD_SET_POLICY_DUAL_CONTROL:
 			case VSS_IMVM_CMD_SET_CAL_NETWORK:
 			case VSS_IMVM_CMD_SET_CAL_MEDIA_TYPE:
+			case VSS_IMEMORY_CMD_MAP_PHYSICAL:
 			case VSS_IMEMORY_CMD_UNMAP:
 			case VSS_IMVM_CMD_STANDBY_VOICE:
 				pr_debug("%s: cmd = 0x%x\n", __func__, ptr[0]);
@@ -4235,6 +4251,11 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 			pr_debug("%s: Received Modem reset event\n", __func__);
 
 			session_id = voc_get_session_id(VOICE_SESSION_NAME);
+			v = voice_get_session(session_id);
+			if (v != NULL)
+				v->voc_state = VOC_ERROR;
+
+			session_id = voc_get_session_id(VOICE2_SESSION_NAME);
 			v = voice_get_session(session_id);
 			if (v != NULL)
 				v->voc_state = VOC_ERROR;
@@ -4504,6 +4525,11 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 			if (v != NULL)
 				v->voc_state = VOC_ERROR;
 
+			session_id = voc_get_session_id(VOICE2_SESSION_NAME);
+			v = voice_get_session(session_id);
+			if (v != NULL)
+				v->voc_state = VOC_ERROR;
+
 			session_id = voc_get_session_id(VOLTE_SESSION_NAME);
 			v = voice_get_session(session_id);
 			if (v != NULL)
@@ -4623,35 +4649,16 @@ static int voice_alloc_oob_shared_mem(void)
 		pr_err("%s: v is NULL\n", __func__);
 		return -EINVAL;
 	}
-	v->shmem_info.sh_buf.client = msm_ion_client_create(UINT_MAX,
-							    "voip_client");
-	if (IS_ERR_OR_NULL((void *)v->shmem_info.sh_buf.client)) {
-		pr_err("%s: ION create client failed\n", __func__);
-		goto err;
-	}
 
-	v->shmem_info.sh_buf.handle = ion_alloc(v->shmem_info.sh_buf.client,
-						bufsz * bufcnt, SZ_4K,
-						(0x1 << ION_AUDIO_HEAP_ID), 0);
-	if (IS_ERR_OR_NULL((void *)v->shmem_info.sh_buf.handle)) {
-		pr_err("%s: ION memory allocation failed\n",
-			__func__);
-		goto err_ion_client;
-	}
-
-	rc = ion_phys(v->shmem_info.sh_buf.client, v->shmem_info.sh_buf.handle,
-		  (ion_phys_addr_t *)&phys, (size_t *)&len);
+	rc = msm_audio_ion_alloc("voip_client", &(v->shmem_info.sh_buf.client),
+			&(v->shmem_info.sh_buf.handle),
+			bufsz*bufcnt,
+			(ion_phys_addr_t *)&phys, (size_t *)&len,
+			&mem_addr);
 	if (rc) {
-		pr_err("%s: ION Get Physical failed, rc = %d\n",
+		pr_err("%s: audio ION alloc failed, rc = %d\n",
 			__func__, rc);
-		goto err_ion_handle;
-	}
-
-	mem_addr = ion_map_kernel(v->shmem_info.sh_buf.client,
-				  v->shmem_info.sh_buf.handle);
-	if (IS_ERR_OR_NULL(mem_addr)) {
-		pr_err("%s: ION memory mapping failed\n", __func__);
-		goto err_ion_handle;
+		return -EINVAL;
 	}
 
 	while (cnt < bufcnt) {
@@ -4675,13 +4682,6 @@ static int voice_alloc_oob_shared_mem(void)
 	memset((void *)v->shmem_info.sh_buf.buf[0].data, 0, (bufsz * bufcnt));
 
 	return 0;
-
-err_ion_handle:
-	ion_free(v->shmem_info.sh_buf.client, v->shmem_info.sh_buf.handle);
-err_ion_client:
-	ion_client_destroy(v->shmem_info.sh_buf.client);
-err:
-	return -EINVAL;
 }
 
 static int voice_alloc_oob_mem_table(void)
@@ -4695,40 +4695,18 @@ static int voice_alloc_oob_mem_table(void)
 		pr_err("%s: v is NULL\n", __func__);
 		return -EINVAL;
 	}
-	v->shmem_info.memtbl.client = msm_ion_client_create(UINT_MAX,
-							      "voip_client");
-	if (IS_ERR_OR_NULL((void *)v->shmem_info.memtbl.client)) {
-		pr_err("%s: ION create client for memtbl failed\n", __func__);
-		goto err;
-	}
 
-	v->shmem_info.memtbl.handle = ion_alloc(v->shmem_info.memtbl.client,
-				sizeof(struct vss_imemory_table_t), SZ_4K,
-				(0x1 << ION_AUDIO_HEAP_ID), 0);
-	if (IS_ERR_OR_NULL((void *) v->shmem_info.memtbl.handle)) {
-		pr_err("%s: ION memory allocation for memtbl failed\n",
-			__func__);
-		goto err_ion_client;
-	}
-
-	rc = ion_phys(v->shmem_info.memtbl.client, v->shmem_info.memtbl.handle,
-		(ion_phys_addr_t *)&v->shmem_info.memtbl.phys, (size_t *)&len);
+	rc = msm_audio_ion_alloc("voip_client", &(v->shmem_info.memtbl.client),
+				&(v->shmem_info.memtbl.handle),
+				sizeof(struct vss_imemory_table_t),
+				(ion_phys_addr_t *)&v->shmem_info.memtbl.phys,
+				(size_t *)&len,
+				&(v->shmem_info.memtbl.data));
 	if (rc) {
-		pr_err("%s: ION Get Physical for memtbl failed, rc = %d\n",
+		pr_err("%s: audio ION alloc failed, rc = %d\n",
 			__func__, rc);
-		goto err_ion_handle;
+		return -EINVAL;
 	}
-
-	v->shmem_info.memtbl.data = ion_map_kernel(v->shmem_info.memtbl.client,
-						   v->shmem_info.memtbl.handle);
-	if (IS_ERR_OR_NULL((void *)v->shmem_info.memtbl.data)) {
-		pr_err("%s: ION memory mapping for memtbl failed\n",
-				__func__);
-		goto err_ion_handle;
-	}
-
-	memset(v->shmem_info.memtbl.data, 0,
-	       sizeof(struct vss_imemory_table_t));
 
 	v->shmem_info.memtbl.size = sizeof(struct vss_imemory_table_t);
 
@@ -4739,12 +4717,6 @@ static int voice_alloc_oob_mem_table(void)
 
 	return 0;
 
-err_ion_handle:
-	ion_free(v->shmem_info.memtbl.client, v->shmem_info.memtbl.handle);
-err_ion_client:
-	ion_client_destroy(v->shmem_info.memtbl.client);
-err:
-	return -EINVAL;
 }
 
 static int voice_alloc_cal_mem_map_table(void)
@@ -4752,67 +4724,25 @@ static int voice_alloc_cal_mem_map_table(void)
 	int ret = 0;
 	int len;
 
-	common.cal_mem_map_table.client = msm_ion_client_create(UINT_MAX,
-								"voc_client");
-
-	if (IS_ERR_OR_NULL((void *) common.cal_mem_map_table.client)) {
-		pr_err("%s: ION create client for cal mem map table failed\n",
-		       __func__);
-
-		goto err;
-	}
-
-	common.cal_mem_map_table.handle =
-				ion_alloc(common.cal_mem_map_table.client,
-					  sizeof(struct vss_imemory_table_t),
-					  SZ_4K, (0x1 << ION_AUDIO_HEAP_ID), 0);
-	if (IS_ERR_OR_NULL((void *) common.cal_mem_map_table.handle)) {
-		pr_err("%s: ION memory alloc for cal mem map table failed\n",
-		       __func__);
-
-		goto err_ion_client;
-	}
-
-	ret = ion_phys(common.cal_mem_map_table.client,
-		      common.cal_mem_map_table.handle,
-		      (ion_phys_addr_t *) &common.cal_mem_map_table.phys,
-		      (size_t *) &len);
+	ret = msm_audio_ion_alloc("voip_client",
+				&(common.cal_mem_map_table.client),
+				&(common.cal_mem_map_table.handle),
+				sizeof(struct vss_imemory_table_t),
+			      (ion_phys_addr_t *)&common.cal_mem_map_table.phys,
+				(size_t *) &len,
+				&(common.cal_mem_map_table.data));
 	if (ret) {
-		pr_err("%s: Phy addr for cal mem map table failed %d\n",
-		       __func__, ret);
-
-		goto err_ion_handle;
+		pr_err("%s: audio ION alloc failed, rc = %d\n",
+			__func__, ret);
+		return -EINVAL;
 	}
-
-	common.cal_mem_map_table.data =
-				ion_map_kernel(common.cal_mem_map_table.client,
-					       common.cal_mem_map_table.handle);
-	if (IS_ERR_OR_NULL((void *) common.cal_mem_map_table.data)) {
-		pr_err("%s: Virtual addr for cal memory map table failed\n",
-		       __func__);
-
-		goto err_ion_handle;
-	}
-
-	memset(common.cal_mem_map_table.data, 0,
-	       sizeof(struct vss_imemory_table_t));
 
 	common.cal_mem_map_table.size = sizeof(struct vss_imemory_table_t);
-
 	pr_debug("%s: data 0x%x phys 0x%x\n", __func__,
 		 (unsigned int) common.cal_mem_map_table.data,
 		 common.cal_mem_map_table.phys);
 
 	return 0;
-
-err_ion_handle:
-	ion_free(common.cal_mem_map_table.client,
-		 common.cal_mem_map_table.handle);
-err_ion_client:
-	ion_client_destroy(common.cal_mem_map_table.client);
-	memset(&common.cal_mem_map_table, 0, sizeof(common.cal_mem_map_table));
-err:
-	return -EINVAL;
 }
 
 static int __init voice_init(void)

@@ -12,7 +12,6 @@
  */
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
-#include <linux/android_pmem.h>
 #include <linux/dma-mapping.h>
 #include <linux/errno.h>
 #include <linux/file.h>
@@ -36,9 +35,16 @@ enum {
 	MDP_INTR_VSYNC_INTF_1,
 	MDP_INTR_VSYNC_INTF_2,
 	MDP_INTR_VSYNC_INTF_3,
+	MDP_INTR_UNDERRUN_INTF_0,
+	MDP_INTR_UNDERRUN_INTF_1,
+	MDP_INTR_UNDERRUN_INTF_2,
+	MDP_INTR_UNDERRUN_INTF_3,
 	MDP_INTR_PING_PONG_0,
 	MDP_INTR_PING_PONG_1,
 	MDP_INTR_PING_PONG_2,
+	MDP_INTR_PING_PONG_0_RD_PTR,
+	MDP_INTR_PING_PONG_1_RD_PTR,
+	MDP_INTR_PING_PONG_2_RD_PTR,
 	MDP_INTR_WB_0,
 	MDP_INTR_WB_1,
 	MDP_INTR_WB_2,
@@ -57,11 +63,17 @@ static int mdss_mdp_intr2index(u32 intr_type, u32 intf_num)
 {
 	int index = -1;
 	switch (intr_type) {
+	case MDSS_MDP_IRQ_INTF_UNDER_RUN:
+		index = MDP_INTR_UNDERRUN_INTF_0 + (intf_num - MDSS_MDP_INTF0);
+		break;
 	case MDSS_MDP_IRQ_INTF_VSYNC:
 		index = MDP_INTR_VSYNC_INTF_0 + (intf_num - MDSS_MDP_INTF0);
 		break;
 	case MDSS_MDP_IRQ_PING_PONG_COMP:
 		index = MDP_INTR_PING_PONG_0 + intf_num;
+		break;
+	case MDSS_MDP_IRQ_PING_PONG_RD_PTR:
+		index = MDP_INTR_PING_PONG_0_RD_PTR + intf_num;
 		break;
 	case MDSS_MDP_IRQ_WB_ROT_COMP:
 		index = MDP_INTR_WB_0 + intf_num;
@@ -120,14 +132,27 @@ irqreturn_t mdss_mdp_isr(int irq, void *ptr)
 	if (isr == 0)
 		goto mdp_isr_done;
 
-	pr_debug("isr=%x\n", isr);
 
 	mask = MDSS_MDP_REG_READ(MDSS_MDP_REG_INTR_EN);
 	MDSS_MDP_REG_WRITE(MDSS_MDP_REG_INTR_CLEAR, isr);
 
+	pr_debug("%s: isr=%x mask=%x\n", __func__, isr, mask);
+
 	isr &= mask;
 	if (isr == 0)
 		goto mdp_isr_done;
+
+	if (isr & MDSS_MDP_INTR_INTF_0_UNDERRUN)
+		mdss_mdp_intr_done(MDP_INTR_UNDERRUN_INTF_0);
+
+	if (isr & MDSS_MDP_INTR_INTF_1_UNDERRUN)
+		mdss_mdp_intr_done(MDP_INTR_UNDERRUN_INTF_1);
+
+	if (isr & MDSS_MDP_INTR_INTF_2_UNDERRUN)
+		mdss_mdp_intr_done(MDP_INTR_UNDERRUN_INTF_2);
+
+	if (isr & MDSS_MDP_INTR_INTF_3_UNDERRUN)
+		mdss_mdp_intr_done(MDP_INTR_UNDERRUN_INTF_3);
 
 	if (isr & MDSS_MDP_INTR_PING_PONG_0_DONE)
 		mdss_mdp_intr_done(MDP_INTR_PING_PONG_0);
@@ -137,6 +162,15 @@ irqreturn_t mdss_mdp_isr(int irq, void *ptr)
 
 	if (isr & MDSS_MDP_INTR_PING_PONG_2_DONE)
 		mdss_mdp_intr_done(MDP_INTR_PING_PONG_2);
+
+	if (isr & MDSS_MDP_INTR_PING_PONG_0_RD_PTR)
+		mdss_mdp_intr_done(MDP_INTR_PING_PONG_0_RD_PTR);
+
+	if (isr & MDSS_MDP_INTR_PING_PONG_1_RD_PTR)
+		mdss_mdp_intr_done(MDP_INTR_PING_PONG_1_RD_PTR);
+
+	if (isr & MDSS_MDP_INTR_PING_PONG_2_RD_PTR)
+		mdss_mdp_intr_done(MDP_INTR_PING_PONG_2_RD_PTR);
 
 	if (isr & MDSS_MDP_INTR_INTF_0_VSYNC)
 		mdss_mdp_intr_done(MDP_INTR_VSYNC_INTF_0);
@@ -187,12 +221,48 @@ struct mdss_mdp_format_params *mdss_mdp_get_format_params(u32 format)
 	return NULL;
 }
 
+int mdss_mdp_get_rau_strides(u32 w, u32 h,
+			       struct mdss_mdp_format_params *fmt,
+			       struct mdss_mdp_plane_sizes *ps)
+{
+	u32 stride_off;
+	if (fmt->is_yuv) {
+		ps->rau_cnt = DIV_ROUND_UP(w, 64);
+		ps->ystride[0] = 64 * 4;
+		ps->rau_h[0] = 4;
+		ps->rau_h[1] = 2;
+		if (fmt->chroma_sample == MDSS_MDP_CHROMA_H1V2)
+			ps->ystride[1] = 64 * 2;
+		else if (fmt->chroma_sample == MDSS_MDP_CHROMA_H2V1) {
+			ps->ystride[1] = 32 * 4;
+			ps->rau_h[1] = 4;
+		} else
+			ps->ystride[1] = 32 * 2;
+	} else if (fmt->fetch_planes == MDSS_MDP_PLANE_INTERLEAVED) {
+		ps->rau_cnt = DIV_ROUND_UP(w, 32);
+		ps->ystride[0] = 32 * 4 * fmt->bpp;
+		ps->ystride[1] = 0;
+		ps->rau_h[0] = 4;
+		ps->rau_h[1] = 0;
+	} else  {
+		pr_err("Invalid format=%d\n", fmt->format);
+		return -EINVAL;
+	}
+
+	stride_off = DIV_ROUND_UP(ps->rau_cnt, 8);
+	ps->ystride[0] = ps->ystride[0] * ps->rau_cnt + stride_off;
+	ps->ystride[1] = ps->ystride[1] * ps->rau_cnt + stride_off;
+	ps->num_planes = 2;
+
+	return 0;
+}
+
 int mdss_mdp_get_plane_sizes(u32 format, u32 w, u32 h,
-			     struct mdss_mdp_plane_sizes *ps)
+			     struct mdss_mdp_plane_sizes *ps, u32 bwc_mode)
 {
 	struct mdss_mdp_format_params *fmt;
-	int i;
-
+	int i, rc;
+	u32 bpp, ystride0_off, ystride1_off;
 	if (ps == NULL)
 		return -EINVAL;
 
@@ -203,55 +273,71 @@ int mdss_mdp_get_plane_sizes(u32 format, u32 w, u32 h,
 	if (!fmt)
 		return -EINVAL;
 
+	bpp = fmt->bpp;
 	memset(ps, 0, sizeof(struct mdss_mdp_plane_sizes));
 
-	if (fmt->fetch_planes == MDSS_MDP_PLANE_INTERLEAVED) {
-		u32 bpp = fmt->bpp;
-		ps->num_planes = 1;
-		ps->plane_size[0] = w * h * bpp;
-		ps->ystride[0] = w * bpp;
-	} else if (format == MDP_Y_CBCR_H2V2_VENUS) {
-		int cf = COLOR_FMT_NV12;
-		ps->num_planes = 2;
-		ps->ystride[0] = VENUS_Y_STRIDE(cf, w);
-		ps->ystride[1] = VENUS_UV_STRIDE(cf, w);
-		ps->plane_size[0] = VENUS_Y_SCANLINES(cf, h) * ps->ystride[0];
-		ps->plane_size[1] = VENUS_UV_SCANLINES(cf, h) * ps->ystride[1];
+	if (bwc_mode) {
+		rc = mdss_mdp_get_rau_strides(w, h, fmt, ps);
+		if (rc)
+			return rc;
+		ystride0_off = DIV_ROUND_UP(h, ps->rau_h[0]);
+		ystride1_off = DIV_ROUND_UP(h, ps->rau_h[1]);
+		ps->plane_size[0] = (ps->ystride[0] * ystride0_off) +
+				    (ps->ystride[1] * ystride1_off);
+		ps->ystride[0] += ps->ystride[1];
+		ps->ystride[1] = 2;
+		ps->plane_size[1] = ps->rau_cnt * ps->ystride[1] *
+				   (ystride0_off + ystride1_off);
 	} else {
-		u8 hmap[] = { 1, 2, 1, 2 };
-		u8 vmap[] = { 1, 1, 2, 2 };
-		u8 horiz, vert, stride_align, height_align;
-
-		horiz = hmap[fmt->chroma_sample];
-		vert = vmap[fmt->chroma_sample];
-
-		switch (format) {
-		case MDP_Y_CR_CB_GH2V2:
-			stride_align = 16;
-			height_align = 1;
-			break;
-		default:
-			stride_align = 1;
-			height_align = 1;
-			break;
-		}
-
-		ps->ystride[0] = ALIGN(w, stride_align);
-		ps->ystride[1] = ALIGN(w / horiz, stride_align);
-		ps->plane_size[0] = ps->ystride[0] * ALIGN(h, height_align);
-		ps->plane_size[1] = ps->ystride[1] * (h / vert);
-
-		if (fmt->fetch_planes == MDSS_MDP_PLANE_PSEUDO_PLANAR) {
+		if (fmt->fetch_planes == MDSS_MDP_PLANE_INTERLEAVED) {
+			ps->num_planes = 1;
+			ps->plane_size[0] = w * h * bpp;
+			ps->ystride[0] = w * bpp;
+		} else if (format == MDP_Y_CBCR_H2V2_VENUS) {
+			int cf = COLOR_FMT_NV12;
 			ps->num_planes = 2;
-			ps->plane_size[1] *= 2;
-			ps->ystride[1] *= 2;
-		} else { /* planar */
-			ps->num_planes = 3;
-			ps->plane_size[2] = ps->plane_size[1];
-			ps->ystride[2] = ps->ystride[1];
+			ps->ystride[0] = VENUS_Y_STRIDE(cf, w);
+			ps->ystride[1] = VENUS_UV_STRIDE(cf, w);
+			ps->plane_size[0] = VENUS_Y_SCANLINES(cf, h) *
+				ps->ystride[0];
+			ps->plane_size[1] = VENUS_UV_SCANLINES(cf, h) *
+				ps->ystride[1];
+		} else {
+			u8 hmap[] = { 1, 2, 1, 2 };
+			u8 vmap[] = { 1, 1, 2, 2 };
+			u8 horiz, vert, stride_align, height_align;
+
+			horiz = hmap[fmt->chroma_sample];
+			vert = vmap[fmt->chroma_sample];
+
+			switch (format) {
+			case MDP_Y_CR_CB_GH2V2:
+				stride_align = 16;
+				height_align = 1;
+				break;
+			default:
+				stride_align = 1;
+				height_align = 1;
+				break;
+			}
+
+			ps->ystride[0] = ALIGN(w, stride_align);
+			ps->ystride[1] = ALIGN(w / horiz, stride_align);
+			ps->plane_size[0] = ps->ystride[0] *
+				ALIGN(h, height_align);
+			ps->plane_size[1] = ps->ystride[1] * (h / vert);
+
+			if (fmt->fetch_planes == MDSS_MDP_PLANE_PSEUDO_PLANAR) {
+				ps->num_planes = 2;
+				ps->plane_size[1] *= 2;
+				ps->ystride[1] *= 2;
+			} else { /* planar */
+				ps->num_planes = 3;
+				ps->plane_size[2] = ps->plane_size[1];
+				ps->ystride[2] = ps->ystride[1];
+			}
 		}
 	}
-
 	for (i = 0; i < ps->num_planes; i++)
 		ps->total_size += ps->plane_size[i];
 
@@ -261,44 +347,65 @@ int mdss_mdp_get_plane_sizes(u32 format, u32 w, u32 h,
 int mdss_mdp_data_check(struct mdss_mdp_data *data,
 			struct mdss_mdp_plane_sizes *ps)
 {
+	struct mdss_mdp_img_data *prev, *curr;
+	int i;
+
 	if (!ps)
 		return 0;
 
 	if (!data || data->num_planes == 0)
 		return -ENOMEM;
 
-	if (data->bwc_enabled) {
-		return -EPERM; /* not supported */
-	} else {
-		struct mdss_mdp_img_data *prev, *curr;
-		int i;
+	pr_debug("srcp0=%x len=%u frame_size=%u\n", data->p[0].addr,
+		data->p[0].len, ps->total_size);
 
-		pr_debug("srcp0=%x len=%u frame_size=%u\n", data->p[0].addr,
-				data->p[0].len, ps->total_size);
-
-		for (i = 0; i < ps->num_planes; i++) {
-			curr = &data->p[i];
-			if (i >= data->num_planes) {
-				u32 psize = ps->plane_size[i-1];
-				prev = &data->p[i-1];
-				if (prev->len > psize) {
-					curr->len = prev->len - psize;
-					prev->len = psize;
-				}
-				curr->addr = prev->addr + psize;
+	for (i = 0; i < ps->num_planes; i++) {
+		curr = &data->p[i];
+		if (i >= data->num_planes) {
+			u32 psize = ps->plane_size[i-1];
+			prev = &data->p[i-1];
+			if (prev->len > psize) {
+				curr->len = prev->len - psize;
+				prev->len = psize;
 			}
-			if (curr->len < ps->plane_size[i]) {
-				pr_err("insufficient mem=%u p=%d len=%u\n",
-				       curr->len, i, ps->plane_size[i]);
-				return -ENOMEM;
-			}
-			pr_debug("plane[%d] addr=%x len=%u\n", i,
-					curr->addr, curr->len);
+			curr->addr = prev->addr + psize;
 		}
-		data->num_planes = ps->num_planes;
+		if (curr->len < ps->plane_size[i]) {
+			pr_err("insufficient mem=%u p=%d len=%u\n",
+			       curr->len, i, ps->plane_size[i]);
+			return -ENOMEM;
+		}
+		pr_debug("plane[%d] addr=%x len=%u\n", i,
+				curr->addr, curr->len);
 	}
+	data->num_planes = ps->num_planes;
 
 	return 0;
+}
+
+void mdss_mdp_data_calc_offset(struct mdss_mdp_data *data, u16 x, u16 y,
+	struct mdss_mdp_plane_sizes *ps, struct mdss_mdp_format_params *fmt)
+{
+	if ((x == 0) && (y == 0))
+		return;
+
+	data->p[0].addr += y * ps->ystride[0];
+
+	if (data->num_planes == 1) {
+		data->p[0].addr += x * fmt->bpp;
+	} else {
+		u8 hmap[] = { 1, 2, 1, 2 };
+		u8 vmap[] = { 1, 1, 2, 2 };
+		u16 xoff = x / hmap[fmt->chroma_sample];
+		u16 yoff = y / vmap[fmt->chroma_sample];
+
+		data->p[0].addr += x;
+		data->p[1].addr += xoff + (yoff * ps->ystride[1]);
+		if (data->num_planes == 2) /* pseudo planar */
+			data->p[1].addr += xoff;
+		else /* planar */
+			data->p[2].addr += xoff + (yoff * ps->ystride[2]);
+	}
 }
 
 int mdss_mdp_put_img(struct mdss_mdp_img_data *data)
@@ -310,7 +417,6 @@ int mdss_mdp_put_img(struct mdss_mdp_img_data *data)
 		data->srcp_file = NULL;
 	} else if (data->srcp_file) {
 		pr_debug("pmem buf=0x%x\n", data->addr);
-		put_pmem_file(data->srcp_file);
 		data->srcp_file = NULL;
 	} else if (!IS_ERR_OR_NULL(data->srcp_ihdl)) {
 		pr_debug("ion hdl=%p buf=0x%x\n", data->srcp_ihdl, data->addr);
@@ -388,8 +494,7 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 			if (data->flags & MDP_SECURE_OVERLAY_SESSION) {
 				domain = MDSS_IOMMU_DOMAIN_SECURE;
 				ret = msm_ion_secure_buffer(iclient,
-					data->srcp_ihdl, 0x2,
-					ION_UNSECURE_DELAYED);
+					data->srcp_ihdl, 0x2, 0);
 				if (IS_ERR_VALUE(ret)) {
 					ion_free(iclient, data->srcp_ihdl);
 					pr_err("failed to secure handle (%d)\n",
@@ -402,8 +507,7 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 
 			ret = ion_map_iommu(iclient, data->srcp_ihdl,
 					    mdss_get_iommu_domain(domain),
-					    0, SZ_4K, 0, start, len, 0,
-					    ION_IOMMU_UNMAP_DELAYED);
+					    0, SZ_4K, 0, start, len, 0, 0);
 		} else {
 			ret = ion_phys(iclient, data->srcp_ihdl, start,
 				       (size_t *) len);
@@ -414,10 +518,6 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 			pr_err("failed to map ion handle (%d)\n", ret);
 			return ret;
 		}
-	} else {
-		unsigned long vstart;
-		ret = get_pmem_file(img->memory_id, start, &vstart, len,
-				    &data->srcp_file);
 	}
 
 	if (!ret && (img->offset < data->len)) {

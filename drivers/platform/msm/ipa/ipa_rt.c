@@ -505,6 +505,8 @@ static struct ipa_rt_tbl *__ipa_add_rt_tbl(enum ipa_ip_type ip,
 			IPAERR("failed to add to tree\n");
 			WARN_ON(1);
 		}
+	} else {
+		kmem_cache_free(ipa_ctx->tree_node_cache, node);
 	}
 
 	return entry;
@@ -699,7 +701,7 @@ int __ipa_del_rt_rule(u32 rule_hdl)
 	}
 
 	if (entry->hdr)
-		entry->hdr->ref_cnt--;
+		__ipa_release_hdr((u32)entry->hdr);
 	list_del(&entry->link);
 	entry->tbl->rule_cnt--;
 	IPADBG("del rt rule tbl_idx=%d rule_cnt=%d\n", entry->tbl->idx,
@@ -851,7 +853,7 @@ int ipa_reset_rt(enum ipa_ip_type ip)
 			list_del(&rule->link);
 			tbl->rule_cnt--;
 			if (rule->hdr)
-				rule->hdr->ref_cnt--;
+				__ipa_release_hdr((u32)rule->hdr);
 			rule->cookie = 0;
 			kmem_cache_free(ipa_ctx->rt_rule_cache, rule);
 

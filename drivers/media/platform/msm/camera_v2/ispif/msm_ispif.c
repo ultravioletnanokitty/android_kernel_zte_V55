@@ -11,7 +11,6 @@
  */
 
 #include <linux/delay.h>
-#include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/jiffies.h>
@@ -19,6 +18,7 @@
 #include <linux/videodev2.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
+#include <media/msmb_isp.h>
 
 #include "msm_ispif.h"
 #include "msm.h"
@@ -59,198 +59,75 @@ static inline int msm_ispif_is_intf_valid(uint32_t csid_version,
 		false : true;
 }
 
-static struct msm_cam_clk_info ispif_8960_clk_info[] = {
-	{"csi_pix_clk", 0},
-	{"csi_rdi_clk", 0},
-	{"csi_pix1_clk", 0},
-	{"csi_rdi1_clk", 0},
-	{"csi_rdi2_clk", 0},
+static struct msm_cam_clk_info ispif_8974_ahb_clk_info[] = {
+	{"ispif_ahb_clk", -1},
 };
 
-static struct msm_cam_clk_info ispif_8974_clk_info_vfe0[] = {
-	{"camss_vfe_vfe_clk", -1},
-	{"camss_csi_vfe_clk", -1},
-};
-
-static struct msm_cam_clk_info ispif_8974_clk_info_vfe1[] = {
-	{"camss_vfe_vfe_clk1", -1},
-	{"camss_csi_vfe_clk1", -1},
-};
-
-static int msm_ispif_clk_enable(struct ispif_device *ispif,
-	enum msm_ispif_vfe_intf vfe_intf, int enable)
+static int msm_ispif_clk_ahb_enable(struct ispif_device *ispif, int enable)
 {
 	int rc = 0;
 
-	if (enable)
-		pr_debug("enable clk for VFE%d\n", vfe_intf);
-	else
-		pr_debug("disable clk for VFE%d\n", vfe_intf);
-
-	if (ispif->csid_version < CSID_VERSION_V2) {
-		rc = msm_cam_clk_enable(&ispif->pdev->dev, ispif_8960_clk_info,
-			ispif->ispif_clk[vfe_intf], 2, enable);
-		if (rc) {
-			pr_err("%s: cannot enable clock, error = %d\n",
-				__func__, rc);
-			goto end;
-		}
-	} else if (ispif->csid_version == CSID_VERSION_V2) {
-		rc = msm_cam_clk_enable(&ispif->pdev->dev, ispif_8960_clk_info,
-			ispif->ispif_clk[vfe_intf],
-			ARRAY_SIZE(ispif_8960_clk_info),
-			enable);
-		if (rc) {
-			pr_err("%s: cannot enable clock, error = %d\n",
-				__func__, rc);
-			goto end;
-		}
-	} else if (ispif->csid_version >= CSID_VERSION_V3) {
-		if (vfe_intf == VFE0) {
-			rc = msm_cam_clk_enable(&ispif->pdev->dev,
-				ispif_8974_clk_info_vfe0,
-				ispif->ispif_clk[vfe_intf],
-				ARRAY_SIZE(ispif_8974_clk_info_vfe0), enable);
-		} else {
-			rc = msm_cam_clk_enable(&ispif->pdev->dev,
-				ispif_8974_clk_info_vfe1,
-				ispif->ispif_clk[vfe_intf],
-				ARRAY_SIZE(ispif_8974_clk_info_vfe1), enable);
-		}
-		if (rc) {
-			pr_err("%s: cannot enable clock, error = %d\n",
-				__func__, rc);
-			goto end;
-		}
-	} else {
-		pr_err("%s: unsupported version=%d\n", __func__,
-			ispif->csid_version);
-		goto end;
+	if (ispif->csid_version < CSID_VERSION_V3) {
+		/* Older ISPIF versiond don't need ahb clokc */
+		return 0;
 	}
 
-end:
-	return rc;
-}
-
-static int msm_ispif_intf_reset(struct ispif_device *ispif,
-	struct msm_ispif_param_data *params)
-{
-
-	int i, rc = 0;
-	enum msm_ispif_intftype intf_type;
-	uint32_t data = STROBED_RST_EN;
-
-	for (i = 0; i < params->num; i++) {
-		intf_type = params->entries[i].intftype;
-		ispif->sof_count[params->vfe_intf].sof_cnt[intf_type] = 0;
-		switch (intf_type) {
-		case PIX0:
-			data |= (PIX_0_VFE_RST_STB | PIX_0_CSID_RST_STB);
-			break;
-		case RDI0:
-			data |= (RDI_0_VFE_RST_STB | RDI_0_CSID_RST_STB);
-			break;
-		case PIX1:
-			data |= (PIX_1_VFE_RST_STB | PIX_1_CSID_RST_STB);
-			break;
-		case RDI1:
-			data |= (RDI_1_VFE_RST_STB | RDI_1_CSID_RST_STB);
-			break;
-		case RDI2:
-			data |= (RDI_2_VFE_RST_STB | RDI_2_CSID_RST_STB);
-			break;
-		default:
-			rc = -EINVAL;
-			break;
-		}
+	rc = msm_cam_clk_enable(&ispif->pdev->dev,
+		ispif_8974_ahb_clk_info, &ispif->ahb_clk,
+		ARRAY_SIZE(ispif_8974_ahb_clk_info), enable);
+	if (rc < 0) {
+		pr_err("%s: cannot enable clock, error = %d",
+			__func__, rc);
 	}
-	if (data > 0x1) {
-		unsigned long jiffes = msecs_to_jiffies(500);
-		long lrc = 0;
-		unsigned long flags;
 
-		spin_lock_irqsave(&ispif->auto_complete_lock, flags);
-		ispif->wait_timeout[params->vfe_intf] = 0;
-		init_completion(&ispif->reset_complete[params->vfe_intf]);
-		spin_unlock_irqrestore(&ispif->auto_complete_lock, flags);
-
-		if (params->vfe_intf == VFE0)
-			msm_camera_io_w(data, ispif->base + ISPIF_RST_CMD_ADDR);
-		else
-			msm_camera_io_w(data, ispif->base +
-				ISPIF_RST_CMD_1_ADDR);
-
-		lrc = wait_for_completion_interruptible_timeout(
-			&ispif->reset_complete[params->vfe_intf], jiffes);
-		if (lrc < 0 || !lrc) {
-			pr_err("%s: wait timeout ret = %ld\n", __func__, lrc);
-			rc = -EIO;
-
-			spin_lock_irqsave(&ispif->auto_complete_lock, flags);
-			ispif->wait_timeout[params->vfe_intf] = 1;
-			spin_unlock_irqrestore(
-				&ispif->auto_complete_lock, flags);
-		}
-	}
 	return rc;
 }
 
 static int msm_ispif_reset(struct ispif_device *ispif)
 {
 	int rc = 0;
-	long lrc = 0;
-	unsigned long jiffes = msecs_to_jiffies(500);
-	unsigned long flags;
-
-	spin_lock_irqsave(&ispif->auto_complete_lock, flags);
-	ispif->wait_timeout[VFE0] = 0;
-	init_completion(&ispif->reset_complete[VFE0]);
-	if (ispif->csid_version >= CSID_VERSION_V3) {
-		ispif->wait_timeout[VFE1] = 0;
-		init_completion(&ispif->reset_complete[VFE1]);
-	}
-	spin_unlock_irqrestore(&ispif->auto_complete_lock, flags);
+	int i;
 
 	BUG_ON(!ispif);
 
 	memset(ispif->sof_count, 0, sizeof(ispif->sof_count));
 
-	msm_camera_io_w(ISPIF_RST_CMD_MASK, ispif->base + ISPIF_RST_CMD_ADDR);
+	for (i = 0; i < ispif->vfe_info.num_vfe; i++) {
 
-	lrc = wait_for_completion_interruptible_timeout(
-		&ispif->reset_complete[VFE0], jiffes);
+		msm_camera_io_w(0, ispif->base + ISPIF_VFE_m_CTRL_0(i));
+		msm_camera_io_w(0, ispif->base + ISPIF_VFE_m_IRQ_MASK_0(i));
+		msm_camera_io_w(0, ispif->base + ISPIF_VFE_m_IRQ_MASK_1(i));
+		msm_camera_io_w(0, ispif->base + ISPIF_VFE_m_IRQ_MASK_2(i));
+		msm_camera_io_w(0xFFFFFFFF, ispif->base +
+			ISPIF_VFE_m_IRQ_CLEAR_0(i));
+		msm_camera_io_w(0xFFFFFFFF, ispif->base +
+			ISPIF_VFE_m_IRQ_CLEAR_1(i));
+		msm_camera_io_w(0xFFFFFFFF, ispif->base +
+			ISPIF_VFE_m_IRQ_CLEAR_2(i));
+		msm_camera_io_w(0, ispif->base + ISPIF_VFE_m_INPUT_SEL(i));
+		msm_camera_io_w(0, ispif->base + ISPIF_VFE_m_INTF_CMD_0(i));
+		msm_camera_io_w(0, ispif->base + ISPIF_VFE_m_INTF_CMD_1(i));
 
-	if (lrc < 0 || !lrc) {
-		pr_err("%s: wait timeout ret = %ld\n", __func__, lrc);
-		rc = -EIO;
+		msm_camera_io_w(0, ispif->base +
+			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 0));
+		msm_camera_io_w(0, ispif->base +
+			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 1));
+		msm_camera_io_w(0, ispif->base +
+			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 0));
+		msm_camera_io_w(0, ispif->base +
+			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 1));
+		msm_camera_io_w(0, ispif->base +
+			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 2));
 
-		spin_lock_irqsave(&ispif->auto_complete_lock, flags);
-		ispif->wait_timeout[VFE0] = 1;
-		spin_unlock_irqrestore(&ispif->auto_complete_lock, flags);
-
-		goto end;
+		msm_camera_io_w(0, ispif->base +
+			ISPIF_VFE_m_PIX_INTF_n_CROP(i, 0));
+		msm_camera_io_w(0, ispif->base +
+			ISPIF_VFE_m_PIX_INTF_n_CROP(i, 1));
 	}
 
-	if (ispif->csid_version >= CSID_VERSION_V3) {
-		msm_camera_io_w_mb(ISPIF_RST_CMD_1_MASK, ispif->base +
-			ISPIF_RST_CMD_1_ADDR);
+	msm_camera_io_w_mb(ISPIF_IRQ_GLOBAL_CLEAR_CMD, ispif->base +
+		ISPIF_IRQ_GLOBAL_CLEAR_CMD_ADDR);
 
-		lrc = wait_for_completion_interruptible_timeout(
-			&ispif->reset_complete[VFE1], jiffes);
-
-		if (lrc < 0 || !lrc) {
-			pr_err("%s: wait timeout ret = %ld\n", __func__, lrc);
-			rc = -EIO;
-
-			spin_lock_irqsave(&ispif->auto_complete_lock, flags);
-			ispif->wait_timeout[VFE1] = 1;
-			spin_unlock_irqrestore(&ispif->auto_complete_lock,
-				flags);
-		}
-
-	}
-
-end:
 	return rc;
 }
 
@@ -266,7 +143,6 @@ static int msm_ispif_subdev_g_chip_ident(struct v4l2_subdev *sd,
 static void msm_ispif_sel_csid_core(struct ispif_device *ispif,
 	uint8_t intftype, uint8_t csid, uint8_t vfe_intf)
 {
-	int rc = 0;
 	uint32_t data;
 
 	BUG_ON(!ispif);
@@ -274,19 +150,6 @@ static void msm_ispif_sel_csid_core(struct ispif_device *ispif,
 	if (!msm_ispif_is_intf_valid(ispif->csid_version, vfe_intf)) {
 		pr_err("%s: invalid interface type\n", __func__);
 		return;
-	}
-
-	if (ispif->csid_version <= CSID_VERSION_V2) {
-		if (ispif->ispif_clk[vfe_intf][intftype] == NULL) {
-			CDBG("%s: ispif NULL clk\n", __func__);
-			return;
-		}
-
-		rc = clk_set_rate(ispif->ispif_clk[vfe_intf][intftype], csid);
-		if (rc) {
-			pr_err("%s: clk_set_rate failed %d\n", __func__, rc);
-			return;
-		}
 	}
 
 	data = msm_camera_io_r(ispif->base + ISPIF_VFE_m_INPUT_SEL(vfe_intf));
@@ -315,6 +178,38 @@ static void msm_ispif_sel_csid_core(struct ispif_device *ispif,
 	if (data)
 		msm_camera_io_w_mb(data, ispif->base +
 			ISPIF_VFE_m_INPUT_SEL(vfe_intf));
+}
+
+static void msm_ispif_enable_crop(struct ispif_device *ispif,
+	uint8_t intftype, uint8_t vfe_intf, uint16_t start_pixel,
+	uint16_t end_pixel)
+{
+	uint32_t data;
+	BUG_ON(!ispif);
+
+	if (!msm_ispif_is_intf_valid(ispif->csid_version, vfe_intf)) {
+		pr_err("%s: invalid interface type\n", __func__);
+		return;
+	}
+
+	data = msm_camera_io_r(ispif->base + ISPIF_VFE_m_CTRL_0(vfe_intf));
+	data |= (1 << (intftype + 7));
+	if (intftype == PIX0)
+		data |= 1 << PIX0_LINE_BUF_EN_BIT;
+	msm_camera_io_w(data,
+		ispif->base + ISPIF_VFE_m_CTRL_0(vfe_intf));
+
+	if (intftype == PIX0)
+		msm_camera_io_w_mb(start_pixel | (end_pixel << 16),
+			ispif->base + ISPIF_VFE_m_PIX_INTF_n_CROP(vfe_intf, 0));
+	else if (intftype == PIX1)
+		msm_camera_io_w_mb(start_pixel | (end_pixel << 16),
+			ispif->base + ISPIF_VFE_m_PIX_INTF_n_CROP(vfe_intf, 1));
+	else {
+		pr_err("%s: invalid intftype=%d\n", __func__, intftype);
+		BUG_ON(1);
+		return;
+	}
 }
 
 static void msm_ispif_enable_intf_cids(struct ispif_device *ispif,
@@ -424,33 +319,38 @@ static int msm_ispif_config(struct ispif_device *ispif,
 	BUG_ON(!ispif);
 	BUG_ON(!params);
 
-	vfe_intf = params->vfe_intf;
-
-	rc = msm_ispif_clk_enable(ispif, vfe_intf, 1);
-	if (rc < 0) {
-		pr_err("%s: unable to enable clocks for VFE%d", __func__,
-			vfe_intf);
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
 		return rc;
 	}
 
-	if (!msm_ispif_is_intf_valid(ispif->csid_version, vfe_intf)) {
-		pr_err("%s: invalid interface type\n", __func__);
-		return -EINVAL;
+	for (i = 0; i < params->num; i++) {
+		vfe_intf = params->entries[i].vfe_intf;
+		if (!msm_ispif_is_intf_valid(ispif->csid_version,
+				vfe_intf)) {
+			pr_err("%s: invalid interface type\n", __func__);
+			return -EINVAL;
+		}
+		msm_camera_io_w(0x0, ispif->base +
+			ISPIF_VFE_m_IRQ_MASK_0(vfe_intf));
+		msm_camera_io_w(0x0, ispif->base +
+			ISPIF_VFE_m_IRQ_MASK_1(vfe_intf));
+		msm_camera_io_w_mb(0x0, ispif->base +
+			ISPIF_VFE_m_IRQ_MASK_2(vfe_intf));
 	}
-
-	msm_camera_io_w(0x0, ispif->base + ISPIF_VFE_m_IRQ_MASK_0(vfe_intf));
-	msm_camera_io_w(0x0, ispif->base + ISPIF_VFE_m_IRQ_MASK_1(vfe_intf));
-	msm_camera_io_w_mb(0x0, ispif->base + ISPIF_VFE_m_IRQ_MASK_2(vfe_intf));
 
 	for (i = 0; i < params->num; i++) {
 		intftype = params->entries[i].intftype;
 
-		vfe_intf = params->vfe_intf;
+		vfe_intf = params->entries[i].vfe_intf;
 
 		CDBG("%s intftype %x, vfe_intf %d, csid %d\n", __func__,
 			intftype, vfe_intf, params->entries[i].csid);
 
-		if ((intftype >= INTF_MAX) || (vfe_intf >= VFE_MAX) ||
+		if ((intftype >= INTF_MAX) ||
+			(vfe_intf >=  ispif->vfe_info.num_vfe) ||
 			(ispif->csid_version <= CSID_VERSION_V2 &&
 			(vfe_intf > VFE0))) {
 			pr_err("%s: VFEID %d and CSID version %d mismatch\n",
@@ -471,31 +371,34 @@ static int msm_ispif_config(struct ispif_device *ispif,
 				&params->entries[i]);
 		msm_ispif_enable_intf_cids(ispif, intftype,
 			cid_mask, vfe_intf, 1);
+		if (params->entries[i].crop_enable)
+			msm_ispif_enable_crop(ispif, intftype, vfe_intf,
+				params->entries[i].crop_start_pixel,
+				params->entries[i].crop_end_pixel);
 	}
 
-	msm_camera_io_w(ISPIF_IRQ_STATUS_MASK, ispif->base +
-		ISPIF_VFE_m_IRQ_MASK_0(vfe_intf));
+	for (vfe_intf = 0; vfe_intf < 2; vfe_intf++) {
+		msm_camera_io_w(ISPIF_IRQ_STATUS_MASK, ispif->base +
+			ISPIF_VFE_m_IRQ_MASK_0(vfe_intf));
 
-	msm_camera_io_w(ISPIF_IRQ_STATUS_MASK, ispif->base +
-		ISPIF_VFE_m_IRQ_CLEAR_0(vfe_intf));
+		msm_camera_io_w(ISPIF_IRQ_STATUS_MASK, ispif->base +
+			ISPIF_VFE_m_IRQ_CLEAR_0(vfe_intf));
 
-	msm_camera_io_w(ISPIF_IRQ_STATUS_1_MASK, ispif->base +
-		ISPIF_VFE_m_IRQ_MASK_1(vfe_intf));
+		msm_camera_io_w(ISPIF_IRQ_STATUS_1_MASK, ispif->base +
+			ISPIF_VFE_m_IRQ_MASK_1(vfe_intf));
 
-	msm_camera_io_w(ISPIF_IRQ_STATUS_1_MASK, ispif->base +
-		ISPIF_VFE_m_IRQ_CLEAR_1(vfe_intf));
+		msm_camera_io_w(ISPIF_IRQ_STATUS_1_MASK, ispif->base +
+			ISPIF_VFE_m_IRQ_CLEAR_1(vfe_intf));
 
-	msm_camera_io_w(ISPIF_IRQ_STATUS_2_MASK, ispif->base +
-		ISPIF_VFE_m_IRQ_MASK_2(vfe_intf));
+		msm_camera_io_w(ISPIF_IRQ_STATUS_2_MASK, ispif->base +
+			ISPIF_VFE_m_IRQ_MASK_2(vfe_intf));
 
-	msm_camera_io_w(ISPIF_IRQ_STATUS_2_MASK, ispif->base +
-		ISPIF_VFE_m_IRQ_CLEAR_2(vfe_intf));
+		msm_camera_io_w(ISPIF_IRQ_STATUS_2_MASK, ispif->base +
+			ISPIF_VFE_m_IRQ_CLEAR_2(vfe_intf));
+	}
 
 	msm_camera_io_w_mb(ISPIF_IRQ_GLOBAL_CLEAR_CMD, ispif->base +
 		ISPIF_IRQ_GLOBAL_CLEAR_CMD_ADDR);
-
-
-	rc = msm_ispif_clk_enable(ispif, vfe_intf, 0);
 
 	return rc;
 }
@@ -507,18 +410,22 @@ static void msm_ispif_intf_cmd(struct ispif_device *ispif, uint32_t cmd_bits,
 	int i, k;
 	enum msm_ispif_intftype intf_type;
 	enum msm_ispif_cid cid;
-	enum msm_ispif_vfe_intf vfe_intf = params->vfe_intf;
+	enum msm_ispif_vfe_intf vfe_intf;
 
 	BUG_ON(!ispif);
 	BUG_ON(!params);
 
-	if (!msm_ispif_is_intf_valid(ispif->csid_version, vfe_intf)) {
-		pr_err("%s: invalid interface type\n", __func__);
-		return;
+	for (i = 0; i < params->num; i++) {
+		vfe_intf = params->entries[i].vfe_intf;
+		if (!msm_ispif_is_intf_valid(ispif->csid_version, vfe_intf)) {
+			pr_err("%s: invalid interface type\n", __func__);
+			return;
+		}
 	}
 
 	for (i = 0; i < params->num; i++) {
 		intf_type = params->entries[i].intftype;
+		vfe_intf = params->entries[i].vfe_intf;
 		for (k = 0; k < params->entries[i].num_cids; k++) {
 			cid = params->entries[i].cids[k];
 			vc = cid % 4;
@@ -538,16 +445,19 @@ static void msm_ispif_intf_cmd(struct ispif_device *ispif, uint32_t cmd_bits,
 					(cmd_bits << (vc * 2 + intf_type * 8));
 			}
 		}
+
+		/* cmd for PIX0, PIX1, RDI0, RDI1 */
+		if (ispif->applied_intf_cmd[vfe_intf].intf_cmd != 0xFFFFFFFF)
+			msm_camera_io_w_mb(
+				ispif->applied_intf_cmd[vfe_intf].intf_cmd,
+				ispif->base + ISPIF_VFE_m_INTF_CMD_0(vfe_intf));
+
+		/* cmd for RDI2 */
+		if (ispif->applied_intf_cmd[vfe_intf].intf_cmd1 != 0xFFFFFFFF)
+			msm_camera_io_w_mb(
+				ispif->applied_intf_cmd[vfe_intf].intf_cmd1,
+				ispif->base + ISPIF_VFE_m_INTF_CMD_1(vfe_intf));
 	}
-	/* cmd for PIX0, PIX1, RDI0, RDI1 */
-	if (ispif->applied_intf_cmd[vfe_intf].intf_cmd != 0xFFFFFFFF) {
-		msm_camera_io_w_mb(ispif->applied_intf_cmd[vfe_intf].intf_cmd,
-			ispif->base + ISPIF_VFE_m_INTF_CMD_0(vfe_intf));
-	}
-	/* cmd for RDI2 */
-	if (ispif->applied_intf_cmd[vfe_intf].intf_cmd1 != 0xFFFFFFFF)
-		msm_camera_io_w_mb(ispif->applied_intf_cmd[vfe_intf].intf_cmd1,
-			ispif->base + ISPIF_VFE_m_INTF_CMD_1(vfe_intf));
 }
 
 static int msm_ispif_stop_immediately(struct ispif_device *ispif,
@@ -559,6 +469,13 @@ static int msm_ispif_stop_immediately(struct ispif_device *ispif,
 	BUG_ON(!ispif);
 	BUG_ON(!params);
 
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
+		return rc;
+	}
+
 	msm_ispif_intf_cmd(ispif, ISPIF_INTF_CMD_DISABLE_IMMEDIATELY, params);
 
 	/* after stop the interface we need to unmask the CID enable bits */
@@ -566,7 +483,7 @@ static int msm_ispif_stop_immediately(struct ispif_device *ispif,
 		cid_mask = msm_ispif_get_cids_mask_from_cfg(
 			&params->entries[i]);
 		msm_ispif_enable_intf_cids(ispif, params->entries[i].intftype,
-			cid_mask, params->vfe_intf, 0);
+			cid_mask, params->entries[i].vfe_intf, 0);
 	}
 
 	return rc;
@@ -575,25 +492,16 @@ static int msm_ispif_stop_immediately(struct ispif_device *ispif,
 static int msm_ispif_start_frame_boundary(struct ispif_device *ispif,
 	struct msm_ispif_param_data *params)
 {
-	int rc;
+	int rc = 0;
 
-	rc = msm_ispif_clk_enable(ispif, params->vfe_intf, 1);
-	if (rc < 0) {
-		pr_err("%s: unable to enable clocks for VFE%d", __func__,
-			params->vfe_intf);
-		return rc;
-	}
-
-	rc = msm_ispif_intf_reset(ispif, params);
-	if (rc) {
-		pr_err("%s: msm_ispif_intf_reset failed. rc=%d\n",
-			__func__, rc);
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
 		return rc;
 	}
 
 	msm_ispif_intf_cmd(ispif, ISPIF_INTF_CMD_ENABLE_FRAME_BOUNDARY, params);
-
-	msm_ispif_clk_enable(ispif, params->vfe_intf, 0);
 
 	return rc;
 }
@@ -609,18 +517,21 @@ static int msm_ispif_stop_frame_boundary(struct ispif_device *ispif,
 	BUG_ON(!ispif);
 	BUG_ON(!params);
 
-	vfe_intf = params->vfe_intf;
 
-	rc = msm_ispif_clk_enable(ispif, params->vfe_intf, 1);
-	if (rc < 0) {
-		pr_err("%s: unable to enable clocks for VFE%d", __func__,
-			params->vfe_intf);
+	if (ispif->ispif_state != ISPIF_POWER_UP) {
+		pr_err("%s: ispif invalid state %d\n", __func__,
+			ispif->ispif_state);
+		rc = -EPERM;
 		return rc;
 	}
 
-	if (!msm_ispif_is_intf_valid(ispif->csid_version, vfe_intf)) {
-		pr_err("%s: invalid interface type\n", __func__);
-		return -EINVAL;
+	for (i = 0; i < params->num; i++) {
+		if (!msm_ispif_is_intf_valid(ispif->csid_version,
+				params->entries[i].vfe_intf)) {
+			pr_err("%s: invalid interface type\n", __func__);
+			rc = -EINVAL;
+			goto end;
+		}
 	}
 
 	msm_ispif_intf_cmd(ispif,
@@ -629,6 +540,7 @@ static int msm_ispif_stop_frame_boundary(struct ispif_device *ispif,
 	for (i = 0; i < params->num; i++) {
 		cid_mask =
 			msm_ispif_get_cids_mask_from_cfg(&params->entries[i]);
+		vfe_intf = params->entries[i].vfe_intf;
 
 		switch (params->entries[i].intftype) {
 		case PIX0:
@@ -649,7 +561,8 @@ static int msm_ispif_stop_frame_boundary(struct ispif_device *ispif,
 		default:
 			pr_err("%s: invalid intftype=%d\n", __func__,
 				params->entries[i].intftype);
-			return -EPERM;
+			rc = -EPERM;
+			goto end;
 		}
 
 		/* todo_bug_fix? very bad. use readl_poll_timeout */
@@ -662,8 +575,7 @@ static int msm_ispif_stop_frame_boundary(struct ispif_device *ispif,
 			cid_mask, vfe_intf, 0);
 	}
 
-	msm_ispif_clk_enable(ispif, vfe_intf, 0);
-
+end:
 	return rc;
 }
 
@@ -714,16 +626,26 @@ static inline void msm_ispif_read_irq_status(struct ispif_irq_status *out,
 	msm_camera_io_w_mb(out[VFE0].ispifIrqStatus2,
 		ispif->base + ISPIF_VFE_m_IRQ_CLEAR_2(VFE0));
 
-	if (out[VFE0].ispifIrqStatus0 & ISPIF_IRQ_STATUS_MASK) {
-		if (out[VFE0].ispifIrqStatus0 & RESET_DONE_IRQ) {
-			unsigned long flags;
-			spin_lock_irqsave(&ispif->auto_complete_lock, flags);
-			if (ispif->wait_timeout[VFE0] == 0)
-				complete(&ispif->reset_complete[VFE0]);
-			spin_unlock_irqrestore(
-				&ispif->auto_complete_lock, flags);
-		}
+	if (ispif->vfe_info.num_vfe > 1) {
+		out[VFE1].ispifIrqStatus0 = msm_camera_io_r(ispif->base +
+			ISPIF_VFE_m_IRQ_STATUS_0(VFE1));
+		msm_camera_io_w(out[VFE1].ispifIrqStatus0,
+			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_0(VFE1));
 
+		out[VFE1].ispifIrqStatus1 = msm_camera_io_r(ispif->base +
+			ISPIF_VFE_m_IRQ_STATUS_1(VFE1));
+		msm_camera_io_w(out[VFE1].ispifIrqStatus1,
+				ispif->base + ISPIF_VFE_m_IRQ_CLEAR_1(VFE1));
+
+		out[VFE1].ispifIrqStatus2 = msm_camera_io_r(ispif->base +
+			ISPIF_VFE_m_IRQ_STATUS_2(VFE1));
+		msm_camera_io_w_mb(out[VFE1].ispifIrqStatus2,
+			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_2(VFE1));
+	}
+	msm_camera_io_w_mb(ISPIF_IRQ_GLOBAL_CLEAR_CMD, ispif->base +
+	ISPIF_IRQ_GLOBAL_CLEAR_CMD_ADDR);
+
+	if (out[VFE0].ispifIrqStatus0 & ISPIF_IRQ_STATUS_MASK) {
 		if (out[VFE0].ispifIrqStatus0 & PIX_INTF_0_OVERFLOW_IRQ)
 			pr_err("%s: VFE0 pix0 overflow.\n", __func__);
 
@@ -738,32 +660,7 @@ static inline void msm_ispif_read_irq_status(struct ispif_irq_status *out,
 
 		ispif_process_irq(ispif, out, VFE0);
 	}
-	if (ispif->csid_version >= CSID_VERSION_V3) {
-		out[VFE1].ispifIrqStatus0 = msm_camera_io_r(ispif->base +
-			ISPIF_VFE_m_IRQ_STATUS_0(VFE1));
-		msm_camera_io_w(out[VFE1].ispifIrqStatus0,
-			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_0(VFE1));
-
-		out[VFE1].ispifIrqStatus1 = msm_camera_io_r(ispif->base +
-			ISPIF_VFE_m_IRQ_STATUS_1(VFE1));
-		msm_camera_io_w(out[VFE1].ispifIrqStatus1,
-			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_1(VFE1));
-
-		out[VFE1].ispifIrqStatus2 = msm_camera_io_r(ispif->base +
-			ISPIF_VFE_m_IRQ_STATUS_2(VFE1));
-		msm_camera_io_w_mb(out[VFE1].ispifIrqStatus2,
-			ispif->base + ISPIF_VFE_m_IRQ_CLEAR_2(VFE1));
-
-
-		if (out[VFE1].ispifIrqStatus0 & RESET_DONE_IRQ) {
-			unsigned long flags;
-			spin_lock_irqsave(&ispif->auto_complete_lock, flags);
-			if (ispif->wait_timeout[VFE1] == 0)
-				complete(&ispif->reset_complete[VFE1]);
-			spin_unlock_irqrestore(
-				&ispif->auto_complete_lock, flags);
-		}
-
+	if (ispif->vfe_info.num_vfe > 1) {
 		if (out[VFE1].ispifIrqStatus0 & PIX_INTF_0_OVERFLOW_IRQ)
 			pr_err("%s: VFE1 pix0 overflow.\n", __func__);
 
@@ -778,8 +675,6 @@ static inline void msm_ispif_read_irq_status(struct ispif_irq_status *out,
 
 		ispif_process_irq(ispif, out, VFE1);
 	}
-	msm_camera_io_w_mb(ISPIF_IRQ_GLOBAL_CLEAR_CMD, ispif->base +
-		ISPIF_IRQ_GLOBAL_CLEAR_CMD_ADDR);
 }
 
 static irqreturn_t msm_io_ispif_irq(int irq_num, void *data)
@@ -788,6 +683,14 @@ static irqreturn_t msm_io_ispif_irq(int irq_num, void *data)
 
 	msm_ispif_read_irq_status(irq, data);
 	return IRQ_HANDLED;
+}
+
+static int msm_ispif_set_vfe_info(struct ispif_device *ispif,
+	struct msm_ispif_vfe_info *vfe_info)
+{
+	memcpy(&ispif->vfe_info, vfe_info, sizeof(struct msm_ispif_vfe_info));
+
+	return 0;
 }
 
 static int msm_ispif_init(struct ispif_device *ispif,
@@ -812,20 +715,6 @@ static int msm_ispif_init(struct ispif_device *ispif,
 	memset(ispif->sof_count, 0, sizeof(ispif->sof_count));
 
 	ispif->csid_version = csid_version;
-	rc = msm_ispif_clk_enable(ispif, VFE0, 1);
-	if (rc < 0) {
-		pr_err("%s: unable to enable clocks for VFE0", __func__);
-		goto error_clk0;
-	}
-
-	if (ispif->csid_version >= CSID_VERSION_V3) {
-		rc = msm_ispif_clk_enable(ispif, VFE1, 1);
-		if (rc < 0) {
-			pr_err("%s: unable to enable clocks for VFE1",
-				__func__);
-			goto error_clk1;
-		}
-	}
 
 	ispif->base = ioremap(ispif->mem->start,
 		resource_size(ispif->mem));
@@ -841,30 +730,30 @@ static int msm_ispif_init(struct ispif_device *ispif,
 		goto error_irq;
 	}
 
+	rc = msm_ispif_clk_ahb_enable(ispif, 1);
+	if (rc) {
+		pr_err("%s: ahb_clk enable failed", __func__);
+		goto error_ahb;
+	}
+
 	rc = msm_ispif_reset(ispif);
 	if (rc == 0) {
 		ispif->ispif_state = ISPIF_POWER_UP;
 		CDBG("%s: power up done\n", __func__);
 		goto end;
 	}
+
+error_ahb:
 	free_irq(ispif->irq->start, ispif);
 error_irq:
 	iounmap(ispif->base);
 
 end:
-	if (ispif->csid_version >= CSID_VERSION_V3)
-		msm_ispif_clk_enable(ispif, VFE1, 0);
-
-error_clk1:
-	msm_ispif_clk_enable(ispif, VFE0, 0);
-
-error_clk0:
 	return rc;
 }
 
 static void msm_ispif_release(struct ispif_device *ispif)
 {
-	int i;
 	BUG_ON(!ispif);
 
 	if (ispif->ispif_state != ISPIF_POWER_UP) {
@@ -873,18 +762,14 @@ static void msm_ispif_release(struct ispif_device *ispif)
 		return;
 	}
 
-	for (i = 0; i < VFE_MAX; i++)
-		msm_ispif_clk_enable(ispif, i, 1);
-
 	/* make sure no streaming going on */
 	msm_ispif_reset(ispif);
+
+	msm_ispif_clk_ahb_enable(ispif, 0);
 
 	free_irq(ispif->irq->start, ispif);
 
 	iounmap(ispif->base);
-
-	for (i = 0; i < VFE_MAX; i++)
-		msm_ispif_clk_enable(ispif, i, 0);
 
 	ispif->ispif_state = ISPIF_POWER_DOWN;
 }
@@ -927,6 +812,9 @@ static long msm_ispif_cmd(struct v4l2_subdev *sd, void *arg)
 	case ISPIF_RELEASE:
 		msm_ispif_release(ispif);
 		break;
+	case ISPIF_SET_VFE_INFO:
+		rc = msm_ispif_set_vfe_info(ispif, &pcdata->vfe_info);
+		break;
 	default:
 		pr_err("%s: invalid cfg_type\n", __func__);
 		rc = -EINVAL;
@@ -943,7 +831,7 @@ static long msm_ispif_subdev_ioctl(struct v4l2_subdev *sd,
 	case VIDIOC_MSM_ISPIF_CFG:
 		return msm_ispif_cmd(sd, arg);
 	default:
-		pr_err("%s: invalid cmd received\n", __func__);
+		pr_err("%s: invalid cmd 0x%x received\n", __func__, cmd);
 		return -ENOIOCTLCMD;
 	}
 }
@@ -1001,7 +889,6 @@ static int __devinit ispif_probe(struct platform_device *pdev)
 {
 	int rc;
 	struct ispif_device *ispif;
-	int i;
 
 	ispif = kzalloc(sizeof(struct ispif_device), GFP_KERNEL);
 	if (!ispif) {
@@ -1059,9 +946,6 @@ static int __devinit ispif_probe(struct platform_device *pdev)
 	ispif->pdev = pdev;
 	ispif->ispif_state = ISPIF_POWER_DOWN;
 	ispif->open_cnt = 0;
-	spin_lock_init(&ispif->auto_complete_lock);
-	for (i = 0; i < VFE_MAX; i++)
-		ispif->wait_timeout[i] = 0;
 
 	return 0;
 

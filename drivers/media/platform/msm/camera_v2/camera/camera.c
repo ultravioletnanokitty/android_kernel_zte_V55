@@ -38,11 +38,12 @@
 struct camera_v4l2_private {
 	struct v4l2_fh fh;
 	unsigned int stream_id;
+	unsigned int is_vb2_valid; /*0 if no vb2 buffers on stream, else 1*/
 	struct vb2_queue vb2_q;
 };
 
 static void camera_pack_event(struct file *filep, int evt_id,
-	int command, struct v4l2_event *event)
+	int command, int value, struct v4l2_event *event)
 {
 	struct msm_v4l2_event_data *event_data =
 		(struct msm_v4l2_event_data *)&event->u.data[0];
@@ -55,6 +56,7 @@ static void camera_pack_event(struct file *filep, int evt_id,
 	event_data->command = command;
 	event_data->session_id = pvdev->vdev->num;
 	event_data->stream_id = sp->stream_id;
+	event_data->arg_value = value;
 }
 
 static int camera_check_event_status(struct v4l2_event *event)
@@ -76,7 +78,7 @@ static int camera_v4l2_querycap(struct file *filep, void *fh,
 
 	/* can use cap->driver to make differentiation */
 	camera_pack_event(filep, MSM_CAMERA_GET_PARM,
-		MSM_CAMERA_PRIV_QUERY_CAP, &event);
+		MSM_CAMERA_PRIV_QUERY_CAP, -1, &event);
 
 	rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 	if (rc < 0)
@@ -96,7 +98,7 @@ static int camera_v4l2_s_crop(struct file *filep, void *fh,
 	if (crop->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 
 		camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-			MSM_CAMERA_PRIV_S_CROP, &event);
+			MSM_CAMERA_PRIV_S_CROP, -1, &event);
 
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
@@ -116,7 +118,7 @@ static int camera_v4l2_g_crop(struct file *filep, void *fh,
 
 	if (crop->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		camera_pack_event(filep, MSM_CAMERA_GET_PARM,
-			MSM_CAMERA_PRIV_G_CROP, &event);
+			MSM_CAMERA_PRIV_G_CROP, -1, &event);
 
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
@@ -137,7 +139,7 @@ static int camera_v4l2_queryctrl(struct file *filep, void *fh,
 	if (ctrl->type == V4L2_CTRL_TYPE_MENU) {
 
 		camera_pack_event(filep, MSM_CAMERA_GET_PARM,
-			ctrl->id, &event);
+			ctrl->id, -1, &event);
 
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
@@ -156,7 +158,8 @@ static int camera_v4l2_g_ctrl(struct file *filep, void *fh,
 	struct v4l2_event event;
 
 	if (ctrl->id >= V4L2_CID_PRIVATE_BASE) {
-		camera_pack_event(filep, MSM_CAMERA_GET_PARM, ctrl->id, &event);
+		camera_pack_event(filep, MSM_CAMERA_GET_PARM, ctrl->id, -1,
+			&event);
 
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
@@ -173,13 +176,16 @@ static int camera_v4l2_s_ctrl(struct file *filep, void *fh,
 {
 	int rc = 0;
 	struct v4l2_event event;
+	struct msm_v4l2_event_data *event_data;
 	if (ctrl->id >= V4L2_CID_PRIVATE_BASE) {
-		camera_pack_event(filep, MSM_CAMERA_SET_PARM, ctrl->id, &event);
+		camera_pack_event(filep, MSM_CAMERA_SET_PARM, ctrl->id,
+		ctrl->value, &event);
 
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
 			return rc;
-
+		event_data = (struct msm_v4l2_event_data *)event.u.data;
+		ctrl->value = event_data->ret_value;
 		rc = camera_check_event_status(&event);
 	}
 
@@ -189,9 +195,18 @@ static int camera_v4l2_s_ctrl(struct file *filep, void *fh,
 static int camera_v4l2_reqbufs(struct file *filep, void *fh,
 	struct v4l2_requestbuffers *req)
 {
+	int ret;
+	struct msm_session *session;
 	struct camera_v4l2_private *sp = fh_to_private(fh);
-
-	return vb2_reqbufs(&sp->vb2_q, req);
+	struct msm_video_device *pvdev = video_drvdata(filep);
+	unsigned int session_id = pvdev->vdev->num;
+	session = msm_session_find(session_id);
+	if (WARN_ON(!session))
+		return -EIO;
+	mutex_lock(&session->lock);
+	ret = vb2_reqbufs(&sp->vb2_q, req);
+	mutex_unlock(&session->lock);
+	return ret;
 }
 
 static int camera_v4l2_querybuf(struct file *filep, void *fh,
@@ -203,17 +218,35 @@ static int camera_v4l2_querybuf(struct file *filep, void *fh,
 static int camera_v4l2_qbuf(struct file *filep, void *fh,
 	struct v4l2_buffer *pb)
 {
+	int ret;
+	struct msm_session *session;
 	struct camera_v4l2_private *sp = fh_to_private(fh);
-
-	return vb2_qbuf(&sp->vb2_q, pb);
+		struct msm_video_device *pvdev = video_drvdata(filep);
+	unsigned int session_id = pvdev->vdev->num;
+	session = msm_session_find(session_id);
+	if (WARN_ON(!session))
+		return -EIO;
+	mutex_lock(&session->lock);
+	ret = vb2_qbuf(&sp->vb2_q, pb);
+	mutex_unlock(&session->lock);
+	return ret;
 }
 
 static int camera_v4l2_dqbuf(struct file *filep, void *fh,
 	struct v4l2_buffer *pb)
 {
+	int ret;
+	struct msm_session *session;
 	struct camera_v4l2_private *sp = fh_to_private(fh);
-
-	return vb2_dqbuf(&sp->vb2_q, pb, filep->f_flags & O_NONBLOCK);
+		struct msm_video_device *pvdev = video_drvdata(filep);
+	unsigned int session_id = pvdev->vdev->num;
+	session = msm_session_find(session_id);
+	if (WARN_ON(!session))
+		return -EIO;
+	mutex_lock(&session->lock);
+	ret = vb2_dqbuf(&sp->vb2_q, pb, filep->f_flags & O_NONBLOCK);
+	mutex_unlock(&session->lock);
+	return ret;
 }
 
 static int camera_v4l2_streamon(struct file *filep, void *fh,
@@ -225,7 +258,7 @@ static int camera_v4l2_streamon(struct file *filep, void *fh,
 
 	rc = vb2_streamon(&sp->vb2_q, buf_type);
 	camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-		MSM_CAMERA_PRIV_STREAM_ON, &event);
+		MSM_CAMERA_PRIV_STREAM_ON, -1, &event);
 
 	rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 	if (rc < 0)
@@ -243,7 +276,7 @@ static int camera_v4l2_streamoff(struct file *filep, void *fh,
 	struct camera_v4l2_private *sp = fh_to_private(fh);
 
 	camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-		MSM_CAMERA_PRIV_STREAM_OFF, &event);
+		MSM_CAMERA_PRIV_STREAM_OFF, -1, &event);
 
 	rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 	if (rc < 0)
@@ -263,7 +296,7 @@ static int camera_v4l2_g_fmt_vid_cap_mplane(struct file *filep, void *fh,
 		struct v4l2_event event;
 
 		camera_pack_event(filep, MSM_CAMERA_GET_PARM,
-			MSM_CAMERA_PRIV_G_FMT, &event);
+			MSM_CAMERA_PRIV_G_FMT, -1, &event);
 
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
@@ -300,7 +333,7 @@ static int camera_v4l2_s_fmt_vid_cap_mplane(struct file *filep, void *fh,
 					user_fmt->plane_sizes[i]);
 
 		camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-			MSM_CAMERA_PRIV_S_FMT, &event);
+			MSM_CAMERA_PRIV_S_FMT, -1, &event);
 
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
@@ -309,6 +342,7 @@ static int camera_v4l2_s_fmt_vid_cap_mplane(struct file *filep, void *fh,
 		rc = camera_check_event_status(&event);
 		if (rc < 0)
 			goto set_fmt_fail;
+		sp->is_vb2_valid = 1;
 	}
 
 	return rc;
@@ -342,7 +376,7 @@ static int camera_v4l2_s_parm(struct file *filep, void *fh,
 	struct camera_v4l2_private *sp = fh_to_private(fh);
 
 	camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-		MSM_CAMERA_PRIV_NEW_STREAM, &event);
+		MSM_CAMERA_PRIV_NEW_STREAM, -1, &event);
 
 	rc = msm_create_stream(event_data->session_id,
 		event_data->stream_id, &sp->vb2_q);
@@ -510,7 +544,7 @@ static int camera_v4l2_open(struct file *filep)
 		if (rc < 0)
 			goto command_ack_q_fail;
 
-		camera_pack_event(filep, MSM_CAMERA_NEW_SESSION, 0, &event);
+		camera_pack_event(filep, MSM_CAMERA_NEW_SESSION, 0, -1, &event);
 		rc = msm_post_event(&event, MSM_POST_EVT_TIMEOUT);
 		if (rc < 0)
 			goto post_fail;
@@ -545,8 +579,8 @@ static unsigned int camera_v4l2_poll(struct file *filep,
 {
 	int rc = 0;
 	struct camera_v4l2_private *sp = fh_to_private(filep->private_data);
-
-	rc = vb2_poll(&sp->vb2_q, filep, wait);
+	if (sp->is_vb2_valid == 1)
+		rc = vb2_poll(&sp->vb2_q, filep, wait);
 
 	poll_wait(filep, &sp->fh.wait, wait);
 	if (v4l2_event_pending(&sp->fh))
@@ -568,7 +602,7 @@ static int camera_v4l2_close(struct file *filep)
 
 	if (atomic_read(&pvdev->opened) == 0) {
 
-		camera_pack_event(filep, MSM_CAMERA_DEL_SESSION, 0, &event);
+		camera_pack_event(filep, MSM_CAMERA_DEL_SESSION, 0, -1, &event);
 
 		/* Donot wait, imaging server may have crashed */
 		msm_post_event(&event, -1);
@@ -579,7 +613,7 @@ static int camera_v4l2_close(struct file *filep)
 
 	} else {
 		camera_pack_event(filep, MSM_CAMERA_SET_PARM,
-			MSM_CAMERA_PRIV_DEL_STREAM, &event);
+			MSM_CAMERA_PRIV_DEL_STREAM, -1, &event);
 
 		/* Donot wait, imaging server may have crashed */
 		msm_post_event(&event, MSM_POST_EVT_TIMEOUT);

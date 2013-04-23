@@ -44,7 +44,6 @@ struct ion_secure_cma_buffer_info {
 	bool is_cached;
 };
 
-static int cma_heap_has_outer_cache;
 /*
  * Create scatter-list for the already allocated DMA buffer.
  * This function could be replace by dma_common_get_sgtable
@@ -53,7 +52,7 @@ static int cma_heap_has_outer_cache;
 int ion_secure_cma_get_sgtable(struct device *dev, struct sg_table *sgt,
 			void *cpu_addr, dma_addr_t handle, size_t size)
 {
-	struct page *page = virt_to_page(cpu_addr);
+	struct page *page = phys_to_page(handle);
 	int ret;
 
 	ret = sg_alloc_table(sgt, 1, GFP_KERNEL);
@@ -73,6 +72,8 @@ static struct ion_secure_cma_buffer_info *__ion_secure_cma_allocate(
 {
 	struct device *dev = heap->priv;
 	struct ion_secure_cma_buffer_info *info;
+	DEFINE_DMA_ATTRS(attrs);
+	dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &attrs);
 
 	dev_dbg(dev, "Request buffer allocation len %ld\n", len);
 
@@ -82,12 +83,7 @@ static struct ion_secure_cma_buffer_info *__ion_secure_cma_allocate(
 		return ION_CMA_ALLOCATE_FAILED;
 	}
 
-	if (!ION_IS_CACHED(flags))
-		info->cpu_addr = dma_alloc_writecombine(dev, len,
-					&(info->handle), 0);
-	else
-		info->cpu_addr = dma_alloc_nonconsistent(dev, len,
-					&(info->handle), 0);
+	info->cpu_addr = dma_alloc_attrs(dev, len, &(info->handle), 0, &attrs);
 
 	if (!info->cpu_addr) {
 		dev_err(dev, "Fail to allocate buffer\n");
@@ -99,8 +95,6 @@ static struct ion_secure_cma_buffer_info *__ion_secure_cma_allocate(
 		dev_err(dev, "Fail to allocate sg table\n");
 		goto err;
 	}
-
-	info->is_cached = ION_IS_CACHED(flags);
 
 	ion_secure_cma_get_sgtable(dev,
 			info->table, info->cpu_addr, info->handle, len);
@@ -122,7 +116,7 @@ static int ion_secure_cma_allocate(struct ion_heap *heap,
 			    unsigned long len, unsigned long align,
 			    unsigned long flags)
 {
-	unsigned long secure_allocation = flags & ION_SECURE;
+	unsigned long secure_allocation = flags & ION_FLAG_SECURE;
 	struct ion_secure_cma_buffer_info *buf = NULL;
 
 	if (!secure_allocation) {
@@ -130,6 +124,13 @@ static int ion_secure_cma_allocate(struct ion_heap *heap,
 			__func__, heap->name, flags);
 		return -ENOMEM;
 	}
+
+	if (ION_IS_CACHED(flags)) {
+		pr_err("%s: cannot allocate cached memory from secure heap %s\n",
+			__func__, heap->name);
+		return -ENOMEM;
+	}
+
 
 	buf = __ion_secure_cma_allocate(heap, buffer, len, align, flags);
 
@@ -191,152 +192,23 @@ static int ion_secure_cma_mmap(struct ion_heap *mapper,
 			struct ion_buffer *buffer,
 			struct vm_area_struct *vma)
 {
+	pr_info("%s: mmaping from secure heap %s disallowed\n",
+		__func__, mapper->name);
 	return -EINVAL;
 }
 
 static void *ion_secure_cma_map_kernel(struct ion_heap *heap,
 				struct ion_buffer *buffer)
 {
-	struct ion_secure_cma_buffer_info *info = buffer->priv_virt;
-
-	atomic_inc(&info->secure.map_cnt);
-	return info->cpu_addr;
+	pr_info("%s: kernel mapping from secure heap %s disallowed\n",
+		__func__, heap->name);
+	return NULL;
 }
 
 static void ion_secure_cma_unmap_kernel(struct ion_heap *heap,
 				 struct ion_buffer *buffer)
 {
-	struct ion_secure_cma_buffer_info *info = buffer->priv_virt;
-
-	atomic_dec(&info->secure.map_cnt);
 	return;
-}
-
-int ion_secure_cma_map_iommu(struct ion_buffer *buffer,
-				struct ion_iommu_map *data,
-				unsigned int domain_num,
-				unsigned int partition_num,
-				unsigned long align,
-				unsigned long iova_length,
-				unsigned long flags)
-{
-	int ret = 0;
-	struct iommu_domain *domain;
-	unsigned long extra;
-	unsigned long extra_iova_addr;
-	struct ion_secure_cma_buffer_info *info = buffer->priv_virt;
-	struct sg_table *table = info->table;
-	int prot = IOMMU_WRITE | IOMMU_READ;
-
-	data->mapped_size = iova_length;
-
-	if (!msm_use_iommu()) {
-		data->iova_addr = info->handle;
-		return 0;
-	}
-
-	extra = iova_length - buffer->size;
-
-	ret = msm_allocate_iova_address(domain_num, partition_num,
-						data->mapped_size, align,
-						&data->iova_addr);
-
-	if (ret)
-		goto out;
-
-	domain = msm_get_iommu_domain(domain_num);
-
-	if (!domain) {
-		ret = -EINVAL;
-		goto out1;
-	}
-
-	ret = iommu_map_range(domain, data->iova_addr, table->sgl,
-				buffer->size, prot);
-
-	if (ret) {
-		pr_err("%s: could not map %lx in domain %p\n",
-			__func__, data->iova_addr, domain);
-		goto out1;
-	}
-
-	extra_iova_addr = data->iova_addr + buffer->size;
-	if (extra) {
-		unsigned long phys_addr = sg_phys(table->sgl);
-		ret = msm_iommu_map_extra(domain, extra_iova_addr, phys_addr,
-					extra, SZ_4K, prot);
-		if (ret)
-			goto out2;
-	}
-	return ret;
-
-out2:
-	iommu_unmap_range(domain, data->iova_addr, buffer->size);
-out1:
-	msm_free_iova_address(data->iova_addr, domain_num, partition_num,
-				data->mapped_size);
-out:
-	return ret;
-}
-
-
-void ion_secure_cma_unmap_iommu(struct ion_iommu_map *data)
-{
-	unsigned int domain_num;
-	unsigned int partition_num;
-	struct iommu_domain *domain;
-
-	if (!msm_use_iommu())
-		return;
-
-	domain_num = iommu_map_domain(data);
-	partition_num = iommu_map_partition(data);
-
-	domain = msm_get_iommu_domain(domain_num);
-
-	if (!domain) {
-		WARN(1, "Could not get domain %d. Corruption?\n", domain_num);
-		return;
-	}
-
-	iommu_unmap_range(domain, data->iova_addr, data->mapped_size);
-	msm_free_iova_address(data->iova_addr, domain_num, partition_num,
-				data->mapped_size);
-
-	return;
-}
-
-int ion_secure_cma_cache_ops(struct ion_heap *heap,
-			struct ion_buffer *buffer, void *vaddr,
-			unsigned int offset, unsigned int length,
-			unsigned int cmd)
-{
-	void (*outer_cache_op)(phys_addr_t, phys_addr_t);
-
-	switch (cmd) {
-	case ION_IOC_CLEAN_CACHES:
-		dmac_clean_range(vaddr, vaddr + length);
-		outer_cache_op = outer_clean_range;
-		break;
-	case ION_IOC_INV_CACHES:
-		dmac_inv_range(vaddr, vaddr + length);
-		outer_cache_op = outer_inv_range;
-		break;
-	case ION_IOC_CLEAN_INV_CACHES:
-		dmac_flush_range(vaddr, vaddr + length);
-		outer_cache_op = outer_flush_range;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	if (cma_heap_has_outer_cache) {
-		struct ion_secure_cma_buffer_info *info = buffer->priv_virt;
-
-		outer_cache_op(info->handle, info->handle + length);
-	}
-
-	return 0;
 }
 
 static int ion_secure_cma_print_debug(struct ion_heap *heap, struct seq_file *s,
@@ -377,9 +249,6 @@ static struct ion_heap_ops ion_secure_cma_ops = {
 	.map_user = ion_secure_cma_mmap,
 	.map_kernel = ion_secure_cma_map_kernel,
 	.unmap_kernel = ion_secure_cma_unmap_kernel,
-	.map_iommu = ion_secure_cma_map_iommu,
-	.unmap_iommu = ion_secure_cma_unmap_iommu,
-	.cache_op = ion_secure_cma_cache_ops,
 	.print_debug = ion_secure_cma_print_debug,
 	.secure_buffer = ion_cp_secure_buffer,
 	.unsecure_buffer = ion_cp_unsecure_buffer,
@@ -399,7 +268,6 @@ struct ion_heap *ion_secure_cma_heap_create(struct ion_platform_heap *data)
 	 * used to make the link with reserved CMA memory */
 	heap->priv = data->priv;
 	heap->type = ION_HEAP_TYPE_SECURE_DMA;
-	cma_heap_has_outer_cache = data->has_outer_cache;
 	return heap;
 }
 

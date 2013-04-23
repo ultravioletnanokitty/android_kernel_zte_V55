@@ -231,6 +231,7 @@ struct msm_hs_port {
 #define BUS_SCALING 1
 #define BUS_RESET 0
 #define RX_FLUSH_COMPLETE_TIMEOUT 300 /* In jiffies */
+#define BLSP_UART_CLK_FMAX 63160000
 
 static struct dentry *debug_base;
 static struct msm_hs_port q_uart_port[UARTDM_NR];
@@ -630,7 +631,7 @@ static int msm_hs_spsconnect_rx(struct uart_port *uport)
 		"pipe_handle=0x%x ret=%d", (u32)sps_pipe_handle, ret);
 		return ret;
 	}
-	/* Register callback event for EOT (End of transfer) event. */
+	/* Register callback event for DESC_DONE event. */
 	ret = sps_register_event(sps_pipe_handle, sps_event);
 	if (ret) {
 		pr_err("msm_serial_hs: sps_connect() failed for rx!!\n"
@@ -750,6 +751,17 @@ static void msm_hs_set_bps_locked(struct uart_port *uport,
 	mb();
 	if (bps > 460800) {
 		uport->uartclk = bps * 16;
+		if (is_blsp_uart(msm_uport)) {
+			/* BLSP based UART supports maximum clock frequency
+			 * of 63.16 Mhz. With this (63.16 Mhz) clock frequency
+			 * UART can support baud rate of 3.94 Mbps which is
+			 * equivalent to 4 Mbps.
+			 * UART hardware is robust enough to handle this
+			 * deviation to achieve baud rate ~4 Mbps.
+			 */
+			if (bps == 4000000)
+				uport->uartclk = BLSP_UART_CLK_FMAX;
+		}
 	} else {
 		uport->uartclk = 7372800;
 	}
@@ -952,7 +964,10 @@ static void msm_hs_set_termios(struct uart_port *uport,
 		 */
 		mb();
 		if (is_blsp_uart(msm_uport)) {
-			sps_disconnect(sps_pipe_handle);
+			ret = sps_disconnect(sps_pipe_handle);
+			if (ret)
+				pr_err("%s(): sps_disconnect failed\n",
+							__func__);
 			msm_hs_spsconnect_rx(uport);
 			msm_serial_hs_rx_tlet((unsigned long) &rx->tlet);
 		} else {
@@ -1011,8 +1026,12 @@ static void hsuart_disconnect_rx_endpoint_work(struct work_struct *w)
 						disconnect_rx_endpoint);
 	struct msm_hs_rx *rx = &msm_uport->rx;
 	struct sps_pipe *sps_pipe_handle = rx->prod.pipe_handle;
+	int ret = 0;
 
-	sps_disconnect(sps_pipe_handle);
+	ret = sps_disconnect(sps_pipe_handle);
+	if (ret)
+		pr_err("%s(): sps_disconnect failed\n", __func__);
+
 	wake_lock_timeout(&msm_uport->rx.wake_lock, HZ / 2);
 	msm_uport->rx.flush = FLUSH_SHUTDOWN;
 	wake_up(&msm_uport->rx.wait);
@@ -1146,7 +1165,7 @@ static void msm_hs_start_rx_locked(struct uart_port *uport)
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 	struct msm_hs_rx *rx = &msm_uport->rx;
 	struct sps_pipe *sps_pipe_handle;
-	u32 flags = SPS_IOVEC_FLAG_EOT;
+	u32 flags = SPS_IOVEC_FLAG_INT;
 	unsigned int buffer_pending = msm_uport->rx.buffer_pending;
 	unsigned int data;
 
@@ -1272,7 +1291,7 @@ static void msm_serial_hs_rx_tlet(unsigned long tlet_ptr)
 	struct sps_event_notify *notify;
 	struct msm_hs_rx *rx;
 	struct sps_pipe *sps_pipe_handle;
-	u32 sps_flags = SPS_IOVEC_FLAG_EOT;
+	u32 sps_flags = SPS_IOVEC_FLAG_INT;
 
 	msm_uport = container_of((struct tasklet_struct *)tlet_ptr,
 				 struct msm_hs_port, rx.tlet);
@@ -1687,8 +1706,6 @@ static int msm_hs_check_clock_off(struct uart_port *uport)
 	int ret;
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 	struct circ_buf *tx_buf = &uport->state->xmit;
-	struct msm_hs_rx *rx = &msm_uport->rx;
-	struct sps_pipe *sps_pipe_handle = rx->prod.pipe_handle;
 
 	mutex_lock(&msm_uport->clk_mutex);
 	spin_lock_irqsave(&uport->lock, flags);
@@ -1733,7 +1750,6 @@ static int msm_hs_check_clock_off(struct uart_port *uport)
 		if (is_blsp_uart(msm_uport)) {
 			msm_uport->clk_req_off_state =
 				CLK_REQ_OFF_RXSTALE_FLUSHED;
-			sps_disconnect(sps_pipe_handle);
 		}
 		mutex_unlock(&msm_uport->clk_mutex);
 		return 0;  /* RXSTALE flush not complete - retry */
@@ -1907,6 +1923,22 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 
 	return IRQ_HANDLED;
 }
+
+/*
+ * Find UART device port using its port index value.
+ */
+struct uart_port *msm_hs_get_uart_port(int port_index)
+{
+	int i;
+
+	for (i = 0; i < UARTDM_NR; i++) {
+		if (q_uart_port[i].uport.line == port_index)
+			return &q_uart_port[i].uport;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(msm_hs_get_uart_port);
 
 /* request to turn off uart clock once pending TX is flushed */
 void msm_hs_request_clock_off(struct uart_port *uport) {
@@ -2626,7 +2658,7 @@ static int msm_hs_sps_init_ep_conn(struct msm_hs_port *msm_uport,
 		sps_config->mode = SPS_MODE_SRC;
 		sps_config->src_pipe_index = msm_uport->bam_rx_ep_pipe_index;
 		sps_config->dest_pipe_index = 0;
-		sps_config->options = SPS_O_EOT;
+		sps_config->options = SPS_O_DESC_DONE;
 	} else {
 		/* For UART consumer transfer, source is system memory
 		where as destination is UART peripheral */
@@ -2654,11 +2686,14 @@ static int msm_hs_sps_init_ep_conn(struct msm_hs_port *msm_uport,
 	memset(sps_config->desc.base, 0x00, sps_config->desc.size);
 
 	sps_event->mode = SPS_TRIGGER_CALLBACK;
-	sps_event->options = SPS_O_EOT;
-	if (is_producer)
+
+	if (is_producer) {
 		sps_event->callback = msm_hs_sps_rx_callback;
-	else
+		sps_event->options = SPS_O_DESC_DONE;
+	} else {
 		sps_event->callback = msm_hs_sps_tx_callback;
+		sps_event->options = SPS_O_EOT;
+	}
 
 	sps_event->user = (void *)msm_uport;
 
@@ -3132,7 +3167,10 @@ static void msm_hs_shutdown(struct uart_port *uport)
 				pr_err("%s():HSUART TX Stalls.\n", __func__);
 		} else {
 			/* BAM Disconnect for TX */
-			sps_disconnect(sps_pipe_handle);
+			ret = sps_disconnect(sps_pipe_handle);
+			if (ret)
+				pr_err("%s(): sps_disconnect failed\n",
+							__func__);
 		}
 	}
 	tasklet_kill(&msm_uport->tx.tlet);

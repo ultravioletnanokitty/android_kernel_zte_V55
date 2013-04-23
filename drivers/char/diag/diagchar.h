@@ -20,6 +20,7 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <linux/sched.h>
+#include <linux/wakelock.h>
 #include <mach/msm_smd.h>
 #include <asm/atomic.h>
 #include <asm/mach-types.h>
@@ -36,6 +37,7 @@
 #define HDLC_OUT_BUF_SIZE	8192
 #define POOL_TYPE_COPY		1
 #define POOL_TYPE_HDLC		2
+#define POOL_TYPE_USER		3
 #define POOL_TYPE_WRITE_STRUCT	4
 #define POOL_TYPE_HSIC		5
 #define POOL_TYPE_HSIC_2	6
@@ -54,7 +56,7 @@
 #define MSG_MASK_SIZE 10000
 #define LOG_MASK_SIZE 8000
 #define EVENT_MASK_SIZE 1000
-#define USER_SPACE_DATA 8000
+#define USER_SPACE_DATA 8192
 #define PKT_SIZE 4096
 #define MAX_EQUIP_ID 15
 #define DIAG_CTRL_MSG_LOG_MASK	9
@@ -75,6 +77,9 @@
  */
 #define DIAG_STATUS_OPEN (0x00010000)	/* DCI channel open status mask   */
 #define DIAG_STATUS_CLOSED (0x00020000)	/* DCI channel closed status mask */
+
+#define MODE_REALTIME 1
+#define MODE_NONREALTIME 0
 
 #define NUM_SMD_DATA_CHANNELS 3
 #define NUM_SMD_CONTROL_CHANNELS 3
@@ -143,6 +148,14 @@ struct diag_client_map {
 	int pid;
 };
 
+struct diag_nrt_wake_lock {
+	int enabled;
+	int ref_count;
+	int copy_count;
+	struct wake_lock read_lock;
+	spinlock_t read_spinlock;
+};
+
 /* This structure is defined in USB header file */
 #ifndef CONFIG_DIAG_OVER_USB
 struct diag_request {
@@ -172,6 +185,8 @@ struct diag_smd_info {
 
 	struct diag_request *write_ptr_1;
 	struct diag_request *write_ptr_2;
+
+	struct diag_nrt_wake_lock nrt_lock;
 
 	struct work_struct diag_read_smd_work;
 	struct work_struct diag_notify_update_smd_work;
@@ -220,16 +235,20 @@ struct diagchar_dev {
 	unsigned int poolsize;
 	unsigned int itemsize_hdlc;
 	unsigned int poolsize_hdlc;
+	unsigned int itemsize_user;
+	unsigned int poolsize_user;
 	unsigned int itemsize_write_struct;
 	unsigned int poolsize_write_struct;
 	unsigned int debug_flag;
 	/* State for the mempool for the char driver */
 	mempool_t *diagpool;
 	mempool_t *diag_hdlc_pool;
+	mempool_t *diag_user_pool;
 	mempool_t *diag_write_struct_pool;
 	struct mutex diagmem_mutex;
 	int count;
 	int count_hdlc_pool;
+	int count_user_pool;
 	int count_write_struct_pool;
 	int used;
 	/* Buffers for masks */
@@ -239,12 +258,12 @@ struct diagchar_dev {
 	struct diag_ctrl_msg_mask *msg_mask;
 	struct diag_ctrl_feature_mask *feature_mask;
 	/* State for diag forwarding */
+	int real_time_mode;
 	struct diag_smd_info smd_data[NUM_SMD_DATA_CHANNELS];
 	struct diag_smd_info smd_cntl[NUM_SMD_CONTROL_CHANNELS];
 	struct diag_smd_info smd_dci[NUM_SMD_DCI_CHANNELS];
 	unsigned char *usb_buf_out;
 	unsigned char *apps_rsp_buf;
-	unsigned char *user_space_data;
 	/* buffer for updating mask to peripherals */
 	unsigned char *buf_msg_mask_update;
 	unsigned char *buf_log_mask_update;
@@ -255,11 +274,14 @@ struct diagchar_dev {
 	unsigned char *hdlc_buf;
 	unsigned hdlc_count;
 	unsigned hdlc_escape;
+	int in_busy_pktdata;
 #ifdef CONFIG_DIAG_OVER_USB
 	int usb_connected;
 	struct usb_diag_ch *legacy_ch;
 	struct work_struct diag_proc_hdlc_work;
 	struct work_struct diag_read_work;
+	struct work_struct diag_usb_connect_work;
+	struct work_struct diag_usb_disconnect_work;
 #endif
 	struct workqueue_struct *diag_wq;
 	struct work_struct diag_drain_work;
@@ -296,6 +318,7 @@ struct diagchar_dev {
 #ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 	spinlock_t hsic_ready_spinlock;
 	/* common for all bridges */
+	struct work_struct diag_connect_work;
 	struct work_struct diag_disconnect_work;
 	/* SGLTE variables */
 	int lcid;

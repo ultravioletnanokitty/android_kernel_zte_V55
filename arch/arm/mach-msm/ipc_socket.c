@@ -194,7 +194,7 @@ msg_build_failure:
 static int msm_ipc_router_extract_msg(struct msghdr *m,
 				      struct sk_buff_head *msg_head)
 {
-	struct sockaddr_msm_ipc *addr = (struct sockaddr_msm_ipc *)m->msg_name;
+	struct sockaddr_msm_ipc *addr;
 	struct rr_header *hdr;
 	struct sk_buff *temp;
 	int offset = 0, data_len = 0, copy_len;
@@ -203,10 +203,11 @@ static int msm_ipc_router_extract_msg(struct msghdr *m,
 		pr_err("%s: Invalid pointers passed\n", __func__);
 		return -EINVAL;
 	}
+	addr = (struct sockaddr_msm_ipc *)m->msg_name;
 
 	temp = skb_peek(msg_head);
 	hdr = (struct rr_header *)(temp->data);
-	if (addr || (hdr->src_port_id != IPC_ROUTER_ADDRESS)) {
+	if (addr && (hdr->src_port_id != IPC_ROUTER_ADDRESS)) {
 		addr->family = AF_MSM_IPC;
 		addr->address.addrtype = MSM_IPC_ADDR_ID;
 		addr->address.addr.port_addr.node_id = hdr->src_node_id;
@@ -366,7 +367,8 @@ static int msm_ipc_router_sendmsg(struct kiocb *iocb, struct socket *sock,
 	if (port_ptr->type == CLIENT_PORT)
 		wait_for_irsc_completion();
 	ipc_buf = skb_peek(msg);
-	msm_ipc_router_ipc_log(IPC_SEND, ipc_buf, port_ptr);
+	if (ipc_buf)
+		msm_ipc_router_ipc_log(IPC_SEND, ipc_buf, port_ptr);
 	ret = msm_ipc_router_send_to(port_ptr, msg, &dest->address);
 	if (ret == (IPC_ROUTER_HDR_SIZE + total_len))
 		ret = total_len;
@@ -414,7 +416,7 @@ static int msm_ipc_router_recvmsg(struct kiocb *iocb, struct socket *sock,
 		}
 
 		if (timeout == 0)
-			return -ETIMEDOUT;
+			return 0;
 		lock_sock(sk);
 		mutex_lock(&port_ptr->port_rx_q_lock);
 	}
@@ -428,7 +430,8 @@ static int msm_ipc_router_recvmsg(struct kiocb *iocb, struct socket *sock,
 
 	ret = msm_ipc_router_extract_msg(m, msg);
 	ipc_buf = skb_peek(msg);
-	msm_ipc_router_ipc_log(IPC_RECV, ipc_buf, port_ptr);
+	if (ipc_buf)
+		msm_ipc_router_ipc_log(IPC_RECV, ipc_buf, port_ptr);
 	msm_ipc_router_release_msg(msg);
 	msg = NULL;
 	release_sock(sk);

@@ -81,6 +81,8 @@ enum {
 	IDX_AFE_PORT_ID_TERTIARY_MI2S_TX = 39,
 	IDX_AFE_PORT_ID_PRIMARY_MI2S_RX = 40,
 	IDX_AFE_PORT_ID_PRIMARY_MI2S_TX = 41,
+	IDX_AFE_PORT_ID_SECONDARY_PCM_RX = 42,
+	IDX_AFE_PORT_ID_SECONDARY_PCM_TX = 43,
 	IDX_GLOBAL_CFG,
 	AFE_MAX_PORTS
 };
@@ -125,6 +127,14 @@ struct afe_audio_client {
 	struct afe_audio_port_data port[2];
 	wait_queue_head_t      cmd_wait;
 	uint32_t               mem_map_handle;
+};
+
+struct aanc_data {
+	bool aanc_active;
+	uint16_t aanc_rx_port;
+	uint16_t aanc_tx_port;
+	uint32_t aanc_rx_port_sample_rate;
+	uint32_t aanc_tx_port_sample_rate;
 };
 
 int afe_open(u16 port_id, union afe_port_config *afe_config, int rate);
@@ -188,4 +198,5 @@ enum afe_mad_type afe_port_get_mad_type(u16 port_id);
 int afe_set_config(enum afe_config_type config_type, void *config_data,
 		   int arg);
 
+void afe_set_aanc_info(struct aanc_data *aanc_info);
 #endif /* __Q6AFE_V2_H__ */

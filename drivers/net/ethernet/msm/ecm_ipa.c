@@ -18,25 +18,21 @@
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/sched.h>
-#include <linux/spinlock.h>
+#include <linux/atomic.h>
 #include <mach/ecm_ipa.h>
 
 #define DRIVER_NAME "ecm_ipa"
-#define DRIVER_VERSION "12-Mar-2013"
+#define DRIVER_VERSION "20-Mar-2013"
 #define ECM_IPA_IPV4_HDR_NAME "ecm_eth_ipv4"
 #define ECM_IPA_IPV6_HDR_NAME "ecm_eth_ipv6"
 #define IPA_TO_USB_CLIENT	IPA_CLIENT_USB_CONS
 #define INACTIVITY_MSEC_DELAY 100
+#define DEFAULT_OUTSTANDING_HIGH 64
+#define DEFAULT_OUTSTANDING_LOW 32
+
 #define ECM_IPA_ERROR(fmt, args...) \
 	pr_err(DRIVER_NAME "@%s@%d@ctx:%s: "\
 			fmt, __func__, __LINE__, current->comm, ## args)
-#ifdef ECM_IPA_DEBUG_ON
-#define ECM_IPA_DEBUG(fmt, args...) \
-	pr_err(DRIVER_NAME "@%s@%d@ctx:%s: "\
-			fmt, __func__, __LINE__, current->comm, ## args)
-#else /* ECM_IPA_DEBUG_ON */
-#define ECM_IPA_DEBUG(fmt, args...)
-#endif /* ECM_IPA_DEBUG_ON */
 
 #define NULL_CHECK(ptr) \
 	do { \
@@ -47,13 +43,11 @@
 	} \
 	while (0)
 
-#define ECM_IPA_LOG_ENTRY() ECM_IPA_DEBUG("begin\n")
-#define ECM_IPA_LOG_EXIT() ECM_IPA_DEBUG("end\n")
+#define ECM_IPA_LOG_ENTRY() pr_debug("begin\n")
+#define ECM_IPA_LOG_EXIT() pr_debug("end\n")
 
 /**
  * struct ecm_ipa_dev - main driver context parameters
- * @ack_spinlock: protect last sent skb
- * @last_out_skb: last sent skb saved until Tx notify is received from IPA
  * @net: network interface struct implemented by this driver
  * @folder: debugfs folder for various debuging switches
  * @tx_enable: flag that enable/disable Tx path to continue to IPA
@@ -63,15 +57,19 @@
  * @tx_file: saved debugfs entry to allow cleanup
  * @rx_file: saved debugfs entry to allow cleanup
  * @rm_file: saved debugfs entry to allow cleanup
+ * @outstanding_high_file saved debugfs entry to allow cleanup
+ * @outstanding_low_file saved debugfs entry to allow cleanup
  * @dma_file: saved debugfs entry to allow cleanup
  * @eth_ipv4_hdr_hdl: saved handle for ipv4 header-insertion table
  * @eth_ipv6_hdr_hdl: saved handle for ipv6 header-insertion table
  * @usb_to_ipa_hdl: save handle for IPA pipe operations
  * @ipa_to_usb_hdl: save handle for IPA pipe operations
+ * @outstanding_pkts: number of packets sent to IPA without TX complete ACKed
+ * @outstanding_high: number of outstanding packets allowed
+ * @outstanding_low: number of outstanding packets which shall cause
+ *  to netdev queue start (after stopped due to outstanding_high reached)
  */
 struct ecm_ipa_dev {
-	spinlock_t ack_spinlock;
-	struct sk_buff *last_out_skb;
 	struct net_device *net;
 	bool tx_enable;
 	bool rx_enable;
@@ -81,11 +79,16 @@ struct ecm_ipa_dev {
 	struct dentry *tx_file;
 	struct dentry *rx_file;
 	struct dentry *rm_file;
+	struct dentry *outstanding_high_file;
+	struct dentry *outstanding_low_file;
 	struct dentry *dma_file;
 	uint32_t eth_ipv4_hdr_hdl;
 	uint32_t eth_ipv6_hdr_hdl;
 	u32 usb_to_ipa_hdl;
 	u32 ipa_to_usb_hdl;
+	atomic_t outstanding_pkts;
+	u8 outstanding_high;
+	u8 outstanding_low;
 };
 
 /**
@@ -111,7 +114,7 @@ static netdev_tx_t ecm_ipa_start_xmit(struct sk_buff *skb,
 static void ecm_ipa_rm_notify(void *user_data, enum ipa_rm_event event,
 		unsigned long data);
 static int ecm_ipa_create_rm_resource(struct ecm_ipa_dev *dev);
-static void ecm_ipa_destory_rm_resource(void);
+static void ecm_ipa_destory_rm_resource(struct ecm_ipa_dev *dev);
 static bool rx_filter(struct sk_buff *skb);
 static bool tx_filter(struct sk_buff *skb);
 static bool rm_enabled(struct ecm_ipa_dev *dev);
@@ -192,7 +195,7 @@ int ecm_ipa_init(ecm_ipa_callback *ecm_ipa_rx_dp_notify,
 	struct net_device *net;
 	struct ecm_ipa_dev *dev;
 	ECM_IPA_LOG_ENTRY();
-	ECM_IPA_DEBUG("%s version %s\n", DRIVER_NAME, DRIVER_VERSION);
+	pr_debug("%s version %s\n", DRIVER_NAME, DRIVER_VERSION);
 	NULL_CHECK(ecm_ipa_rx_dp_notify);
 	NULL_CHECK(ecm_ipa_tx_dp_notify);
 	NULL_CHECK(priv);
@@ -202,22 +205,24 @@ int ecm_ipa_init(ecm_ipa_callback *ecm_ipa_rx_dp_notify,
 		ECM_IPA_ERROR("fail to allocate etherdev\n");
 		goto fail_alloc_etherdev;
 	}
-	ECM_IPA_DEBUG("etherdev was successfully allocated\n");
+	pr_debug("etherdev was successfully allocated\n");
 	dev = netdev_priv(net);
 	memset(dev, 0, sizeof(*dev));
 	dev->tx_enable = true;
 	dev->rx_enable = true;
-	spin_lock_init(&dev->ack_spinlock);
+	atomic_set(&dev->outstanding_pkts, 0);
+	dev->outstanding_high = DEFAULT_OUTSTANDING_HIGH;
+	dev->outstanding_low = DEFAULT_OUTSTANDING_LOW;
 	dev->net = net;
 	ecm_ipa_ctx = dev;
 	*priv = (void *)dev;
 	snprintf(net->name, sizeof(net->name), "%s%%d", "ecm");
 	net->netdev_ops = &ecm_ipa_netdev_ops;
-	ECM_IPA_DEBUG("internal data structures were intialized\n");
+	pr_debug("internal data structures were intialized\n");
 	ret = ecm_ipa_debugfs_init(dev);
 	if (ret)
 		goto fail_debugfs;
-	ECM_IPA_DEBUG("debugfs entries were created\n");
+	pr_debug("debugfs entries were created\n");
 	*ecm_ipa_rx_dp_notify = ecm_ipa_packet_receive_notify;
 	*ecm_ipa_tx_dp_notify = ecm_ipa_tx_complete_notify;
 	ECM_IPA_LOG_EXIT();
@@ -382,7 +387,7 @@ static void ecm_ipa_deregister_properties(void)
 	ECM_IPA_LOG_ENTRY();
 	result = ipa_deregister_intf("ecm0");
 	if (result)
-		ECM_IPA_DEBUG("Fail on Tx prop deregister\n");
+		pr_debug("Fail on Tx prop deregister\n");
 	ECM_IPA_LOG_EXIT();
 	return;
 }
@@ -415,14 +420,14 @@ int ecm_ipa_configure(u8 host_ethaddr[], u8 device_ethaddr[],
 	NULL_CHECK(dev);
 	net = dev->net;
 	NULL_CHECK(net);
-	ECM_IPA_DEBUG("host_ethaddr=%pM device_ethaddr=%pM\n",
+	pr_debug("host_ethaddr=%pM device_ethaddr=%pM\n",
 					host_ethaddr, device_ethaddr);
 	result = ecm_ipa_create_rm_resource(dev);
 	if (result) {
 		ECM_IPA_ERROR("fail on RM create\n");
 		return -EINVAL;
 	}
-	ECM_IPA_DEBUG("RM resource was created\n");
+	pr_debug("RM resource was created\n");
 	netif_carrier_off(dev->net);
 	result = ecm_ipa_set_device_ethernet_addr(net->dev_addr,
 			device_ethaddr);
@@ -435,19 +440,19 @@ int ecm_ipa_configure(u8 host_ethaddr[], u8 device_ethaddr[],
 		ECM_IPA_ERROR("fail on ipa rules set\n");
 		goto fail_set_device_ethernet;
 	}
-	ECM_IPA_DEBUG("Ethernet header insertion was set\n");
+	pr_debug("Ethernet header insertion was set\n");
 	result = ecm_ipa_register_properties();
 	if (result) {
 		ECM_IPA_ERROR("fail on properties set\n");
 		goto fail_register_tx;
 	}
-	ECM_IPA_DEBUG("ECM 2 Tx and 2 Rx properties were registered\n");
+	pr_debug("ECM 2 Tx and 2 Rx properties were registered\n");
 	result = register_netdev(net);
 	if (result) {
 		ECM_IPA_ERROR("register_netdev failed: %d\n", result);
 		goto fail_register_netdev;
 	}
-	ECM_IPA_DEBUG("register_netdev succeeded\n");
+	pr_debug("register_netdev succeeded\n");
 	ECM_IPA_LOG_EXIT();
 	return 0;
 fail_register_netdev:
@@ -455,7 +460,7 @@ fail_register_netdev:
 fail_register_tx:
 fail_set_device_ethernet:
 	ecm_ipa_rules_destroy(dev);
-	ecm_ipa_destory_rm_resource();
+	ecm_ipa_destory_rm_resource(dev);
 	free_netdev(net);
 	return result;
 }
@@ -467,7 +472,7 @@ int ecm_ipa_connect(u32 usb_to_ipa_hdl, u32 ipa_to_usb_hdl,
 	struct ecm_ipa_dev *dev = priv;
 	ECM_IPA_LOG_ENTRY();
 	NULL_CHECK(priv);
-	ECM_IPA_DEBUG("usb_to_ipa_hdl = %d, ipa_to_usb_hdl = %d\n",
+	pr_debug("usb_to_ipa_hdl = %d, ipa_to_usb_hdl = %d\n",
 					usb_to_ipa_hdl, ipa_to_usb_hdl);
 	if (!usb_to_ipa_hdl || usb_to_ipa_hdl >= IPA_CLIENT_MAX) {
 		ECM_IPA_ERROR("usb_to_ipa_hdl(%d) is not a valid ipa handle\n",
@@ -511,10 +516,10 @@ static void ecm_ipa_rm_notify(void *user_data, enum ipa_rm_event event,
 	ECM_IPA_LOG_ENTRY();
 	if (event == IPA_RM_RESOURCE_GRANTED &&
 			netif_queue_stopped(dev->net)) {
-		ECM_IPA_DEBUG("Resource Granted - waking queue\n");
+		pr_debug("Resource Granted - waking queue\n");
 		netif_wake_queue(dev->net);
 	} else {
-		ECM_IPA_DEBUG("Resource released\n");
+		pr_debug("Resource released\n");
 	}
 	ECM_IPA_LOG_EXIT();
 }
@@ -524,6 +529,10 @@ static int ecm_ipa_create_rm_resource(struct ecm_ipa_dev *dev)
 	struct ipa_rm_create_params create_params = {0};
 	int result;
 	ECM_IPA_LOG_ENTRY();
+	if (!dev->rm_enable) {
+		pr_debug("RM feature not used\n");
+		return 0;
+	}
 	create_params.name = IPA_RM_RESOURCE_STD_ECM_PROD;
 	create_params.reg_params.user_data = dev;
 	create_params.reg_params.notify_cb = ecm_ipa_rm_notify;
@@ -532,7 +541,7 @@ static int ecm_ipa_create_rm_resource(struct ecm_ipa_dev *dev)
 		ECM_IPA_ERROR("Fail on ipa_rm_create_resource\n");
 		goto fail_rm_create;
 	}
-	ECM_IPA_DEBUG("rm client was created");
+	pr_debug("rm client was created");
 
 	result = ipa_rm_inactivity_timer_init(IPA_RM_RESOURCE_STD_ECM_PROD,
 			INACTIVITY_MSEC_DELAY);
@@ -540,14 +549,14 @@ static int ecm_ipa_create_rm_resource(struct ecm_ipa_dev *dev)
 		ECM_IPA_ERROR("Fail on ipa_rm_inactivity_timer_init\n");
 		goto fail_it;
 	}
-	ECM_IPA_DEBUG("rm_it client was created");
+	pr_debug("rm_it client was created");
 
 	result = ipa_rm_add_dependency(IPA_RM_RESOURCE_STD_ECM_PROD,
 				IPA_RM_RESOURCE_USB_CONS);
 	if (result)
 		ECM_IPA_ERROR("unable to add dependency (%d)\n", result);
 
-	ECM_IPA_DEBUG("rm dependency was set\n");
+	pr_debug("rm dependency was set\n");
 
 	ECM_IPA_LOG_EXIT();
 	return 0;
@@ -557,10 +566,11 @@ fail_rm_create:
 	return result;
 }
 
-static void ecm_ipa_destory_rm_resource(void)
+static void ecm_ipa_destory_rm_resource(struct ecm_ipa_dev *dev)
 {
 	ECM_IPA_LOG_ENTRY();
-
+	if (!dev->rm_enable)
+		return;
 	ipa_rm_delete_dependency(IPA_RM_RESOURCE_STD_ECM_PROD,
 			IPA_RM_RESOURCE_USB_CONS);
 	ipa_rm_inactivity_timer_destroy(IPA_RM_RESOURCE_STD_ECM_PROD);
@@ -596,7 +606,7 @@ static int ecm_ipa_open(struct net_device *net)
 static int ecm_ipa_stop(struct net_device *net)
 {
 	ECM_IPA_LOG_ENTRY();
-	ECM_IPA_DEBUG("stopping net device\n");
+	pr_debug("stopping net device\n");
 	netif_stop_queue(net);
 	ECM_IPA_LOG_EXIT();
 	return 0;
@@ -616,15 +626,15 @@ void ecm_ipa_cleanup(void *priv)
 		ECM_IPA_ERROR("dev NULL pointer\n");
 		return;
 	}
-	if (rm_enabled(dev)) {
-		ecm_ipa_destory_rm_resource();
-		ecm_ipa_debugfs_destroy(dev);
-	}
+
+	ecm_ipa_destory_rm_resource(dev);
+	ecm_ipa_debugfs_destroy(dev);
+
 	if (!dev->net) {
 		unregister_netdev(dev->net);
 		free_netdev(dev->net);
 	}
-	ECM_IPA_DEBUG("cleanup done\n");
+	pr_debug("cleanup done\n");
 	ecm_ipa_ctx = NULL;
 	ECM_IPA_LOG_EXIT();
 	return ;
@@ -669,7 +679,6 @@ static netdev_tx_t ecm_ipa_start_xmit(struct sk_buff *skb,
 	int ret;
 	netdev_tx_t status = NETDEV_TX_BUSY;
 	struct ecm_ipa_dev *dev = netdev_priv(net);
-	unsigned long flags;
 
 	if (unlikely(netif_queue_stopped(net))) {
 		ECM_IPA_ERROR("interface queue is stopped\n");
@@ -678,34 +687,35 @@ static netdev_tx_t ecm_ipa_start_xmit(struct sk_buff *skb,
 
 	if (unlikely(tx_filter(skb))) {
 		dev_kfree_skb_any(skb);
-		ECM_IPA_DEBUG("packet got filtered out on Tx path\n");
+		pr_debug("packet got filtered out on Tx path\n");
 		status = NETDEV_TX_OK;
 		goto out;
 	}
 	ret = resource_request(dev);
 	if (ret) {
-		ECM_IPA_DEBUG("Waiting to resource\n");
+		pr_debug("Waiting to resource\n");
 		netif_stop_queue(net);
 		goto resource_busy;
 	}
 
-	spin_lock_irqsave(&dev->ack_spinlock, flags);
-	if (dev->last_out_skb) {
-		ECM_IPA_DEBUG("No Tx-ack received for previous packet\n");
-		spin_unlock_irqrestore(&dev->ack_spinlock, flags);
+	pr_debug("Before sending packet the outstanding packets counter is %d\n",
+				atomic_read(&dev->outstanding_pkts));
+
+	if (atomic_read(&dev->outstanding_pkts) >= dev->outstanding_high) {
+		pr_debug("Outstanding high boundary reached (%d)- stopping queue\n",
+				dev->outstanding_high);
 		netif_stop_queue(net);
 		status = -NETDEV_TX_BUSY;
 		goto out;
-	} else {
-		dev->last_out_skb = skb;
 	}
-	spin_unlock_irqrestore(&dev->ack_spinlock, flags);
 
 	ret = ipa_tx_dp(IPA_TO_USB_CLIENT, skb, NULL);
 	if (ret) {
 		ECM_IPA_ERROR("ipa transmit failed (%d)\n", ret);
 		goto fail_tx_packet;
 	}
+
+	atomic_inc(&dev->outstanding_pkts);
 	net->stats.tx_packets++;
 	net->stats.tx_bytes += skb->len;
 	status = NETDEV_TX_OK;
@@ -743,7 +753,7 @@ void ecm_ipa_packet_receive_notify(void *priv,
 	skb->dev = dev->net;
 	skb->protocol = eth_type_trans(skb, dev->net);
 	if (rx_filter(skb)) {
-		ECM_IPA_DEBUG("packet got filtered out on Rx path\n");
+		pr_debug("packet got filtered out on Rx path\n");
 		dev_kfree_skb_any(skb);
 		return;
 	}
@@ -773,7 +783,6 @@ void ecm_ipa_tx_complete_notify(void *priv,
 {
 	struct sk_buff *skb = (struct sk_buff *)data;
 	struct ecm_ipa_dev *dev = priv;
-	unsigned long flags;
 
 	if (!dev) {
 		ECM_IPA_ERROR("dev is NULL pointer\n");
@@ -783,15 +792,16 @@ void ecm_ipa_tx_complete_notify(void *priv,
 		ECM_IPA_ERROR("unsupported event on Tx callback\n");
 		return;
 	}
-	spin_lock_irqsave(&dev->ack_spinlock, flags);
-	if (skb != dev->last_out_skb)
-		ECM_IPA_ERROR("ACKed/Sent not the same(FIFO expected)\n");
-	dev->last_out_skb = NULL;
-	spin_unlock_irqrestore(&dev->ack_spinlock, flags);
-	if (netif_queue_stopped(dev->net)) {
-		ECM_IPA_DEBUG("waking up queue\n");
+	atomic_dec(&dev->outstanding_pkts);
+	if (netif_queue_stopped(dev->net) &&
+		atomic_read(&dev->outstanding_pkts) < (dev->outstanding_low)) {
+		pr_debug("Outstanding low boundary reached (%d) - waking up queue\n",
+				dev->outstanding_low);
 		netif_wake_queue(dev->net);
 	}
+	pr_debug("After Tx-complete the outstanding packets counter is %d\n",
+				atomic_read(&dev->outstanding_pkts));
+
 	dev_kfree_skb_any(skb);
 	return;
 }
@@ -866,9 +876,9 @@ static ssize_t ecm_ipa_debugfs_enable_write(struct file *file,
 	missing = copy_from_user(&input, buf, 1);
 	if (missing)
 		return -EFAULT;
-	ECM_IPA_DEBUG("input received %c\n", input);
+	pr_debug("input received %c\n", input);
 	*enable = input - '0';
-	ECM_IPA_DEBUG("value was set to %d\n", *enable);
+	pr_debug("value was set to %d\n", *enable);
 	return count;
 }
 
@@ -896,8 +906,8 @@ static ssize_t ecm_ipa_debugfs_enable_read(struct file *file,
 
 static int ecm_ipa_debugfs_init(struct ecm_ipa_dev *dev)
 {
-	const mode_t flags = S_IRUSR | S_IRGRP | S_IROTH |
-			S_IWUSR | S_IWGRP | S_IWOTH;
+	const mode_t flags = S_IRUGO | S_IWUGO;
+
 	int ret = -EINVAL;
 	ECM_IPA_LOG_ENTRY();
 	if (!dev)
@@ -936,6 +946,22 @@ static int ecm_ipa_debugfs_init(struct ecm_ipa_dev *dev)
 		ret = -EFAULT;
 		goto fail_file;
 	}
+
+	dev->outstanding_high_file = debugfs_create_u8("outstanding_high",
+			flags, dev->folder, &dev->outstanding_high);
+	if (!dev->outstanding_high_file) {
+		ECM_IPA_ERROR("could not create outstanding_high file\n");
+		ret = -EFAULT;
+		goto fail_file;
+	}
+	dev->outstanding_low_file = debugfs_create_u8("outstanding_low",
+			flags, dev->folder, &dev->outstanding_low);
+	if (!dev->outstanding_low_file) {
+		ECM_IPA_ERROR("could not create outstanding_low file\n");
+		ret = -EFAULT;
+		goto fail_file;
+	}
+
 	ECM_IPA_LOG_EXIT();
 	return 0;
 fail_file:
@@ -1001,7 +1027,7 @@ int ecm_ipa_ep_registers_cfg(u32 usb_to_ipa_hdl, u32 ipa_to_usb_hdl)
 		ECM_IPA_ERROR("failed to configure IPA to USB end-point\n");
 		goto out;
 	}
-	ECM_IPA_DEBUG("end-point registers successfully configured\n");
+	pr_debug("end-point registers successfully configured\n");
 out:
 	ECM_IPA_LOG_EXIT();
 	return result;
@@ -1040,7 +1066,7 @@ int ecm_ipa_ep_registers_dma_cfg(u32 usb_to_ipa_hdl)
 		ECM_IPA_ERROR("failed to configure USB to IPA\n");
 		goto out;
 	}
-	ECM_IPA_DEBUG("end-point registers successfully configured\n");
+	pr_debug("end-point registers successfully configured\n");
 out:
 	ECM_IPA_LOG_EXIT();
 	return result;
@@ -1057,7 +1083,7 @@ int ecm_ipa_set_device_ethernet_addr(u8 *dev_ethaddr, u8 device_ethaddr[])
 	if (!is_valid_ether_addr(device_ethaddr))
 		return -EINVAL;
 	memcpy(dev_ethaddr, device_ethaddr, ETH_ALEN);
-	ECM_IPA_DEBUG("device ethernet address: %pM\n", dev_ethaddr);
+	pr_debug("device ethernet address: %pM\n", dev_ethaddr);
 	return 0;
 }
 

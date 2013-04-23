@@ -345,6 +345,7 @@ static struct usb_descriptor_header *mbim_hs_function[] = {
 	/* MBIM control descriptors */
 	(struct usb_descriptor_header *) &mbim_control_intf,
 	(struct usb_descriptor_header *) &mbim_header_desc,
+	(struct usb_descriptor_header *) &mbim_union_desc,
 	(struct usb_descriptor_header *) &mbb_desc,
 	(struct usb_descriptor_header *) &ext_mbb_desc,
 	(struct usb_descriptor_header *) &hs_mbim_notify_desc,
@@ -1702,6 +1703,7 @@ int mbim_bind_config(struct usb_configuration *c, unsigned portno,
 		ntb_parameters.dwNtbInMaxSize =
 		cpu_to_le32(NTB_DEFAULT_IN_SIZE_IPA);
 		ntb_parameters.dwNtbOutMaxSize = cpu_to_le32(NTB_OUT_SIZE_IPA);
+		ntb_parameters.wNdpInDivisor = 1;
 	}
 
 	INIT_LIST_HEAD(&mbim->cpkt_req_q);

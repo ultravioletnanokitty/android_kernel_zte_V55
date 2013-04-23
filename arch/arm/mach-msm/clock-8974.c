@@ -19,6 +19,7 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/iopoll.h>
+#include <linux/regulator/consumer.h>
 
 #include <mach/rpm-regulator-smd.h>
 #include <mach/socinfo.h>
@@ -637,22 +638,14 @@ enum vdd_dig_levels {
 	VDD_DIG_NUM
 };
 
-static const int vdd_corner[] = {
-	[VDD_DIG_NONE]	  = RPM_REGULATOR_CORNER_NONE,
-	[VDD_DIG_LOW]	  = RPM_REGULATOR_CORNER_SVS_SOC,
-	[VDD_DIG_NOMINAL] = RPM_REGULATOR_CORNER_NORMAL,
-	[VDD_DIG_HIGH]	  = RPM_REGULATOR_CORNER_SUPER_TURBO,
+static const int *vdd_corner[] = {
+	[VDD_DIG_NONE]	  = VDD_UV(RPM_REGULATOR_CORNER_NONE),
+	[VDD_DIG_LOW]	  = VDD_UV(RPM_REGULATOR_CORNER_SVS_SOC),
+	[VDD_DIG_NOMINAL] = VDD_UV(RPM_REGULATOR_CORNER_NORMAL),
+	[VDD_DIG_HIGH]	  = VDD_UV(RPM_REGULATOR_CORNER_SUPER_TURBO),
 };
 
-static struct rpm_regulator *vdd_dig_reg;
-
-static int set_vdd_dig(struct clk_vdd_class *vdd_class, int level)
-{
-	return rpm_regulator_set_voltage(vdd_dig_reg, vdd_corner[level],
-					RPM_REGULATOR_CORNER_SUPER_TURBO);
-}
-
-static DEFINE_VDD_CLASS(vdd_dig, set_vdd_dig, VDD_DIG_NUM);
+static DEFINE_VDD_REGULATORS(vdd_dig, VDD_DIG_NUM, 1, vdd_corner);
 
 #define RPM_MISC_CLK_TYPE	0x306b6c63
 #define RPM_BUS_CLK_TYPE	0x316b6c63
@@ -714,6 +707,7 @@ DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(cxo_a2_pin, cxo_a2_a_pin, A2_ID);
 
 static struct pll_vote_clk gpll0_clk_src = {
 	.en_reg = (void __iomem *)APCS_GPLL_ENA_VOTE_REG,
+	.en_mask = BIT(0),
 	.status_reg = (void __iomem *)GPLL0_STATUS_REG,
 	.status_mask = BIT(17),
 	.base = &virt_bases[GCC_BASE],
@@ -1411,7 +1405,14 @@ static struct rcg_clk ce2_clk_src = {
 };
 
 static struct clk_freq_tbl ftbl_gcc_gp_clk[] = {
-	F(19200000,  cxo,  1,   0,   0),
+	F( 4800000,   cxo,  4,  0,   0),
+	F( 6000000, gpll0, 10,  1,  10),
+	F( 6750000, gpll0,  1,  1,  89),
+	F( 8000000, gpll0, 15,  1,   5),
+	F( 9600000,   cxo,  2,  0,   0),
+	F(16000000, gpll0,  1,  2,  75),
+	F(19200000,   cxo,  1,  0,   0),
+	F(24000000, gpll0,  5,  1,   5),
 	F_END
 };
 
@@ -3026,14 +3027,17 @@ static struct clk dsipll0_pixel_clk_src = {
 	CLK_INIT(dsipll0_pixel_clk_src),
 };
 
-static struct clk_freq_tbl byte_freq = {
-	.src_clk = &dsipll0_byte_clk_src,
-	.div_src_val = BVAL(10, 8, dsipll0_byte_mm_source_val),
+static struct clk_freq_tbl byte_freq_tbl[] = {
+	{
+		.src_clk = &dsipll0_byte_clk_src,
+		.div_src_val = BVAL(10, 8, dsipll0_byte_mm_source_val),
+	},
+	F_END
 };
 
 static struct rcg_clk byte0_clk_src = {
 	.cmd_rcgr_reg = BYTE0_CMD_RCGR,
-	.current_freq = &byte_freq,
+	.current_freq = byte_freq_tbl,
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
 		.parent = &dsipll0_byte_clk_src,
@@ -3047,7 +3051,7 @@ static struct rcg_clk byte0_clk_src = {
 
 static struct rcg_clk byte1_clk_src = {
 	.cmd_rcgr_reg = BYTE1_CMD_RCGR,
-	.current_freq = &byte_freq,
+	.current_freq = byte_freq_tbl,
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
 		.parent = &dsipll0_byte_clk_src,
@@ -3228,14 +3232,17 @@ static struct rcg_clk hdmi_clk_src = {
 	},
 };
 
-static struct clk_freq_tbl pixel_freq = {
-	.src_clk = &dsipll0_pixel_clk_src,
-	.div_src_val = BVAL(10, 8, dsipll0_pixel_mm_source_val),
+static struct clk_freq_tbl pixel_freq_tbl[] = {
+	{
+		.src_clk = &dsipll0_pixel_clk_src,
+		.div_src_val = BVAL(10, 8, dsipll0_pixel_mm_source_val),
+	},
+	F_END
 };
 
 static struct rcg_clk pclk0_clk_src = {
 	.cmd_rcgr_reg = PCLK0_CMD_RCGR,
-	.current_freq = &pixel_freq,
+	.current_freq = pixel_freq_tbl,
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
 		.parent = &dsipll0_pixel_clk_src,
@@ -3248,7 +3255,7 @@ static struct rcg_clk pclk0_clk_src = {
 
 static struct rcg_clk pclk1_clk_src = {
 	.cmd_rcgr_reg = PCLK1_CMD_RCGR,
-	.current_freq = &pixel_freq,
+	.current_freq = pixel_freq_tbl,
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
 		.parent = &dsipll0_pixel_clk_src,
@@ -4739,6 +4746,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("xo",  cxo_pil_lpass_clk.c,      "fe200000.qcom,lpass"),
 	CLK_LOOKUP("xo",    cxo_pil_mss_clk.c,        "fc880000.qcom,mss"),
 	CLK_LOOKUP("xo",       cxo_wlan_clk.c, "fb000000.qcom,wcnss-wlan"),
+	CLK_LOOKUP("rf_clk",         cxo_a2.c, "fb000000.qcom,wcnss-wlan"),
 	CLK_LOOKUP("xo", cxo_pil_pronto_clk.c,     "fb21b000.qcom,pronto"),
 	CLK_LOOKUP("xo",       cxo_dwc3_clk.c,                 "msm_dwc3"),
 	CLK_LOOKUP("xo",  cxo_ehci_host_clk.c,            "msm_ehci_host"),
@@ -4749,7 +4757,8 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f991f000.serial"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9924000.i2c"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f991e000.serial"),
-	CLK_LOOKUP("core_clk", gcc_blsp1_qup1_i2c_apps_clk.c, ""),
+	CLK_LOOKUP("core_clk", gcc_blsp1_qup1_i2c_apps_clk.c, "f9923000.i2c"),
+	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9923000.i2c"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup2_i2c_apps_clk.c, "f9924000.i2c"),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup2_spi_apps_clk.c, ""),
 	CLK_LOOKUP("core_clk", gcc_blsp1_qup1_spi_apps_clk.c, "f9923000.spi"),
@@ -4814,6 +4823,11 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("iface_clk",    gcc_ce1_ahb_clk.c,     "qseecom"),
 	CLK_LOOKUP("bus_clk",      gcc_ce1_axi_clk.c,     "qseecom"),
 	CLK_LOOKUP("core_clk_src", ce1_clk_src.c,         "qseecom"),
+
+	CLK_LOOKUP("ce_drv_core_clk",     gcc_ce2_clk.c,         "qseecom"),
+	CLK_LOOKUP("ce_drv_iface_clk",    gcc_ce2_ahb_clk.c,     "qseecom"),
+	CLK_LOOKUP("ce_drv_bus_clk",      gcc_ce2_axi_clk.c,     "qseecom"),
+	CLK_LOOKUP("ce_drv_core_clk_src", ce2_clk_src.c,         "qseecom"),
 
 	CLK_LOOKUP("core_clk",     gcc_ce1_clk.c,         "scm"),
 	CLK_LOOKUP("iface_clk",    gcc_ce1_ahb_clk.c,     "scm"),
@@ -4997,13 +5011,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("csi3_rdi_clk", camss_csi3rdi_clk.c, "fda08c00.qcom,csid"),
 
 	/* ISPIF clocks */
-	CLK_LOOKUP("camss_vfe_vfe_clk", camss_vfe_vfe0_clk.c,
-		"fda0a000.qcom,ispif"),
-	CLK_LOOKUP("camss_csi_vfe_clk", camss_csi_vfe0_clk.c,
-		"fda0a000.qcom,ispif"),
-	CLK_LOOKUP("camss_vfe_vfe_clk1", camss_vfe_vfe1_clk.c,
-		"fda0a000.qcom,ispif"),
-	CLK_LOOKUP("camss_csi_vfe_clk1", camss_csi_vfe1_clk.c,
+	CLK_LOOKUP("ispif_ahb_clk", camss_ispif_ahb_clk.c,
 		"fda0a000.qcom,ispif"),
 
 	/*VFE clocks*/
@@ -5106,6 +5114,7 @@ static struct clk_lookup msm_clocks_8974[] = {
 	CLK_LOOKUP("bus_clk",  venus0_axi_clk.c, "fdc00000.qcom,vidc"),
 	CLK_LOOKUP("mem_clk",  venus0_ocmemnoc_clk.c, "fdc00000.qcom,vidc"),
 
+	CLK_LOOKUP("core_clk", oxili_gfx3d_clk.c, "fd8c4024.qcom,gdsc"),
 
 	/* LPASS clocks */
 	CLK_LOOKUP("bus_clk", gcc_mss_q6_bimc_axi_clk.c, "fc880000.qcom,mss"),
@@ -5482,18 +5491,9 @@ static void __init msm8974_clock_pre_init(void)
 
 	clk_ops_local_pll.enable = sr_hpm_lp_pll_clk_enable;
 
-	vdd_dig_reg = rpm_regulator_get(NULL, "vdd_dig");
-	if (IS_ERR(vdd_dig_reg))
+	vdd_dig.regulator[0] = regulator_get(NULL, "vdd_dig");
+	if (IS_ERR(vdd_dig.regulator[0]))
 		panic("clock-8974: Unable to get the vdd_dig regulator!");
-
-	/*
-	 * TODO: Set a voltage and enable vdd_dig, leaving the voltage high
-	 * until late_init. This may not be necessary with clock handoff;
-	 * Investigate this code on a real non-simulator target to determine
-	 * its necessity.
-	 */
-	vote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-	rpm_regulator_enable(vdd_dig_reg);
 
 	enable_rpm_scaling();
 
@@ -5531,11 +5531,6 @@ static void __init msm8974_clock_pre_init(void)
 	mdss_clk_ctrl_pre_init(&mdss_ahb_clk.c);
 }
 
-static int __init msm8974_clock_late_init(void)
-{
-	return unvote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-}
-
 static void __init msm8974_rumi_clock_pre_init(void)
 {
 	virt_bases[GCC_BASE] = ioremap(GCC_CC_PHYS, GCC_CC_SIZE);
@@ -5548,18 +5543,9 @@ static void __init msm8974_rumi_clock_pre_init(void)
 	sdcc3_apps_clk_src.freq_tbl = ftbl_gcc_sdcc_apps_rumi_clk;
 	sdcc4_apps_clk_src.freq_tbl = ftbl_gcc_sdcc_apps_rumi_clk;
 
-	vdd_dig_reg = rpm_regulator_get(NULL, "vdd_dig");
-	if (IS_ERR(vdd_dig_reg))
+	vdd_dig.regulator[0] = regulator_get(NULL, "vdd_dig");
+	if (IS_ERR(vdd_dig.regulator[0]))
 		panic("clock-8974: Unable to get the vdd_dig regulator!");
-
-	/*
-	 * TODO: Set a voltage and enable vdd_dig, leaving the voltage high
-	 * until late_init. This may not be necessary with clock handoff;
-	 * Investigate this code on a real non-simulator target to determine
-	 * its necessity.
-	 */
-	vote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-	rpm_regulator_enable(vdd_dig_reg);
 }
 
 struct clock_init_data msm8974_clock_init_data __initdata = {
@@ -5567,7 +5553,6 @@ struct clock_init_data msm8974_clock_init_data __initdata = {
 	.size = ARRAY_SIZE(msm_clocks_8974),
 	.pre_init = msm8974_clock_pre_init,
 	.post_init = msm8974_clock_post_init,
-	.late_init = msm8974_clock_late_init,
 };
 
 struct clock_init_data msm8974_rumi_clock_init_data __initdata = {

@@ -30,6 +30,7 @@
 
 #include <mach/iommu_hw-v1.h>
 #include <mach/iommu.h>
+#include <mach/msm_iommu_priv.h>
 #include <mach/iommu_perfmon.h>
 #include "msm_iommu_pagetable.h"
 
@@ -37,11 +38,6 @@
 #define MSM_IOMMU_PGSIZES	(SZ_4K | SZ_64K | SZ_1M | SZ_16M)
 
 static DEFINE_MUTEX(msm_iommu_lock);
-
-struct msm_priv {
-	struct iommu_pt pt;
-	struct list_head list_attached;
-};
 
 static int __enable_regulators(struct msm_iommu_drvdata *drvdata)
 {
@@ -107,36 +103,6 @@ static void __disable_clocks(struct msm_iommu_drvdata *drvdata)
 	clk_disable_unprepare(drvdata->pclk);
 }
 
-static int _iommu_power_off(void *data)
-{
-	struct msm_iommu_drvdata *drvdata;
-
-	drvdata = (struct msm_iommu_drvdata *)data;
-	__disable_clocks(drvdata);
-	__disable_regulators(drvdata);
-	return 0;
-}
-
-static int _iommu_power_on(void *data)
-{
-	int ret;
-	struct msm_iommu_drvdata *drvdata;
-
-	drvdata = (struct msm_iommu_drvdata *)data;
-	ret = __enable_regulators(drvdata);
-	if (ret)
-		goto fail;
-
-	ret = __enable_clocks(drvdata);
-	if (ret) {
-		__disable_regulators(drvdata);
-		goto fail;
-	}
-	return 0;
-fail:
-	return -EIO;
-}
-
 static void _iommu_lock_acquire(void)
 {
 	mutex_lock(&msm_iommu_lock);
@@ -148,8 +114,10 @@ static void _iommu_lock_release(void)
 }
 
 struct iommu_access_ops iommu_access_ops_v1 = {
-	.iommu_power_on = _iommu_power_on,
-	.iommu_power_off = _iommu_power_off,
+	.iommu_power_on = __enable_regulators,
+	.iommu_power_off = __disable_regulators,
+	.iommu_clk_on = __enable_clocks,
+	.iommu_clk_off = __disable_clocks,
 	.iommu_lock_acquire = _iommu_lock_acquire,
 	.iommu_lock_release = _iommu_lock_release,
 };
@@ -198,7 +166,7 @@ static void __sync_tlb(void __iomem *base, int ctx)
 
 static int __flush_iotlb_va(struct iommu_domain *domain, unsigned int va)
 {
-	struct msm_priv *priv = domain->priv;
+	struct msm_iommu_priv *priv = domain->priv;
 	struct msm_iommu_drvdata *iommu_drvdata;
 	struct msm_iommu_ctx_drvdata *ctx_drvdata;
 	int ret = 0;
@@ -226,7 +194,7 @@ fail:
 
 static int __flush_iotlb(struct iommu_domain *domain)
 {
-	struct msm_priv *priv = domain->priv;
+	struct msm_iommu_priv *priv = domain->priv;
 	struct msm_iommu_drvdata *iommu_drvdata;
 	struct msm_iommu_ctx_drvdata *ctx_drvdata;
 	int ret = 0;
@@ -264,8 +232,6 @@ static void __reset_iommu(void __iomem *base)
 	SET_GFAR(base, 0);
 	SET_GFSRRESTORE(base, 0);
 	SET_TLBIALLNSNH(base, 0);
-	SET_SCR1(base, 0);
-	SET_SSDR_N(base, 0, 0);
 	smt_size = GET_IDR0_NUMSMRG(base);
 
 	for (i = 0; i < smt_size; i++)
@@ -335,7 +301,7 @@ static void __release_smg(void __iomem *base, int ctx)
 
 static void msm_iommu_assign_ASID(const struct msm_iommu_drvdata *iommu_drvdata,
 				  struct msm_iommu_ctx_drvdata *curr_ctx,
-				  struct msm_priv *priv)
+				  struct msm_iommu_priv *priv)
 {
 	unsigned int found = 0;
 	void __iomem *base = iommu_drvdata->base;
@@ -374,7 +340,7 @@ static void msm_iommu_assign_ASID(const struct msm_iommu_drvdata *iommu_drvdata,
 
 static void __program_context(struct msm_iommu_drvdata *iommu_drvdata,
 			      struct msm_iommu_ctx_drvdata *ctx_drvdata,
-			      struct msm_priv *priv, bool is_secure)
+			      struct msm_iommu_priv *priv, bool is_secure)
 {
 	unsigned int prrr, nmrr;
 	unsigned int pn;
@@ -469,7 +435,7 @@ static void __program_context(struct msm_iommu_drvdata *iommu_drvdata,
 
 static int msm_iommu_domain_init(struct iommu_domain *domain, int flags)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -493,7 +459,7 @@ fail_nomem:
 
 static void msm_iommu_domain_destroy(struct iommu_domain *domain)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 
 	mutex_lock(&msm_iommu_lock);
 	priv = domain->priv;
@@ -508,7 +474,7 @@ static void msm_iommu_domain_destroy(struct iommu_domain *domain)
 
 static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 	struct msm_iommu_drvdata *iommu_drvdata;
 	struct msm_iommu_ctx_drvdata *ctx_drvdata;
 	struct msm_iommu_ctx_drvdata *tmp_drvdata;
@@ -596,7 +562,7 @@ fail:
 static void msm_iommu_detach_dev(struct iommu_domain *domain,
 				 struct device *dev)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 	struct msm_iommu_drvdata *iommu_drvdata;
 	struct msm_iommu_ctx_drvdata *ctx_drvdata;
 	int ret;
@@ -649,7 +615,7 @@ fail:
 static int msm_iommu_map(struct iommu_domain *domain, unsigned long va,
 			 phys_addr_t pa, size_t len, int prot)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 	int ret = 0;
 
 	mutex_lock(&msm_iommu_lock);
@@ -673,7 +639,7 @@ fail:
 static size_t msm_iommu_unmap(struct iommu_domain *domain, unsigned long va,
 			    size_t len)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 	int ret = -ENODEV;
 
 	mutex_lock(&msm_iommu_lock);
@@ -700,7 +666,7 @@ static int msm_iommu_map_range(struct iommu_domain *domain, unsigned int va,
 			       int prot)
 {
 	int ret;
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 
 	mutex_lock(&msm_iommu_lock);
 
@@ -724,7 +690,7 @@ fail:
 static int msm_iommu_unmap_range(struct iommu_domain *domain, unsigned int va,
 				 unsigned int len)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 
 	mutex_lock(&msm_iommu_lock);
 
@@ -739,7 +705,7 @@ static int msm_iommu_unmap_range(struct iommu_domain *domain, unsigned int va,
 static phys_addr_t msm_iommu_iova_to_phys(struct iommu_domain *domain,
 					  unsigned long va)
 {
-	struct msm_priv *priv;
+	struct msm_iommu_priv *priv;
 	struct msm_iommu_drvdata *iommu_drvdata;
 	struct msm_iommu_ctx_drvdata *ctx_drvdata;
 	unsigned int par;
@@ -876,7 +842,7 @@ fail:
 
 static phys_addr_t msm_iommu_get_pt_base_addr(struct iommu_domain *domain)
 {
-	struct msm_priv *priv = domain->priv;
+	struct msm_iommu_priv *priv = domain->priv;
 	return __pa(priv->pt.fl_table);
 }
 

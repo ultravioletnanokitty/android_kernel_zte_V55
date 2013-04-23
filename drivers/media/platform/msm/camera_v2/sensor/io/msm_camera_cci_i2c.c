@@ -28,7 +28,7 @@
 #define I2C_POLL_MAX_ITERATION 20
 
 int32_t msm_camera_cci_i2c_read(struct msm_camera_i2c_client *client,
-	uint16_t addr, uint16_t *data,
+	uint32_t addr, uint16_t *data,
 	enum msm_camera_i2c_data_type data_type)
 {
 	int32_t rc = -EFAULT;
@@ -64,10 +64,10 @@ int32_t msm_camera_cci_i2c_read(struct msm_camera_i2c_client *client,
 }
 
 int32_t msm_camera_cci_i2c_read_seq(struct msm_camera_i2c_client *client,
-	uint16_t addr, uint8_t *data, uint16_t num_byte)
+	uint32_t addr, uint8_t *data, uint16_t num_byte)
 {
 	int32_t rc = -EFAULT;
-	unsigned char buf[client->addr_type+num_byte];
+	unsigned char *buf = NULL;
 	int i;
 	struct msm_camera_cci_ctrl cci_ctrl;
 
@@ -76,6 +76,11 @@ int32_t msm_camera_cci_i2c_read_seq(struct msm_camera_i2c_client *client,
 		|| num_byte == 0)
 		return rc;
 
+	buf = kzalloc(num_byte, GFP_KERNEL);
+	if (!buf) {
+		pr_err("%s:%d no memory\n", __func__, __LINE__);
+		return -ENOMEM;
+	}
 	cci_ctrl.cmd = MSM_CCI_I2C_READ;
 	cci_ctrl.cci_info = client->cci_client;
 	cci_ctrl.cfg.cci_i2c_read_cfg.addr = addr;
@@ -93,11 +98,12 @@ int32_t msm_camera_cci_i2c_read_seq(struct msm_camera_i2c_client *client,
 		S_I2C_DBG("Byte %d: 0x%x\n", i, buf[i]);
 		S_I2C_DBG("Data: 0x%x\n", data[i]);
 	}
+	kfree(buf);
 	return rc;
 }
 
 int32_t msm_camera_cci_i2c_write(struct msm_camera_i2c_client *client,
-	uint16_t addr, uint16_t data,
+	uint32_t addr, uint16_t data,
 	enum msm_camera_i2c_data_type data_type)
 {
 	int32_t rc = -EFAULT;
@@ -131,7 +137,7 @@ int32_t msm_camera_cci_i2c_write(struct msm_camera_i2c_client *client,
 }
 
 int32_t msm_camera_cci_i2c_write_seq(struct msm_camera_i2c_client *client,
-	uint16_t addr, uint8_t *data, uint16_t num_byte)
+	uint32_t addr, uint8_t *data, uint16_t num_byte)
 {
 	int32_t rc = -EFAULT;
 	uint8_t i = 0;
@@ -272,7 +278,7 @@ int32_t msm_camera_cci_i2c_write_table_w_microdelay(
 }
 
 static int32_t msm_camera_cci_i2c_compare(struct msm_camera_i2c_client *client,
-	uint16_t addr, uint16_t data,
+	uint32_t addr, uint16_t data,
 	enum msm_camera_i2c_data_type data_type)
 {
 	int32_t rc;
@@ -327,8 +333,8 @@ static int32_t msm_camera_cci_i2c_compare(struct msm_camera_i2c_client *client,
 	return rc;
 }
 
-static int32_t msm_camera_cci_i2c_poll(struct msm_camera_i2c_client *client,
-	uint16_t addr, uint16_t data,
+int32_t msm_camera_cci_i2c_poll(struct msm_camera_i2c_client *client,
+	uint32_t addr, uint16_t data,
 	enum msm_camera_i2c_data_type data_type)
 {
 	int32_t rc;
@@ -347,7 +353,7 @@ static int32_t msm_camera_cci_i2c_poll(struct msm_camera_i2c_client *client,
 }
 
 static int32_t msm_camera_cci_i2c_set_mask(struct msm_camera_i2c_client *client,
-	uint16_t addr, uint16_t mask,
+	uint32_t addr, uint16_t mask,
 	enum msm_camera_i2c_data_type data_type, uint16_t set_mask)
 {
 	int32_t rc;
@@ -376,7 +382,7 @@ static int32_t msm_camera_cci_i2c_set_mask(struct msm_camera_i2c_client *client,
 
 static int32_t msm_camera_cci_i2c_set_write_mask_data(
 	struct msm_camera_i2c_client *client,
-	uint16_t addr, uint16_t data, int16_t mask,
+	uint32_t addr, uint16_t data, int16_t mask,
 	enum msm_camera_i2c_data_type data_type)
 {
 	int32_t rc;

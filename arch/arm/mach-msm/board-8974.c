@@ -20,11 +20,9 @@
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/memory.h>
-#ifdef CONFIG_ANDROID_PMEM
-#include <linux/android_pmem.h>
-#endif
 #include <linux/regulator/machine.h>
 #include <linux/regulator/krait-regulator.h>
+#include <linux/msm_tsens.h>
 #include <linux/msm_thermal.h>
 #include <asm/mach/map.h>
 #include <asm/hardware/gic.h>
@@ -62,7 +60,7 @@ static struct memtype_reserve msm8974_reserve_table[] __initdata = {
 	},
 };
 
-static int msm8974_paddr_to_memtype(unsigned int paddr)
+static int msm8974_paddr_to_memtype(phys_addr_t paddr)
 {
 	return MEMTYPE_EBI1;
 }
@@ -100,10 +98,11 @@ void __init msm8974_add_drivers(void)
 	rpm_regulator_smd_driver_init();
 	msm_spm_device_init();
 	krait_power_init();
-	if (machine_is_msm8974_rumi())
+	if (of_board_is_rumi())
 		msm_clock_init(&msm8974_rumi_clock_init_data);
 	else
 		msm_clock_init(&msm8974_clock_init_data);
+	tsens_tm_init_driver();
 	msm_thermal_device_init();
 }
 
@@ -125,6 +124,14 @@ static struct of_dev_auxdata msm8974_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF9864000, \
 			"msm_sdcc.3", NULL),
 	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF98E4000, \
+			"msm_sdcc.4", NULL),
+	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9824900, \
+			"msm_sdcc.1", NULL),
+	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF98A4900, \
+			"msm_sdcc.2", NULL),
+	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9864900, \
+			"msm_sdcc.3", NULL),
+	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF98E4900, \
 			"msm_sdcc.4", NULL),
 	OF_DEV_AUXDATA("qcom,msm-rng", 0xF9BFF000, \
 			"msm_rng", NULL),

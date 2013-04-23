@@ -201,6 +201,7 @@ enum usb_vdd_value {
  *              USB enters LPM.
  * @delay_lpm_on_disconnect: Use a delay before entering LPM
  *              upon USB cable disconnection.
+ * @enable_sec_phy: Use second HSPHY with USB2 core
  * @bus_scale_table: parameters for bus bandwidth requirements
  * @mhl_dev_name: MHL device name used to register with MHL driver.
  */
@@ -222,12 +223,14 @@ struct msm_otg_platform_data {
 	bool core_clk_always_on_workaround;
 	bool delay_lpm_on_disconnect;
 	bool dp_manual_pullup;
+	bool enable_sec_phy;
 	struct msm_bus_scale_pdata *bus_scale_table;
 	const char *mhl_dev_name;
 };
 
 /* phy related flags */
 #define ENABLE_DP_MANUAL_PULLUP		BIT(0)
+#define ENABLE_SECONDARY_PHY		BIT(1)
 
 /* Timeout (in msec) values (min - max) associated with OTG timers */
 
@@ -279,6 +282,7 @@ struct msm_otg_platform_data {
  * @pclk: clock struct of iface_clk.
  * @phy_reset_clk: clock struct of phy_clk.
  * @core_clk: clock struct of core_bus_clk.
+ * @core_clk_rate: core clk max frequency
  * @regs: ioremapped register base address.
  * @inputs: OTG state machine inputs(Id, SessValid etc).
  * @sm_work: OTG state machine work.
@@ -313,6 +317,7 @@ struct msm_otg {
 	struct clk *pclk;
 	struct clk *phy_reset_clk;
 	struct clk *core_clk;
+	long core_clk_rate;
 	void __iomem *regs;
 #define ID		0
 #define B_SESS_VLD	1
@@ -400,6 +405,7 @@ struct msm_hsic_host_platform_data {
 	unsigned strobe;
 	unsigned data;
 	bool ignore_cal_pad_config;
+	bool phy_sof_workaround;
 	int strobe_pad_offset;
 	int data_pad_offset;
 

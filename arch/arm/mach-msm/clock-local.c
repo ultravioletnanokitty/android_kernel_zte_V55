@@ -560,7 +560,11 @@ static int rcg_clk_is_enabled(struct clk *c)
 	return to_rcg_clk(c)->enabled;
 }
 
-/* Return a supported rate that's at least the specified rate. */
+/*
+ * Return a supported rate that's at least the specified rate or
+ * the max supported rate if the specified rate is larger than the
+ * max supported rate.
+ */
 static long rcg_clk_round_rate(struct clk *c, unsigned long rate)
 {
 	struct rcg_clk *rcg = to_rcg_clk(c);
@@ -570,7 +574,8 @@ static long rcg_clk_round_rate(struct clk *c, unsigned long rate)
 		if (f->freq_hz >= rate)
 			return f->freq_hz;
 
-	return -EPERM;
+	f--;
+	return f->freq_hz;
 }
 
 /* Return the nth supported frequency for a given clock. */
@@ -751,10 +756,10 @@ static int branch_set_flags(struct branch *b, unsigned flags)
 	spin_lock_irqsave(&local_clock_reg_lock, irq_flags);
 	reg_val = readl_relaxed(b->retain_reg);
 	switch (flags) {
-	case CLKFLAG_RETAIN:
+	case CLKFLAG_RETAIN_MEM:
 		reg_val |= b->retain_mask;
 		break;
-	case CLKFLAG_NORETAIN:
+	case CLKFLAG_NORETAIN_MEM:
 		reg_val &= ~b->retain_mask;
 		break;
 	default:

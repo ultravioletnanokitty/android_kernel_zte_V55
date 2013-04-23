@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -146,6 +146,8 @@ enum sps_option {
 	SPS_O_WRITE_NWD   = 0x00040000,
 
 	/* Options to enable software features */
+	/* Do not disable a pipe during disconnection */
+	SPS_O_NO_DISABLE      = 0x00800000,
 	/* Transfer operation should be polled */
 	SPS_O_POLL      = 0x01000000,
 	/* Disable queuing of transfer events for the connection end point */
@@ -256,6 +258,7 @@ enum sps_timer_mode {
 enum sps_callback_case {
 	SPS_CALLBACK_BAM_ERROR_IRQ = 1,     /* BAM ERROR IRQ */
 	SPS_CALLBACK_BAM_HRESP_ERR_IRQ,	    /* Erroneous HResponse */
+	SPS_CALLBACK_BAM_TIMER_IRQ,	    /* Inactivity timer */
 };
 
 /*
@@ -408,6 +411,11 @@ struct sps_bam_props {
 
 	u32 sec_config;
 	struct sps_bam_sec_config_props *p_sec_config_props;
+
+	/* Logging control */
+
+	bool constrained_logging;
+	u32 logging_number;
 };
 
 /**
@@ -1261,7 +1269,7 @@ int sps_get_unused_desc_num(struct sps_pipe *h, u32 *desc_num);
  *
  */
 int sps_get_bam_debug_info(u32 dev, u32 option, u32 para,
-		u32 tb_sel, u8 desc_sel);
+		u32 tb_sel, u32 desc_sel);
 
 #else
 static inline int sps_register_bam_device(const struct sps_bam_props
@@ -1421,7 +1429,7 @@ static inline int sps_get_unused_desc_num(struct sps_pipe *h, u32 *desc_num)
 }
 
 static inline int sps_get_bam_debug_info(u32 dev, u32 option, u32 para,
-		u32 tb_sel, u8 pre_level)
+		u32 tb_sel, u32 desc_sel)
 {
 	return -EPERM;
 }

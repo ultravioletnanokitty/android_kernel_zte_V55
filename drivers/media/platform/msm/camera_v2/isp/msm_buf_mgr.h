@@ -19,6 +19,7 @@
 
 /*Buffer source can be from userspace / HAL*/
 #define BUF_SRC(id) (id & ISP_NATIVE_BUF_BIT)
+#define ISP_SHARE_BUF_CLIENT 2
 
 struct msm_isp_buf_mgr;
 
@@ -59,6 +60,12 @@ struct msm_isp_buffer {
 	/*Vb2 buffer data*/
 	struct vb2_buffer *vb2_buf;
 
+	/*Share buffer cache state*/
+	struct list_head share_list;
+	uint8_t buf_used[ISP_SHARE_BUF_CLIENT];
+	uint8_t buf_get_count;
+	uint8_t buf_put_count;
+	uint8_t buf_reuse_flag;
 };
 
 struct msm_isp_bufq {
@@ -66,10 +73,15 @@ struct msm_isp_bufq {
 	uint32_t stream_id;
 	uint32_t num_bufs;
 	uint32_t bufq_handle;
+	enum msm_isp_buf_type buf_type;
 	struct msm_isp_buffer *bufs;
+	spinlock_t bufq_lock;
 
 	/*Native buffer queue*/
 	struct list_head head;
+	/*Share buffer cache queue*/
+	struct list_head share_head;
+	uint8_t buf_client_count;
 };
 
 struct msm_isp_buf_ops {
@@ -85,7 +97,7 @@ struct msm_isp_buf_ops {
 	int (*get_bufq_handle) (struct msm_isp_buf_mgr *buf_mgr,
 		uint32_t session_id, uint32_t stream_id);
 
-	int (*get_buf) (struct msm_isp_buf_mgr *buf_mgr,
+	int (*get_buf) (struct msm_isp_buf_mgr *buf_mgr, uint32_t id,
 		uint32_t bufq_handle, struct msm_isp_buffer **buf_info);
 
 	int (*put_buf) (struct msm_isp_buf_mgr *buf_mgr,
@@ -100,10 +112,8 @@ struct msm_isp_buf_ops {
 	int (*buf_divert) (struct msm_isp_buf_mgr *buf_mgr,
 		uint32_t bufq_handle, uint32_t buf_index,
 		struct timeval *tv, uint32_t frame_id);
-	int (*attach_ctx) (struct msm_isp_buf_mgr *buf_mgr,
-		struct device *iommu_ctx);
-	void (*detach_ctx) (struct msm_isp_buf_mgr *buf_mgr,
-		struct device *iommu_ctx);
+	void (*register_ctx) (struct msm_isp_buf_mgr *buf_mgr,
+		struct device **iommu_ctx, int num_iommu_ctx);
 	int (*buf_mgr_init) (struct msm_isp_buf_mgr *buf_mgr,
 		const char *ctx_name, uint16_t num_buf_q);
 	int (*buf_mgr_deinit) (struct msm_isp_buf_mgr *buf_mgr);
@@ -125,6 +135,9 @@ struct msm_isp_buf_mgr {
 	/*IOMMU specific*/
 	int iommu_domain_num;
 	struct iommu_domain *iommu_domain;
+
+	int num_iommu_ctx;
+	struct device *iommu_ctx[2];
 };
 
 int msm_isp_create_isp_buf_mgr(struct msm_isp_buf_mgr *buf_mgr,

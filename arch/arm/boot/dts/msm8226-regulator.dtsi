@@ -10,19 +10,43 @@
  * GNU General Public License for more details.
  */
 
-/* QPNP controlled regulators: */
+/* SPM controlled regulators: */
 
 &spmi_bus {
 	qcom,pm8226@1 {
-		pm8226_s2: regulator@1700 {
-			status = "okay";
+		pm8226_s2: spm-regulator@1700 {
+			compatible = "qcom,spm-regulator";
 			regulator-name = "8226_s2";
-			qcom,enable-time = <500>;
-			qcom,system-load = <100000>;
-			regulator-min-microvolt = <1050000>;
-			regulator-max-microvolt = <1150000>;
-			regulator-always-on;
+			reg = <0x1700 0x100>;
+			regulator-min-microvolt = <900000>;
+			regulator-max-microvolt = <1275000>;
 		};
+	};
+};
+
+/* CPR controlled regulator */
+
+/ {
+	apc_vreg_corner: regulator@f9018000 {
+		status = "okay";
+		compatible = "qcom,cpr-regulator";
+		reg = <0xf9018000 0x1000>,
+			<0xfc4b80b0 8>;
+		reg-names = "rbcpr", "efuse_phys";
+		regulator-name = "apc_corner";
+		regulator-min-microvolt = <1>;
+		regulator-max-microvolt = <4>;
+		qcom,num-efuse-bits = <5>;
+		qcom,efuse-bit-pos = <6 7 8 9 10>;
+		qcom,pvs-bin-process = <0 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2
+					2 2 2 2 3 3 3 3 3 3 3 3 0 0 0 0>;
+		qcom,pvs-corner-ceiling-slow = <1050000 1150000 1275000 1350000>;
+		qcom,pvs-corner-ceiling-nom  =  <975000 1075000 1200000 1200000>;
+		qcom,pvs-corner-ceiling-fast =  <900000 1000000 1140000 1140000>;
+		vdd-apc-supply = <&pm8226_s2>;
+		vdd-mx-supply = <&pm8226_l3_ao>;
+		qcom,vdd-mx-vmax = <1350000>;
+		qcom,vdd-mx-vmin-method = <1>;
 	};
 };
 
@@ -43,7 +67,7 @@
 			regulator-min-microvolt = <1>;
 			regulator-max-microvolt = <7>;
 			qcom,use-voltage-corner;
-			qcom,consumer-supplies = "vdd_dig", "";
+			qcom,consumer-supplies = "vdd_dig", "", "vdd_sr2_dig", "";
 		};
 		pm8226_s1_corner_ao: regulator-s1-corner-ao {
 			compatible = "qcom,rpm-regulator-smd";

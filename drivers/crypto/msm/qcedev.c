@@ -98,7 +98,7 @@ struct qcedev_async_req {
 };
 
 static DEFINE_MUTEX(send_cmd_lock);
-static DEFINE_MUTEX(sent_bw_req);
+static DEFINE_MUTEX(qcedev_sent_bw_req);
 /**********************************************************************
  * Register ourselves as a misc device to be able to access the dev driver
  * from userspace. */
@@ -177,25 +177,51 @@ static void qcedev_ce_high_bw_req(struct qcedev_control *podev,
 {
 	int ret = 0;
 
-	mutex_lock(&sent_bw_req);
+	mutex_lock(&qcedev_sent_bw_req);
 	if (high_bw_req) {
-		if (podev->high_bw_req_count == 0)
+		if (podev->high_bw_req_count == 0) {
+			ret = qce_enable_clk(podev->qce);
+			if (ret) {
+				pr_err("%s Unable enable clk\n", __func__);
+				mutex_unlock(&qcedev_sent_bw_req);
+				return;
+			}
 			ret = msm_bus_scale_client_update_request(
 					podev->bus_scale_handle, 1);
-		if (ret)
-			pr_err("%s Unable to set to high bandwidth\n",
+			if (ret) {
+				pr_err("%s Unable to set to high bandwidth\n",
 							__func__);
+				ret = qce_disable_clk(podev->qce);
+				mutex_unlock(&qcedev_sent_bw_req);
+				return;
+			}
+		}
 		podev->high_bw_req_count++;
 	} else {
-		if (podev->high_bw_req_count == 1)
+		if (podev->high_bw_req_count == 1) {
 			ret = msm_bus_scale_client_update_request(
 					podev->bus_scale_handle, 0);
-		if (ret)
-			pr_err("%s Unable to set to low bandwidth\n",
+			if (ret) {
+				pr_err("%s Unable to set to low bandwidth\n",
 							__func__);
+				mutex_unlock(&qcedev_sent_bw_req);
+				return;
+			}
+			ret = qce_disable_clk(podev->qce);
+			if (ret) {
+				pr_err("%s Unable disable clk\n", __func__);
+				ret = msm_bus_scale_client_update_request(
+					podev->bus_scale_handle, 1);
+				if (ret)
+					pr_err("%s Unable to set to high bandwidth\n",
+							__func__);
+				mutex_unlock(&qcedev_sent_bw_req);
+				return;
+			}
+		}
 		podev->high_bw_req_count--;
 	}
-	mutex_unlock(&sent_bw_req);
+	mutex_unlock(&qcedev_sent_bw_req);
 }
 
 
@@ -1530,6 +1556,45 @@ static int qcedev_vbuf_ablk_cipher(struct qcedev_async_req *areq,
 
 }
 
+static int qcedev_check_cipher_key(struct qcedev_cipher_op_req *req,
+						struct qcedev_control *podev)
+{
+	/* if intending to use HW key make sure key fields are set
+	 * correctly and HW key is indeed supported in target
+	 */
+	if (req->encklen == 0) {
+		int i;
+		for (i = 0; i < QCEDEV_MAX_KEY_SIZE; i++)
+			if (req->enckey[i])
+				goto error;
+		if ((req->op != QCEDEV_OPER_ENC_NO_KEY) &&
+			(req->op != QCEDEV_OPER_DEC_NO_KEY))
+			if (!podev->platform_support.hw_key_support)
+				goto error;
+	} else {
+		if (req->encklen == QCEDEV_AES_KEY_192) {
+			if (!podev->ce_support.aes_key_192)
+				goto error;
+		} else {
+			/* if not using HW key make sure key
+			 * length is valid
+			 */
+			if ((req->mode == QCEDEV_AES_MODE_XTS)) {
+				if (!((req->encklen == QCEDEV_AES_KEY_128*2) ||
+					(req->encklen == QCEDEV_AES_KEY_256*2)))
+					goto error;
+			} else {
+				if (!((req->encklen == QCEDEV_AES_KEY_128) ||
+					(req->encklen == QCEDEV_AES_KEY_256)))
+					goto error;
+			}
+		}
+	}
+	return 0;
+error:
+	return -EINVAL;
+}
+
 static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 						struct qcedev_control *podev)
 {
@@ -1542,36 +1607,13 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 	if ((req->alg >= QCEDEV_ALG_LAST) ||
 		(req->mode >= QCEDEV_AES_DES_MODE_LAST))
 		goto error;
-	if (req->alg == QCEDEV_ALG_AES) {
-		if ((req->mode == QCEDEV_AES_MODE_XTS) &&
-					(!podev->ce_support.aes_xts))
-			goto error;
-		/* if intending to use HW key make sure key fields are set
-		 * correctly and HW key is indeed supported in target
-		 */
-		if (req->encklen == 0) {
-			int i;
-			for (i = 0; i < QCEDEV_MAX_KEY_SIZE; i++)
-				if (req->enckey[i])
+
+	if ((req->mode == QCEDEV_AES_MODE_XTS) && (!podev->ce_support.aes_xts))
 					goto error;
-			if ((req->op != QCEDEV_OPER_ENC_NO_KEY) &&
-				(req->op != QCEDEV_OPER_DEC_NO_KEY))
-				if (!podev->platform_support.hw_key_support)
+
+	if (req->alg == QCEDEV_ALG_AES)
+		if (qcedev_check_cipher_key(req, podev))
 					goto error;
-		} else {
-			if (req->encklen == QCEDEV_AES_KEY_192) {
-				if (!podev->ce_support.aes_key_192)
-					goto error;
-			} else {
-				/* if not using HW key make sure key
-				 * length is valid
-				 */
-				if (!((req->encklen == QCEDEV_AES_KEY_128) ||
-					(req->encklen == QCEDEV_AES_KEY_256)))
-					goto error;
-			}
-		}
-	}
 	/* if using a byteoffset, make sure it is CTR mode using vbuf */
 	if (req->byteoffset) {
 		if (req->mode != QCEDEV_AES_MODE_CTR)
@@ -1607,6 +1649,11 @@ static int qcedev_check_sha_params(struct qcedev_sha_op_req *req,
 	if (req->alg >= QCEDEV_ALG_SHA_ALG_LAST)
 		goto sha_error;
 
+	if ((req->alg == QCEDEV_ALG_SHA1_HMAC) ||
+			(req->alg == QCEDEV_ALG_SHA1_HMAC)) {
+		if (req->authklen == 0)
+			goto sha_error;
+	}
 	return 0;
 sha_error:
 	return -EINVAL;
@@ -1833,6 +1880,14 @@ static int qcedev_probe(struct platform_device *pdev)
 		podev->platform_support.hw_key_support = 0;
 		podev->platform_support.bus_scale_table = NULL;
 		podev->platform_support.sha_hmac = 1;
+
+		if (podev->ce_support.is_shared == false) {
+			podev->platform_support.bus_scale_table =
+				(struct msm_bus_scale_pdata *)
+						msm_bus_cl_get_pdata(pdev);
+			if (!podev->platform_support.bus_scale_table)
+				pr_err("bus_scale_table is NULL\n");
+		}
 	} else {
 		platform_support =
 			(struct msm_ce_hw_support *)pdev->dev.platform_data;

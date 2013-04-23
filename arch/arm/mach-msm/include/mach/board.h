@@ -567,6 +567,8 @@ struct msm_vidc_v4l2_platform_data {
 	 */
 	int64_t **load_table;
 	int num_load_table;
+
+	uint32_t max_load;
 };
 
 struct vcap_platform_data {
@@ -599,6 +601,7 @@ void msm_map_msm7x30_io(void);
 void msm_map_fsm9xxx_io(void);
 void msm_map_8974_io(void);
 void msm_map_zinc_io(void);
+void msm_map_msmkrypton_io(void);
 void msm_map_msm8625_io(void);
 void msm_map_msm9625_io(void);
 void msm_init_irq(void);
@@ -609,6 +612,7 @@ void msm_8974_very_early(void);
 void msm_8974_init_gpiomux(void);
 void msmzinc_init_gpiomux(void);
 void msm9625_init_gpiomux(void);
+void msmkrypton_init_gpiomux(void);
 void msm_map_mpq8092_io(void);
 void mpq8092_init_gpiomux(void);
 void msm_map_msm8226_io(void);
@@ -649,7 +653,7 @@ void msm_snddev_hsed_voltage_off(void);
 void msm_snddev_tx_route_config(void);
 void msm_snddev_tx_route_deconfig(void);
 
-extern unsigned int msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
+extern phys_addr_t msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
 
 
 #endif

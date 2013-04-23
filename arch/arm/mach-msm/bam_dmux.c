@@ -174,7 +174,7 @@ struct rx_pkt_info {
 #define A2_PHYS_BASE		0x124C2000
 #define A2_PHYS_SIZE		0x2000
 #define BUFFER_SIZE		2048
-#define NUM_BUFFERS		32
+#define DEFAULT_NUM_BUFFERS	32
 
 #ifndef A2_BAM_IRQ
 #define A2_BAM_IRQ -1
@@ -194,6 +194,7 @@ static struct sps_mem_buffer rx_desc_mem_buf;
 static struct sps_register_event tx_register_event;
 static struct sps_register_event rx_register_event;
 static bool satellite_mode;
+static uint32_t num_buffers;
 
 static struct bam_ch_info bam_ch[BAM_DMUX_NUM_CHANNELS];
 static int bam_mux_initialized;
@@ -396,7 +397,7 @@ static void queue_rx(void)
 	rx_len_cached = bam_rx_pool_len;
 	mutex_unlock(&bam_rx_pool_mutexlock);
 
-	while (bam_connection_is_active && rx_len_cached < NUM_BUFFERS) {
+	while (bam_connection_is_active && rx_len_cached < num_buffers) {
 		if (in_global_reset)
 			goto fail;
 
@@ -433,8 +434,7 @@ static void queue_rx(void)
 		list_add_tail(&info->list_node, &bam_rx_pool);
 		rx_len_cached = ++bam_rx_pool_len;
 		ret = sps_transfer_one(bam_rx_pipe, info->dma_address,
-			BUFFER_SIZE, info,
-			SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT);
+			BUFFER_SIZE, info, 0);
 		if (ret) {
 			list_del(&info->list_node);
 			rx_len_cached = --bam_rx_pool_len;
@@ -656,7 +656,7 @@ static int bam_mux_write_cmd(void *data, uint32_t len)
 	spin_lock_irqsave(&bam_tx_pool_spinlock, flags);
 	list_add_tail(&pkt->list_node, &bam_tx_pool);
 	rc = sps_transfer_one(bam_tx_pipe, dma_address, len,
-				pkt, SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT);
+				pkt, SPS_IOVEC_FLAG_EOT);
 	if (rc) {
 		DMUX_LOG_KERR("%s sps_transfer_one failed rc=%d\n",
 			__func__, rc);
@@ -829,7 +829,7 @@ int msm_bam_dmux_write(uint32_t id, struct sk_buff *skb)
 	spin_lock_irqsave(&bam_tx_pool_spinlock, flags);
 	list_add_tail(&pkt->list_node, &bam_tx_pool);
 	rc = sps_transfer_one(bam_tx_pipe, dma_address, skb->len,
-				pkt, SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT);
+				pkt, SPS_IOVEC_FLAG_EOT);
 	if (rc) {
 		DMUX_LOG_KERR("%s sps_transfer_one failed rc=%d\n",
 			__func__, rc);
@@ -913,8 +913,10 @@ int msm_bam_dmux_open(uint32_t id, void *priv,
 	if (!bam_is_connected) {
 		read_unlock(&ul_wakeup_lock);
 		ul_wakeup();
-		if (unlikely(in_global_reset == 1))
+		if (unlikely(in_global_reset == 1)) {
+			kfree(hdr);
 			return -EFAULT;
+		}
 		read_lock(&ul_wakeup_lock);
 		notify_all(BAM_DMUX_UL_CONNECTED, (unsigned long)(NULL));
 	}
@@ -1182,14 +1184,14 @@ static void rx_timer_work_func(struct work_struct *work)
 				break;
 			}
 
-			buffs_used = NUM_BUFFERS - buffs_unused;
+			buffs_used = num_buffers - buffs_unused;
 
 			if (buffs_unused == 0) {
 				rx_timer_interval = MIN_POLLING_SLEEP;
 			} else {
 				if (buffs_used > 0) {
 					rx_timer_interval =
-						(2 * NUM_BUFFERS *
+						(2 * num_buffers *
 							rx_timer_interval)/
 						(3 * buffs_used);
 				} else {
@@ -1384,12 +1386,11 @@ static void notify_all(int event, unsigned long data)
 	struct list_head *temp;
 	struct outside_notify_func *func;
 
+	BAM_DMUX_LOG("%s: event=%d, data=%lu\n", __func__, event, data);
+
 	for (i = 0; i < BAM_DMUX_NUM_CHANNELS; ++i) {
-		if (bam_ch_is_open(i)) {
+		if (bam_ch_is_open(i))
 			bam_ch[i].notify(bam_ch[i].priv, event, data);
-			BAM_DMUX_LOG("%s: cid=%d, event=%d, data=%lu\n",
-					__func__, i, event, data);
-		}
 	}
 
 	__list_for_each(temp, &bam_other_notify_funcs) {
@@ -1756,10 +1757,13 @@ static void disconnect_to_bam(void)
 	/* in_ssr documentation/assumptions found in restart_notifier_cb */
 	if (!power_management_only_mode) {
 		if (likely(!in_ssr)) {
+			BAM_DMUX_LOG("%s: disconnect tx\n", __func__);
 			sps_disconnect(bam_tx_pipe);
+			BAM_DMUX_LOG("%s: disconnect rx\n", __func__);
 			sps_disconnect(bam_rx_pipe);
 			__memzero(rx_desc_mem_buf.base, rx_desc_mem_buf.size);
 			__memzero(tx_desc_mem_buf.base, tx_desc_mem_buf.size);
+			BAM_DMUX_LOG("%s: device reset\n", __func__);
 			sps_device_reset(a2_device_handle);
 		} else {
 			ssr_skipped_disconnect = 1;
@@ -1979,6 +1983,8 @@ static int bam_init(void)
 	a2_props.options = SPS_BAM_OPT_IRQ_WAKEUP;
 	a2_props.num_pipes = A2_NUM_PIPES;
 	a2_props.summing_threshold = A2_SUMMING_THRESHOLD;
+	a2_props.constrained_logging = true;
+	a2_props.logging_number = 1;
 	if (cpu_is_msm9615() || satellite_mode)
 		a2_props.manage = SPS_BAM_MGR_DEVICE_REMOTE;
 	/* need to free on tear down */
@@ -2282,15 +2288,27 @@ static int bam_dmux_probe(struct platform_device *pdev)
 		satellite_mode = of_property_read_bool(pdev->dev.of_node,
 						"qcom,satellite-mode");
 
-		DBG("%s: base:%p size:%x irq:%d satellite:%d\n", __func__,
+		rc = of_property_read_u32(pdev->dev.of_node,
+						"qcom,rx-ring-size",
+						&num_buffers);
+		if (rc) {
+			DBG("%s: falling back to num_buffs default, rc:%d\n",
+							__func__, rc);
+			num_buffers = DEFAULT_NUM_BUFFERS;
+		}
+
+		DBG("%s: base:%p size:%x irq:%d satellite:%d num_buffs:%d\n",
+							__func__,
 							a2_phys_base,
 							a2_phys_size,
 							a2_bam_irq,
-							satellite_mode);
+							satellite_mode,
+							num_buffers);
 	} else { /* fallback to default init data */
 		a2_phys_base = (void *)(A2_PHYS_BASE);
 		a2_phys_size = A2_PHYS_SIZE;
 		a2_bam_irq = A2_BAM_IRQ;
+		num_buffers = DEFAULT_NUM_BUFFERS;
 	}
 
 	xo_clk = clk_get(&pdev->dev, "xo");

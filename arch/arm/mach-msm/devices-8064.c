@@ -2652,8 +2652,8 @@ static struct msm_rpm_log_platform_data msm_rpm_log_pdata = {
 		[MSM_RPM_LOG_PAGE_BUFFER]  = 0x000000A0,
 	},
 	.phys_size = SZ_8K,
-	.log_len = 4096,		  /* log's buffer length in bytes */
-	.log_len_mask = (4096 >> 2) - 1,  /* length mask in units of u32 */
+	.log_len = 6144,		  /* log's buffer length in bytes */
+	.log_len_mask = (6144 >> 2) - 1,  /* length mask in units of u32 */
 };
 
 struct platform_device apq8064_rpm_log_device = {
@@ -3154,6 +3154,7 @@ struct platform_device apq8064_device_cache_erp = {
 
 static struct resource coresight_funnel_resources[] = {
 	{
+		.name  = "funnel-base",
 		.start = CORESIGHT_FUNNEL_PHYS_BASE,
 		.end   = CORESIGHT_FUNNEL_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,
@@ -3186,6 +3187,7 @@ struct platform_device apq8064_coresight_funnel_device = {
 
 static struct resource coresight_etm2_resources[] = {
 	{
+		.name  = "etm-base",
 		.start = CORESIGHT_ETM2_PHYS_BASE,
 		.end   = CORESIGHT_ETM2_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,
@@ -3218,6 +3220,7 @@ struct platform_device coresight_etm2_device = {
 
 static struct resource coresight_etm3_resources[] = {
 	{
+		.name  = "etm-base",
 		.start = CORESIGHT_ETM3_PHYS_BASE,
 		.end   = CORESIGHT_ETM3_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,

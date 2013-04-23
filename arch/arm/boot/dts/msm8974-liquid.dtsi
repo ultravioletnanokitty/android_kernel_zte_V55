@@ -299,6 +299,15 @@
 		qca,bt-reset-gpio = <&pm8941_gpios 34 0>;
 	};
 
+	bt_ar3002_sleep {
+		compatible = "qca,ar3002_bluesleep";
+		host-wake-gpio = <&msmgpio 79 0>;
+		ext-wake-gpio = <&msmgpio 51 0>;
+		interrupt-parent = <&msmgpio>;
+		interrupts = <79 2>;
+		interrupt-names = "host_wake";
+	};
+
 	sound {
 		qcom,model = "msm8974-taiko-liquid-snd-card";
 
@@ -373,7 +382,6 @@
 
 			qcom,msm-bus,name = "hsic";
 			qcom,msm-bus,num-cases = <2>;
-			qcom,msm-bus,active-only = <0>;
 			qcom,msm-bus,num-paths = <1>;
 			qcom,msm-bus,vectors-KBps =
 					<85 512 0 0>,
@@ -606,6 +614,7 @@
 &pm8941_mpps {
 
 	mpp@a000 { /* MPP 1 */
+		status = "disabled";
 	};
 
 	mpp@a100 { /* MPP 2 */
@@ -727,25 +736,25 @@
 &pm8941_chg {
 	status = "ok";
 
-	qcom,chg-charging-disabled;
+	qcom,charging-disabled;
 
-	qcom,chg-chgr@1000 {
+	qcom,chgr@1000 {
 		status = "ok";
 	};
 
-	qcom,chg-buck@1100 {
+	qcom,buck@1100 {
 		status = "ok";
 	};
 
-	qcom,chg-usb-chgpth@1300 {
+	qcom,usb-chgpth@1300 {
 		status = "ok";
 	};
 
-	qcom,chg-dc-chgpth@1400 {
+	qcom,dc-chgpth@1400 {
 		status = "ok";
 	};
 
-	qcom,chg-boost@1500 {
+	qcom,boost@1500 {
 		status = "ok";
 	};
 
@@ -754,10 +763,20 @@
 	};
 };
 
+&sdcc1 {
+       status = "disabled";
+};
+
+&sdcc2 {
+       status = "disabled";
+};
+
 &sdhc_1 {
 	vdd-supply = <&pm8941_l20>;
 	vdd-io-supply = <&pm8941_s3>;
 
+	qcom,vdd-always-on;
+	qcom,vdd-lpm-sup;
 	qcom,vdd-voltage-level = <2950000 2950000>;
 	qcom,vdd-current-level = <800 500000>;
 
@@ -771,6 +790,7 @@
 	qcom,pad-drv-off = <0x0 0x0 0x0>; /* 2mA, 2mA, 2mA */
 
 	qcom,nonremovable;
+	status = "ok";
 };
 
 &sdhc_2 {
@@ -780,8 +800,6 @@
 	qcom,vdd-voltage-level = <2950000 2950000>;
 	qcom,vdd-current-level = <9000 800000>;
 
-	qcom,vdd-io-always-on;
-	qcom,vdd-io-lpm-sup;
 	qcom,vdd-io-voltage-level = <1800000 2950000>;
 	qcom,vdd-io-current-level = <6 22000>;
 
@@ -789,4 +807,5 @@
 	qcom,pad-pull-off = <0x0 0x3 0x3>; /* no-pull, pull-up, pull-up */
 	qcom,pad-drv-on = <0x7 0x4 0x4>; /* 16mA, 10mA, 10mA */
 	qcom,pad-drv-off = <0x0 0x0 0x0>; /* 2mA, 2mA, 2mA */
+	status = "ok";
 };

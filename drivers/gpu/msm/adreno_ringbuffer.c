@@ -319,7 +319,7 @@ int adreno_ringbuffer_load_pfp_ucode(struct kgsl_device *device)
 	return 0;
 }
 
-int adreno_ringbuffer_start(struct adreno_ringbuffer *rb, unsigned int init_ram)
+int adreno_ringbuffer_start(struct adreno_ringbuffer *rb)
 {
 	int status;
 	/*cp_rb_cntl_u cp_rb_cntl; */
@@ -330,9 +330,6 @@ int adreno_ringbuffer_start(struct adreno_ringbuffer *rb, unsigned int init_ram)
 
 	if (rb->flags & KGSL_FLAGS_STARTED)
 		return 0;
-
-	if (init_ram)
-		rb->timestamp[KGSL_MEMSTORE_GLOBAL] = 0;
 
 	kgsl_sharedmem_set(&rb->memptrs_desc, 0, 0,
 			   sizeof(struct kgsl_rbmemptrs));
@@ -433,7 +430,8 @@ int adreno_ringbuffer_start(struct adreno_ringbuffer *rb, unsigned int init_ram)
 		return status;
 
 	/* CP ROQ queue sizes (bytes) - RB:16, ST:16, IB1:32, IB2:64 */
-	if (adreno_is_a305(adreno_dev) || adreno_is_a320(adreno_dev))
+	if (adreno_is_a305(adreno_dev) || adreno_is_a305c(adreno_dev) ||
+		adreno_is_a320(adreno_dev))
 		adreno_regwrite(device, REG_CP_QUEUE_THRESHOLDS, 0x000E0602);
 	else if (adreno_is_a330(adreno_dev) || adreno_is_a305b(adreno_dev))
 		adreno_regwrite(device, REG_CP_QUEUE_THRESHOLDS, 0x003E2008);
@@ -545,13 +543,15 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 	/*
 	 * if the context was not created with per context timestamp
 	 * support, we must use the global timestamp since issueibcmds
-	 * will be returning that one.
+	 * will be returning that one, or if an internal issue then
+	 * use global timestamp.
 	 */
-	if (context && context->flags & CTXT_FLAGS_PER_CONTEXT_TS)
+	if ((context && (context->flags & CTXT_FLAGS_PER_CONTEXT_TS)) &&
+		!(flags & KGSL_CMD_FLAGS_INTERNAL_ISSUE))
 		context_id = context->id;
 
-	if ((context && context->flags & CTXT_FLAGS_USER_GENERATED_TS) &&
-			(!(flags & KGSL_CMD_FLAGS_INTERNAL_ISSUE))) {
+	if ((context && (context->flags & CTXT_FLAGS_USER_GENERATED_TS)) &&
+		!(flags & KGSL_CMD_FLAGS_INTERNAL_ISSUE)) {
 		if (timestamp_cmp(rb->timestamp[context_id],
 						timestamp) >= 0) {
 			KGSL_DRV_ERR(rb->device,
@@ -575,6 +575,11 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 	/* Add CP_COND_EXEC commands to generate CP_INTERRUPT */
 	total_sizedwords += context ? 13 : 0;
 
+	if ((context) && (context->flags & CTXT_FLAGS_PER_CONTEXT_TS) &&
+		(flags & (KGSL_CMD_FLAGS_INTERNAL_ISSUE |
+		KGSL_CMD_FLAGS_GET_INT)))
+			total_sizedwords += 2;
+
 	if (adreno_is_a3xx(adreno_dev))
 		total_sizedwords += 7;
 
@@ -585,14 +590,15 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 	total_sizedwords += 3; /* sop timestamp */
 	total_sizedwords += 4; /* eop timestamp */
 
-	if (context && context->flags & CTXT_FLAGS_PER_CONTEXT_TS &&
-			!(flags & KGSL_CMD_FLAGS_INTERNAL_ISSUE)) {
+	if (KGSL_MEMSTORE_GLOBAL != context_id)
 		total_sizedwords += 3; /* global timestamp without cache
 					* flush for non-zero context */
-	}
 
 	if (adreno_is_a20x(adreno_dev))
 		total_sizedwords += 2; /* CACHE_FLUSH */
+
+	if (flags & KGSL_CMD_FLAGS_EOF)
+		total_sizedwords += 2;
 
 	ringcmds = adreno_ringbuffer_allocspace(rb, context, total_sizedwords);
 	if (!ringcmds) {
@@ -617,12 +623,12 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 	/* always increment the global timestamp. once. */
 	rb->timestamp[KGSL_MEMSTORE_GLOBAL]++;
 
-	/* Do not update context's timestamp for internal submissions */
-	if (context && !(flags & KGSL_CMD_FLAGS_INTERNAL_ISSUE)) {
-		if (context_id == KGSL_MEMSTORE_GLOBAL)
-			rb->timestamp[context->id] =
-				rb->timestamp[KGSL_MEMSTORE_GLOBAL];
-		else if (context->flags & CTXT_FLAGS_USER_GENERATED_TS)
+	/*
+	 * If global timestamp then we are not using per context ts for
+	 * this submission
+	 */
+	if (context_id != KGSL_MEMSTORE_GLOBAL) {
+		if (context->flags & CTXT_FLAGS_USER_GENERATED_TS)
 			rb->timestamp[context_id] = timestamp;
 		else
 			rb->timestamp[context_id]++;
@@ -693,9 +699,7 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 		KGSL_MEMSTORE_OFFSET(context_id, eoptimestamp)));
 	GSL_RB_WRITE(ringcmds, rcmd_gpu, timestamp);
 
-	if (context && context->flags & CTXT_FLAGS_PER_CONTEXT_TS
-			&& !(flags & KGSL_CMD_FLAGS_INTERNAL_ISSUE)) {
-
+	if (KGSL_MEMSTORE_GLOBAL != context_id) {
 		GSL_RB_WRITE(ringcmds, rcmd_gpu,
 			cp_type3_packet(CP_MEM_WRITE, 2));
 		GSL_RB_WRITE(ringcmds, rcmd_gpu, (gpuaddr +
@@ -745,6 +749,19 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 		GSL_RB_WRITE(ringcmds, rcmd_gpu,
 			cp_type3_packet(CP_INTERRUPT, 1));
 		GSL_RB_WRITE(ringcmds, rcmd_gpu, CP_INT_CNTL__RB_INT_MASK);
+	}
+
+	/*
+	 * If per context timestamps are enabled and any of the kgsl
+	 * internal commands want INT to be generated trigger the INT
+	*/
+	if ((context) && (context->flags & CTXT_FLAGS_PER_CONTEXT_TS) &&
+		(flags & (KGSL_CMD_FLAGS_INTERNAL_ISSUE |
+		KGSL_CMD_FLAGS_GET_INT))) {
+			GSL_RB_WRITE(ringcmds, rcmd_gpu,
+				cp_type3_packet(CP_INTERRUPT, 1));
+			GSL_RB_WRITE(ringcmds, rcmd_gpu,
+				CP_INT_CNTL__RB_INT_MASK);
 	}
 
 	if (adreno_is_a3xx(adreno_dev)) {
@@ -988,26 +1005,31 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 {
 	struct kgsl_device *device = dev_priv->device;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-	unsigned int *link;
+	unsigned int *link = 0;
 	unsigned int *cmds;
 	unsigned int i;
-	struct adreno_context *drawctxt;
+	struct adreno_context *drawctxt = NULL;
 	unsigned int start_index = 0;
 	int ret;
 
-	if (device->state & KGSL_STATE_HUNG)
-		return -EBUSY;
-	if (!(adreno_dev->ringbuffer.flags & KGSL_FLAGS_STARTED) ||
-	      context == NULL || ibdesc == 0 || numibs == 0)
-		return -EINVAL;
+	if (device->state & KGSL_STATE_HUNG) {
+		ret = -EBUSY;
+		goto done;
+	}
 
+	if (!(adreno_dev->ringbuffer.flags & KGSL_FLAGS_STARTED) ||
+	      context == NULL || ibdesc == 0 || numibs == 0) {
+		ret = -EINVAL;
+		goto done;
+	}
 	drawctxt = context->devctxt;
 
 	if (drawctxt->flags & CTXT_FLAGS_GPU_HANG) {
 		KGSL_CTXT_ERR(device, "proc %s failed fault tolerance"
 			" will not accept commands for context %d\n",
 			drawctxt->pid_name, drawctxt->id);
-		return -EDEADLK;
+		ret = -EDEADLK;
+		goto done;
 	}
 
 	/*When preamble is enabled, the preamble buffer with state restoration
@@ -1034,9 +1056,8 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 	cmds = link = kzalloc(sizeof(unsigned int) * (numibs * 3 + 4),
 				GFP_KERNEL);
 	if (!link) {
-		KGSL_CORE_ERR("kzalloc(%d) failed\n",
-			sizeof(unsigned int) * (numibs * 3 + 4));
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto done;
 	}
 
 	if (!start_index) {
@@ -1101,6 +1122,9 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 		ret = 0;
 
 done:
+	kgsl_trace_issueibcmds(device, context->id, ibdesc, numibs,
+		*timestamp, flags, ret, drawctxt->type);
+
 	kfree(link);
 	return ret;
 }

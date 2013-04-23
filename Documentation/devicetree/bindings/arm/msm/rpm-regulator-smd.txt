@@ -62,6 +62,28 @@ Optional properties:
 				1.  This value shift is necessary to work around
 				limitations in the regulator framework which
 				treat 0 uV as an error.
+- qcom,use-voltage-floor-corner:  Flag that signifies if regulator_set_voltage
+				calls should modify the floor corner parameter
+				instead of the voltage parameter.  When used,
+				voltages specified inside of the regulator
+				framework represent corners that have been
+				incremented by 1.  The properties
+				qcom,use-voltage-corner and
+				qcom,use-voltage-floor-corner are mutually
+				exclusive.  Only one may be specified for a
+				given regulator.
+- qcom,always-send-voltage:    Flag which indicates that updates to the voltage
+				or voltage corner set point should always be
+				sent immediately to the RPM.  If this flag is
+				not specified, then voltage set point updates
+				are only sent if the given regulator has also
+				been enabled by a Linux consumer.
+- qcom,always-send-current:    Flag which indicates that updates to the load
+				current should always be sent immediately to the
+				RPM.  If this flag is not specified, then load
+				current updates are only sent if the given
+				regulator has also been enabled by a Linux
+				consumer.
 The following properties specify initial values for parameters to be sent to the
 RPM in regulator requests.
 - qcom,init-enable:            0 = regulator disabled
@@ -94,25 +116,9 @@ RPM in regulator requests.
 					BIT(2) = follow HW2_EN signal
 					BIT(3) = follow HW3_EN signal
 					BIT(4) = follow PMIC awake state
-- qcom,init-frequency:         Switching frequency in MHz for SMPS regulators.
-				Supported values are:
-					 0 = Don't care about frequency used
-					 1 = 19.20
-					 2 = 9.60
-					 3 = 6.40
-					 4 = 4.80
-					 5 = 3.84
-					 6 = 3.20
-					 7 = 2.74
-					 8 = 2.40
-					 9 = 2.13
-					10 = 1.92
-					11 = 1.75
-					12 = 1.60
-					13 = 1.48
-					14 = 1.37
-					15 = 1.28
-					16 = 1.20
+- qcom,init-frequency:         Switching frequency divisor for SMPS regulators.
+				Supported values are n = 0 to 31 where
+				freq = 19.2 MHz / (n + 1).
 - qcom,init-head-room:         Voltage head room in mV required for the
 				regulator.  This head room value should be used
 				in situations where the device connected to the
@@ -165,6 +171,10 @@ RPM in regulator requests.
 					0 = Allow RPM to utilize LDO bypass mode
 						if possible
 					1 = Disallow LDO bypass mode
+- qcom,init-voltage-floor-corner:  Minimum performance corner to use if any
+				processor in the system is awake.  This property
+				supports the same values as
+				qcom,init-voltage-corner.
 
 All properties specified within the core regulator framework can also be used in
 second level nodes.  These bindings can be found in:

@@ -24,7 +24,7 @@
 #define MAX_NUM_OUTPUT_BUFFERS 6
 
 enum msm_vdec_ctrl_cluster {
-	MSM_VDEC_CTRL_CLUSTER_MAX = 1,
+	MSM_VDEC_CTRL_CLUSTER_MAX = 1 << 0,
 };
 
 static const char *const mpeg_video_vidc_divx_format[] = {
@@ -241,7 +241,7 @@ static u32 get_frame_size_nv12(int plane,
 static u32 get_frame_size_compressed(int plane,
 					u32 height, u32 width)
 {
-	return (MAX_SUPPORTED_WIDTH * MAX_SUPPORTED_HEIGHT * 3/2)/2;
+	return (width * height * 3/2)/4;
 }
 
 struct msm_vidc_format vdec_formats[] = {
@@ -297,6 +297,14 @@ struct msm_vidc_format vdec_formats[] = {
 		.name = "H264",
 		.description = "H264 compressed format",
 		.fourcc = V4L2_PIX_FMT_H264,
+		.num_planes = 1,
+		.get_frame_size = get_frame_size_compressed,
+		.type = OUTPUT_PORT,
+	},
+	{
+		.name = "HEVC",
+		.description = "HEVC compressed format",
+		.fourcc = V4L2_PIX_FMT_HEVC,
 		.num_planes = 1,
 		.get_frame_size = get_frame_size_compressed,
 		.type = OUTPUT_PORT,
@@ -613,13 +621,6 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		frame_sz.height = inst->prop.height;
 		dprintk(VIDC_DBG, "width = %d, height = %d\n",
 				frame_sz.width, frame_sz.height);
-		rc = msm_comm_try_set_prop(inst,
-			HAL_PARAM_FRAME_SIZE, &frame_sz);
-		if (rc) {
-			dprintk(VIDC_ERR,
-				"%s: Failed : Frame size setting\n", __func__);
-			goto exit;
-		}
 		rc = msm_comm_try_get_bufreqs(inst);
 		if (rc) {
 			dprintk(VIDC_ERR,
@@ -630,8 +631,8 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 			for (i = 0; i < fmt->num_planes; ++i) {
 				f->fmt.pix_mp.plane_fmt[i].sizeimage =
 					fmt->get_frame_size(i,
-						f->fmt.pix_mp.height,
-						f->fmt.pix_mp.width);
+						inst->capability.height.max,
+						inst->capability.width.max);
 				inst->bufq[OUTPUT_PORT].
 					vb2_bufq.plane_sizes[i] =
 					f->fmt.pix_mp.plane_fmt[i].sizeimage;
@@ -767,8 +768,8 @@ int msm_vdec_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 			for (i = 0; i < fmt->num_planes; ++i) {
 				f->fmt.pix_mp.plane_fmt[i].sizeimage =
 					fmt->get_frame_size(i,
-						f->fmt.pix_mp.height,
-						f->fmt.pix_mp.width);
+						inst->capability.height.max,
+						inst->capability.width.max);
 			}
 		} else {
 			buff_req_buffer =
@@ -827,8 +828,8 @@ int msm_vdec_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		frame_sz.height = inst->prop.height;
 		msm_comm_try_set_prop(inst, HAL_PARAM_FRAME_SIZE, &frame_sz);
 		f->fmt.pix_mp.plane_fmt[0].sizeimage =
-			fmt->get_frame_size(0, f->fmt.pix_mp.height,
-					f->fmt.pix_mp.width);
+			fmt->get_frame_size(0, inst->capability.height.max,
+					inst->capability.width.max);
 		f->fmt.pix_mp.num_planes = fmt->num_planes;
 		for (i = 0; i < fmt->num_planes; ++i) {
 			inst->bufq[OUTPUT_PORT].vb2_bufq.plane_sizes[i] =
@@ -921,7 +922,8 @@ static int msm_vdec_queue_setup(struct vb2_queue *q,
 			*num_buffers = MIN_NUM_OUTPUT_BUFFERS;
 		for (i = 0; i < *num_planes; i++) {
 			sizes[i] = inst->fmts[OUTPUT_PORT]->get_frame_size(
-					i, inst->prop.height, inst->prop.width);
+					i, inst->capability.height.max,
+					inst->capability.width.max);
 		}
 		break;
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
@@ -1278,7 +1280,7 @@ static int try_set_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		break;
 	}
 
-	if (property_id) {
+	if (!rc && property_id) {
 		dprintk(VIDC_DBG,
 			"Control: HAL property=%d,ctrl_id=%d,ctrl_value=%d\n",
 			property_id,
@@ -1355,7 +1357,7 @@ static struct v4l2_ctrl **get_cluster(int type, int *size)
 		return NULL;
 
 	for (c = 0; c < NUM_CTRLS; c++) {
-		if (msm_vdec_ctrls[c].cluster == type) {
+		if (msm_vdec_ctrls[c].cluster & type) {
 			cluster[sz] = msm_vdec_ctrls[c].priv;
 			++sz;
 		}

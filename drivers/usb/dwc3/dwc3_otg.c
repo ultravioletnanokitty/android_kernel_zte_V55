@@ -198,8 +198,6 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 	} else {
 		dev_dbg(otg->phy->dev, "%s: turn off host\n", __func__);
 
-		platform_device_del(dwc->xhci);
-
 		ret = regulator_disable(dotg->vbus_otg);
 		if (ret) {
 			dev_err(otg->phy->dev, "unable to disable vbus_otg\n");
@@ -207,6 +205,7 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 		}
 		dwc3_otg_notify_host_mode(otg, on);
 
+		platform_device_del(dwc->xhci);
 		/*
 		 * Perform USB hardware RESET (both core reset and DBM reset)
 		 * when moving from host to peripheral. This is required for
@@ -215,6 +214,8 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 		if (ext_xceiv && ext_xceiv->otg_capability &&
 						ext_xceiv->ext_block_reset)
 			ext_xceiv->ext_block_reset(true);
+
+		dwc3_otg_set_peripheral_regs(dotg);
 
 		/* re-init core and OTG registers as block reset clears these */
 		dwc3_post_host_reset_core_init(dwc);
@@ -426,6 +427,9 @@ static void dwc3_ext_event_notify(struct usb_otg *otg,
 
 		if (!init) {
 			init = true;
+			if (!work_busy(&dotg->sm_work))
+				schedule_work(&dotg->sm_work);
+
 			complete(&dotg->dwc3_xcvr_vbus_init);
 			dev_dbg(phy->dev, "XCVR: BSV init complete\n");
 			return;
@@ -493,6 +497,9 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 		power_supply_type = POWER_SUPPLY_TYPE_BATTERY;
 
 	power_supply_set_supply_type(dotg->psy, power_supply_type);
+
+	if ((dotg->charger->chg_type == DWC3_CDP_CHARGER) && mA > 2)
+		mA = DWC3_IDEV_CHG_MAX;
 
 	if (dotg->charger->max_power == mA)
 		return 0;
@@ -607,8 +614,11 @@ void dwc3_otg_init_sm(struct dwc3_otg *dotg)
 	 * driver initialization. Wait for it.
 	 */
 	ret = wait_for_completion_timeout(&dotg->dwc3_xcvr_vbus_init, HZ * 5);
-	if (!ret)
+	if (!ret) {
 		dev_err(phy->dev, "%s: completion timeout\n", __func__);
+		/* We can safely assume no cable connected */
+		set_bit(ID, &dotg->inputs);
+	}
 
 	ext_xceiv = dotg->ext_xceiv;
 	dwc3_otg_reset(dotg);

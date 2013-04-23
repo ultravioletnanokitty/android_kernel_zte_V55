@@ -147,6 +147,7 @@ static void __iomem *virt_bases[N_BASES];
 #define USB_HSIC_SYSTEM_CBCR                     0x040C
 #define USB_HSIC_CBCR                            0x0410
 #define USB_HSIC_IO_CAL_CBCR                     0x0414
+#define USB_HSIC_IO_CAL_SLEEP_CBCR		 0x0418
 #define USB_HSIC_XCVR_FS_CBCR                    0x042C
 #define USB_HS_SYSTEM_CBCR                       0x0484
 #define USB_HS_AHB_CBCR                          0x0488
@@ -187,6 +188,7 @@ static void __iomem *virt_bases[N_BASES];
 #define PDM2_CBCR                                0x0CCC
 #define PRNG_AHB_CBCR                            0x0D04
 #define BAM_DMA_AHB_CBCR                         0x0D44
+#define BAM_DMA_INACTIVITY_TIMERS_CBCR		 0x0D48
 #define MSG_RAM_AHB_CBCR                         0x0E44
 #define CE1_CBCR                                 0x1044
 #define CE1_AXI_CBCR                             0x1048
@@ -278,22 +280,14 @@ enum vdd_dig_levels {
 	VDD_DIG_NUM
 };
 
-static const int vdd_corner[] = {
-	[VDD_DIG_NONE]	  = RPM_REGULATOR_CORNER_NONE,
-	[VDD_DIG_LOW]	  = RPM_REGULATOR_CORNER_SVS_SOC,
-	[VDD_DIG_NOMINAL] = RPM_REGULATOR_CORNER_NORMAL,
-	[VDD_DIG_HIGH]	  = RPM_REGULATOR_CORNER_SUPER_TURBO,
+static const int *vdd_corner[] = {
+	[VDD_DIG_NONE]	  = VDD_UV(RPM_REGULATOR_CORNER_NONE),
+	[VDD_DIG_LOW]	  = VDD_UV(RPM_REGULATOR_CORNER_SVS_SOC),
+	[VDD_DIG_NOMINAL] = VDD_UV(RPM_REGULATOR_CORNER_NORMAL),
+	[VDD_DIG_HIGH]	  = VDD_UV(RPM_REGULATOR_CORNER_SUPER_TURBO),
 };
 
-static struct regulator *vdd_dig_reg;
-
-int set_vdd_dig(struct clk_vdd_class *vdd_class, int level)
-{
-	return regulator_set_voltage(vdd_dig_reg, vdd_corner[level],
-					RPM_REGULATOR_CORNER_SUPER_TURBO);
-}
-
-static DEFINE_VDD_CLASS(vdd_dig, set_vdd_dig, VDD_DIG_NUM);
+static DEFINE_VDD_REGULATORS(vdd_dig, VDD_DIG_NUM, 1, vdd_corner);
 
 /* TODO: Needs to confirm the below values */
 #define RPM_MISC_CLK_TYPE	0x306b6c63
@@ -344,6 +338,7 @@ static unsigned int soft_vote_gpll0;
 
 static struct pll_vote_clk gpll0_clk_src = {
 	.en_reg = (void __iomem *)APCS_GPLL_ENA_VOTE_REG,
+	.en_mask = BIT(0),
 	.status_reg = (void __iomem *)GPLL0_STATUS_REG,
 	.status_mask = BIT(17),
 	.soft_vote = &soft_vote_gpll0,
@@ -360,6 +355,7 @@ static struct pll_vote_clk gpll0_clk_src = {
 
 static struct pll_vote_clk gpll0_activeonly_clk_src = {
 	.en_reg = (void __iomem *)APCS_GPLL_ENA_VOTE_REG,
+	.en_mask = BIT(0),
 	.status_reg = (void __iomem *)GPLL0_STATUS_REG,
 	.status_mask = BIT(17),
 	.soft_vote = &soft_vote_gpll0,
@@ -415,6 +411,7 @@ static struct pll_clk apcspll_clk_src = {
 	},
 	.base = &virt_bases[APCS_PLL_BASE],
 	.c = {
+		.parent = &cxo_a_clk_src.c,
 		.dbg_name = "apcspll_clk_src",
 		.ops = &clk_ops_local_pll,
 		CLK_INIT(apcspll_clk_src.c),
@@ -1008,6 +1005,18 @@ static struct local_vote_clk gcc_bam_dma_ahb_clk = {
 	},
 };
 
+static struct local_vote_clk gcc_bam_dma_inactivity_timers_clk = {
+	.cbcr_reg = BAM_DMA_INACTIVITY_TIMERS_CBCR,
+	.vote_reg = APCS_CLOCK_BRANCH_ENA_VOTE,
+	.en_mask = BIT(11),
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bam_dma_inactivity_timers_clk",
+		.ops = &clk_ops_vote,
+		CLK_INIT(gcc_bam_dma_inactivity_timers_clk.c),
+	},
+};
+
 static struct local_vote_clk gcc_blsp1_ahb_clk = {
 	.cbcr_reg = BLSP1_AHB_CBCR,
 	.vote_reg = APCS_CLOCK_BRANCH_ENA_VOTE,
@@ -1523,6 +1532,17 @@ static struct branch_clk gcc_usb_hsic_io_cal_clk = {
 	},
 };
 
+static struct branch_clk gcc_usb_hsic_io_cal_sleep_clk = {
+	.cbcr_reg = USB_HSIC_IO_CAL_SLEEP_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_usb_hsic_io_cal_sleep_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_usb_hsic_io_cal_sleep_clk.c),
+	},
+};
+
 static struct branch_clk gcc_usb_hsic_system_clk = {
 	.cbcr_reg = USB_HSIC_SYSTEM_CBCR,
 	.bcr_reg = USB_HS_HSIC_BCR,
@@ -1560,6 +1580,7 @@ struct measure_mux_entry {
 
 struct measure_mux_entry measure_mux_common[] __initdata = {
 	{&gcc_pdm_ahb_clk.c,			GCC_BASE, 0x00d0},
+	{&gcc_usb_hsic_io_cal_sleep_clk.c,	GCC_BASE, 0x005c},
 	{&gcc_usb_hsic_xcvr_fs_clk.c,		GCC_BASE, 0x005d},
 	{&gcc_usb_hsic_system_clk.c,		GCC_BASE, 0x0059},
 	{&gcc_usb_hsic_io_cal_clk.c,		GCC_BASE, 0x005b},
@@ -1589,6 +1610,7 @@ struct measure_mux_entry measure_mux_common[] __initdata = {
 	{&gcc_sdcc2_apps_clk.c,			GCC_BASE, 0x0070},
 	{&gcc_blsp1_uart1_apps_clk.c,		GCC_BASE, 0x008c},
 	{&gcc_blsp1_qup4_i2c_apps_clk.c,	GCC_BASE, 0x0099},
+	{&gcc_bam_dma_inactivity_timers_clk.c,	GCC_BASE, 0x00E1},
 	{&gcc_boot_rom_ahb_clk.c,		GCC_BASE, 0x00f8},
 	{&gcc_ce1_ahb_clk.c,			GCC_BASE, 0x013a},
 	{&gcc_pdm2_clk.c,			GCC_BASE, 0x00d2},
@@ -1792,6 +1814,8 @@ static struct clk_lookup msm_clocks_9625[] = {
 	CLK_LOOKUP("pll14", apcspll_clk_src.c, "f9010008.qcom,acpuclk"),
 
 	CLK_LOOKUP("dma_bam_pclk", gcc_bam_dma_ahb_clk.c, "msm_sps"),
+	CLK_LOOKUP("inactivity_clk", gcc_bam_dma_inactivity_timers_clk.c,
+								"msm_sps"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "msm_serial_hsl.0"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9924000.spi"),
 	CLK_LOOKUP("iface_clk", gcc_blsp1_ahb_clk.c, "f9925000.i2c"),
@@ -1848,6 +1872,8 @@ static struct clk_lookup msm_clocks_9625[] = {
 	CLK_LOOKUP("cal_clk", gcc_usb_hsic_io_cal_clk.c,  "msm_hsic_host"),
 	CLK_LOOKUP("core_clk", gcc_usb_hsic_system_clk.c, "msm_hsic_host"),
 	CLK_LOOKUP("alt_core_clk", gcc_usb_hsic_xcvr_fs_clk.c, ""),
+	CLK_LOOKUP("inactivity_clk", gcc_usb_hsic_io_cal_sleep_clk.c,
+							"msm_hsic_host"),
 
 	CLK_LOOKUP("core_clk", gcc_ce1_clk.c, "fd400000.qcom,qcedev"),
 	CLK_LOOKUP("iface_clk", gcc_ce1_ahb_clk.c, "fd400000.qcom,qcedev"),
@@ -1992,12 +2018,6 @@ static void __init msm9625_clock_post_init(void)
 	 */
 	clk_prepare_enable(&cxo_a_clk_src.c);
 
-	/*
-	 * TODO: This call is to prevent sending 0Hz to rpm to turn off pnoc.
-	 * Needs to remove this after vote of pnoc from sdcc driver is ready.
-	 */
-	clk_prepare_enable(&pnoc_msmbus_a_clk.c);
-
 	/* Set rates for single-rate clocks. */
 	clk_set_rate(&usb_hs_system_clk_src.c,
 			usb_hs_system_clk_src.freq_tbl[0].freq_hz);
@@ -2060,12 +2080,9 @@ static void __init msm9625_clock_pre_init(void)
 
 	clk_ops_local_pll.enable = sr_pll_clk_enable_9625;
 
-	vdd_dig_reg = regulator_get(NULL, "vdd_dig");
-	if (IS_ERR(vdd_dig_reg))
+	vdd_dig.regulator[0] = regulator_get(NULL, "vdd_dig");
+	if (IS_ERR(vdd_dig.regulator[0]))
 		panic("clock-9625: Unable to get the vdd_dig regulator!");
-
-	vote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-	regulator_enable(vdd_dig_reg);
 
 	enable_rpm_scaling();
 
@@ -2082,15 +2099,9 @@ static void __init msm9625_clock_pre_init(void)
 			measure_mux_common, sizeof(measure_mux_common));
 }
 
-static int __init msm9625_clock_late_init(void)
-{
-	return unvote_vdd_level(&vdd_dig, VDD_DIG_HIGH);
-}
-
 struct clock_init_data msm9625_clock_init_data __initdata = {
 	.table = msm_clocks_9625,
 	.size = ARRAY_SIZE(msm_clocks_9625),
 	.pre_init = msm9625_clock_pre_init,
 	.post_init = msm9625_clock_post_init,
-	.late_init = msm9625_clock_late_init,
 };

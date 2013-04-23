@@ -56,16 +56,17 @@
 			#size-cells = <1>;
 			status = "disabled";
 
-			qcom,chg-vddmax-mv = <4200>;
-			qcom,chg-vddsafe-mv = <4200>;
-			qcom,chg-vinmin-mv = <4200>;
-			qcom,chg-vbatdet-mv = <4100>;
-			qcom,chg-ibatmax-ma = <1500>;
-			qcom,chg-ibatterm-ma = <200>;
-			qcom,chg-ibatsafe-ma = <1500>;
-			qcom,chg-thermal-mitigation = <1500 700 600 325>;
+			qcom,vddmax-mv = <4200>;
+			qcom,vddsafe-mv = <4200>;
+			qcom,vinmin-mv = <4200>;
+			qcom,vbatdet-delta-mv = <150>;
+			qcom,ibatmax-ma = <1500>;
+			qcom,ibatterm-ma = <200>;
+			qcom,ibatsafe-ma = <1500>;
+			qcom,thermal-mitigation = <1500 700 600 325>;
+			qcom,tchg-mins = <150>;
 
-			qcom,chg-chgr@1000 {
+			qcom,chgr@1000 {
 				status = "disabled";
 				reg = <0x1000 0x100>;
 				interrupts =	<0x0 0x10 0x0>,
@@ -87,7 +88,7 @@
 							"chg-done";
 			};
 
-			qcom,chg-buck@1100 {
+			qcom,buck@1100 {
 				status = "disabled";
 				reg = <0x1100 0x100>;
 				interrupts =	<0x0 0x11 0x0>,
@@ -107,7 +108,7 @@
 							"vdd-loop";
 			};
 
-			qcom,chg-bat-if@1200 {
+			qcom,bat-if@1200 {
 				status = "disabled";
 				reg = <0x1200 0x100>;
 				interrupts =	<0x0 0x12 0x0>,
@@ -124,7 +125,7 @@
 
 			};
 
-			qcom,chg-usb-chgpth@1300 {
+			qcom,usb-chgpth@1300 {
 				status = "disabled";
 				reg = <0x1300 0x100>;
 				interrupts =	<0 0x13 0x0>,
@@ -136,7 +137,7 @@
 							"chg-gone";
 			};
 
-			qcom,chg-boost@1500 {
+			qcom,boost@1500 {
 				status = "disabled";
 				reg = <0x1500 0x100>;
 				interrupts =	<0x0 0x15 0x0>,
@@ -149,6 +150,57 @@
 			qcom,chg-misc@1600 {
 				status = "disabled";
 				reg = <0x1600 0x100>;
+			};
+		};
+
+		pm8226_bms: qcom,bms {
+			spmi-dev-container;
+			compatible = "qcom,qpnp-bms";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			status = "disabled";
+
+			qcom,r-sense-uohm = <10000>;
+			qcom,v-cutoff-uv = <3400000>;
+			qcom,max-voltage-uv = <4200000>;
+			qcom,r-conn-mohm = <0>;
+			qcom,shutdown-soc-valid-limit = <20>;
+			qcom,adjust-soc-low-threshold = <15>;
+			qcom,ocv-voltage-high-threshold-uv = <3750000>;
+			qcom,ocv-voltage-low-threshold-uv = <3650000>;
+			qcom,low-soc-calculate-soc-threshold = <15>;
+			qcom,low-soc-calculate-soc-ms = <5000>;
+			qcom,calculate-soc-ms = <20000>;
+			qcom,chg-term-ua = <100000>;
+			qcom,batt-type = <0>;
+			qcom,low-ocv-correction-limit-uv = <100>;
+			qcom,high-ocv-correction-limit-uv = <50>;
+			qcom,hold-soc-est = <3>;
+			qcom,low-voltage-threshold = <3420000>;
+
+			qcom,bms-iadc@3800 {
+				reg = <0x3800 0x100>;
+			};
+
+			qcom,bms-bms@4000 {
+				reg = <0x4000 0x100>;
+				interrupts =	<0x0 0x40 0x0>,
+						<0x0 0x40 0x1>,
+						<0x0 0x40 0x2>,
+						<0x0 0x40 0x3>,
+						<0x0 0x40 0x4>,
+						<0x0 0x40 0x5>,
+						<0x0 0x40 0x6>,
+						<0x0 0x40 0x7>;
+
+				interrupt-names = "vsense_for_r",
+						  "vsense_avg",
+						  "sw_cc_thr",
+						  "ocv_thr",
+						  "charge_begin",
+						  "good_ocv",
+						  "ocv_for_r",
+						  "cc_thr";
 			};
 		};
 
@@ -294,6 +346,17 @@
 				qcom,hw-settle-time = <0>;
 				qcom,fast-avg-setup = <0>;
 			};
+
+			chan@c {
+				label = "ref_buf_625mv";
+				reg = <0xc>;
+				qcom,decimation = <0>;
+				qcom,pre-div-channel-scaling = <0>;
+				qcom,calibration-type = "absolute";
+				qcom,scale-function = <0>;
+				qcom,hw-settle-time = <0>;
+				qcom,fast-avg-setup = <0>;
+			};
 		};
 
 		iadc@3600 {
@@ -305,7 +368,6 @@
 			interrupt-names = "eoc-int-en-set";
 			qcom,adc-bit-resolution = <16>;
 			qcom,adc-vdd-reference = <1800>;
-			qcom,rsense = <1500>;
 
 			chan@0 {
 				label = "internal_rsense";
@@ -630,5 +692,50 @@
 			compatible = "qcom,qpnp-regulator";
 			status = "disabled";
 		};
+
+		qcom,vibrator@c000 {
+			compatible = "qcom,qpnp-vibrator";
+			reg = <0xc000 0x100>;
+			label = "vibrator";
+			status = "disabled";
+		};
+
+                qcom,leds@d300 {
+                        compatible = "qcom,leds-qpnp";
+                        status = "disable";
+                        reg = <0xd300 0x100>;
+                        label = "flash";
+                        pm8226_flash0: qcom,flash_0 {
+                                qcom,max-current = <1000>;
+                                qcom,default-state = "off";
+                                qcom,headroom = <0>;
+                                qcom,duration = <1280>;
+                                qcom,clamp-curr = <200>;
+                                qcom,startup-dly = <1>;
+                                qcom,safety-timer;
+                                label = "flash";
+                                linux,default-trigger =
+                                        "flash0_trigger";
+                                qcom,id = <1>;
+                                linux,name = "led:flash_0";
+                                qcom,current = <625>;
+                        };
+
+                        pm8226_flash1: qcom,flash_1 {
+                                qcom,max-current = <1000>;
+                                qcom,default-state = "off";
+                                qcom,headroom = <0>;
+                                qcom,duration = <1280>;
+                                qcom,clamp-curr = <200>;
+                                qcom,startup-dly = <1>;
+                                qcom,safety-timer;
+                                linux,default-trigger =
+                                        "flash1_trigger";
+                                label = "flash";
+                                qcom,id = <2>;
+                                linux,name = "led:flash_1";
+                                qcom,current = <625>;
+                        };
+                };
 	};
 };

@@ -182,6 +182,9 @@ static inline void video_vsync_irq_enable(struct mdss_mdp_ctl *ctl)
 
 	if (atomic_inc_return(&ctx->vsync_ref) == 1)
 		mdss_mdp_irq_enable(MDSS_MDP_IRQ_INTF_VSYNC, ctl->intf_num);
+	else
+		mdss_mdp_irq_clear(ctl->mdata, MDSS_MDP_IRQ_INTF_VSYNC,
+				ctl->intf_num);
 }
 
 static inline void video_vsync_irq_disable(struct mdss_mdp_ctl *ctl)
@@ -197,6 +200,7 @@ static int mdss_mdp_video_set_vsync_handler(struct mdss_mdp_ctl *ctl,
 {
 	struct mdss_mdp_video_ctx *ctx;
 	unsigned long flags;
+	int need_update;
 
 	ctx = (struct mdss_mdp_video_ctx *) ctl->priv_data;
 	if (!ctx) {
@@ -205,13 +209,17 @@ static int mdss_mdp_video_set_vsync_handler(struct mdss_mdp_ctl *ctl,
 	}
 
 	spin_lock_irqsave(&ctx->vsync_lock, flags);
-	if (!ctx->vsync_handler && vsync_handler)
-		video_vsync_irq_enable(ctl);
-	else if (ctx->vsync_handler && !vsync_handler)
-		video_vsync_irq_disable(ctl);
-
+	need_update = (!ctx->vsync_handler && vsync_handler) ||
+			(ctx->vsync_handler && !vsync_handler);
 	ctx->vsync_handler = vsync_handler;
 	spin_unlock_irqrestore(&ctx->vsync_lock, flags);
+
+	if (need_update) {
+		if (vsync_handler)
+			video_vsync_irq_enable(ctl);
+		else
+			video_vsync_irq_disable(ctl);
+	}
 
 	return 0;
 }
@@ -242,13 +250,18 @@ static int mdss_mdp_video_stop(struct mdss_mdp_ctl *ctl)
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 		ctx->timegen_en = false;
 
-		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_TIMEGEN_OFF, NULL);
+		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_OFF, NULL);
 		WARN(rc, "intf %d timegen off error (%d)\n", ctl->intf_num, rc);
+
+		mdss_mdp_irq_disable(MDSS_MDP_IRQ_INTF_UNDER_RUN,
+			ctl->intf_num);
 	}
 
 	mdss_mdp_video_set_vsync_handler(ctl, NULL);
 
 	mdss_mdp_set_intr_callback(MDSS_MDP_IRQ_INTF_VSYNC, ctl->intf_num,
+				   NULL, NULL);
+	mdss_mdp_set_intr_callback(MDSS_MDP_IRQ_INTF_UNDER_RUN, ctl->intf_num,
 				   NULL, NULL);
 
 	ctx->ref_cnt--;
@@ -269,8 +282,9 @@ static void mdss_mdp_video_vsync_intr_done(void *arg)
 	}
 
 	vsync_time = ktime_get();
+	ctl->vsync_cnt++;
 
-	pr_debug("intr ctl=%d\n", ctl->num);
+	pr_debug("intr ctl=%d vsync cnt=%u\n", ctl->num, ctl->vsync_cnt);
 
 	complete_all(&ctx->vsync_comp);
 	spin_lock(&ctx->vsync_lock);
@@ -304,6 +318,17 @@ static int mdss_mdp_video_wait4comp(struct mdss_mdp_ctl *ctl, void *arg)
 	return rc;
 }
 
+static void mdss_mdp_video_underrun_intr_done(void *arg)
+{
+	struct mdss_mdp_ctl *ctl = arg;
+	if (unlikely(!ctl))
+		return;
+
+	ctl->underrun_cnt++;
+	pr_warn("display underrun detected for ctl=%d count=%d\n", ctl->num,
+			ctl->underrun_cnt);
+}
+
 static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 {
 	struct mdss_mdp_video_ctx *ctx;
@@ -319,8 +344,8 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 
 	if (!ctx->wait_pending) {
 		ctx->wait_pending++;
-		INIT_COMPLETION(ctx->vsync_comp);
 		video_vsync_irq_enable(ctl);
+		INIT_COMPLETION(ctx->vsync_comp);
 	} else {
 		WARN(1, "commit without wait! ctl=%d", ctl->num);
 	}
@@ -332,6 +357,8 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 		pr_debug("enabling timing gen for intf=%d\n", ctl->intf_num);
 
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
+
+		mdss_mdp_irq_enable(MDSS_MDP_IRQ_INTF_UNDER_RUN, ctl->intf_num);
 		mdp_video_write(ctx, MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 1);
 		wmb();
 
@@ -341,8 +368,8 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 				rc, ctl->num);
 
 		ctx->timegen_en = true;
-		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_TIMEGEN_ON, NULL);
-		WARN(rc, "intf %d timegen on error (%d)\n", ctl->intf_num, rc);
+		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_ON, NULL);
+		WARN(rc, "intf %d panel on error (%d)\n", ctl->intf_num, rc);
 	}
 
 	return 0;
@@ -355,6 +382,7 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 	struct mdss_mdp_video_ctx *ctx;
 	struct mdss_mdp_mixer *mixer;
 	struct intf_timing_params itp = {0};
+	u32 dst_bpp;
 	int i;
 
 	mdata = ctl->mdata;
@@ -390,20 +418,30 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 
 	mdss_mdp_set_intr_callback(MDSS_MDP_IRQ_INTF_VSYNC, ctl->intf_num,
 				   mdss_mdp_video_vsync_intr_done, ctl);
+	mdss_mdp_set_intr_callback(MDSS_MDP_IRQ_INTF_UNDER_RUN, ctl->intf_num,
+				   mdss_mdp_video_underrun_intr_done, ctl);
 
-	itp.width = pinfo->xres + pinfo->lcdc.xres_pad;
+	dst_bpp = pinfo->fbc.enabled ? (pinfo->fbc.target_bpp) : (pinfo->bpp);
+
+	itp.width = mult_frac((pinfo->xres + pinfo->lcdc.xres_pad),
+				dst_bpp, pinfo->bpp);
 	itp.height = pinfo->yres + pinfo->lcdc.yres_pad;
 	itp.border_clr = pinfo->lcdc.border_clr;
 	itp.underflow_clr = pinfo->lcdc.underflow_clr;
 	itp.hsync_skew = pinfo->lcdc.hsync_skew;
 
-	itp.xres =  pinfo->xres;
+	itp.xres =  mult_frac(pinfo->xres, dst_bpp, pinfo->bpp);
 	itp.yres = pinfo->yres;
-	itp.h_back_porch =  pinfo->lcdc.h_back_porch;
-	itp.h_front_porch =  pinfo->lcdc.h_front_porch;
-	itp.v_back_porch =  pinfo->lcdc.v_back_porch;
-	itp.v_front_porch = pinfo->lcdc.v_front_porch;
-	itp.hsync_pulse_width = pinfo->lcdc.h_pulse_width;
+	itp.h_back_porch =  mult_frac(pinfo->lcdc.h_back_porch, dst_bpp,
+			pinfo->bpp);
+	itp.h_front_porch = mult_frac(pinfo->lcdc.h_front_porch, dst_bpp,
+			pinfo->bpp);
+	itp.v_back_porch =  mult_frac(pinfo->lcdc.v_back_porch, dst_bpp,
+			pinfo->bpp);
+	itp.v_front_porch = mult_frac(pinfo->lcdc.v_front_porch, dst_bpp,
+			pinfo->bpp);
+	itp.hsync_pulse_width = mult_frac(pinfo->lcdc.h_pulse_width, dst_bpp,
+			pinfo->bpp);
 	itp.vsync_pulse_width = pinfo->lcdc.v_pulse_width;
 
 	if (mdss_mdp_video_timegen_setup(ctx, &itp)) {

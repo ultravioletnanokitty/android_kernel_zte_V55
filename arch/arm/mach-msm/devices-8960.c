@@ -21,7 +21,6 @@
 #include <asm/clkdev.h>
 #include <mach/gpio.h>
 #include <mach/kgsl.h>
-#include <linux/android_pmem.h>
 #include <mach/irqs-8960.h>
 #include <mach/dma.h>
 #include <linux/dma-mapping.h>
@@ -1094,6 +1093,7 @@ static struct msm_vidc_v4l2_platform_data vidc_v4l2_plaform_data = {
 	.num_iommu_table = 2,
 	.load_table = vidc_v4l2_load_table,
 	.num_load_table = 2,
+	.max_load = 800*480*30/256,
 };
 
 struct platform_device msm_device_vidc_v4l2 = {
@@ -3961,8 +3961,8 @@ static struct msm_rpm_log_platform_data msm_rpm_log_pdata = {
 		[MSM_RPM_LOG_PAGE_BUFFER]  = 0x000000A0,
 	},
 	.phys_size = SZ_8K,
-	.log_len = 4096,		  /* log's buffer length in bytes */
-	.log_len_mask = (4096 >> 2) - 1,  /* length mask in units of u32 */
+	.log_len = 6144,		  /* log's buffer length in bytes */
+	.log_len_mask = (6144 >> 2) - 1,  /* length mask in units of u32 */
 };
 
 struct platform_device msm8960_rpm_log_device = {
@@ -4105,6 +4105,7 @@ struct platform_device msm_dsps_device = {
 
 static struct resource coresight_tpiu_resources[] = {
 	{
+		.name  = "tpiu-base",
 		.start = CORESIGHT_TPIU_PHYS_BASE,
 		.end   = CORESIGHT_TPIU_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,
@@ -4130,6 +4131,7 @@ struct platform_device coresight_tpiu_device = {
 
 static struct resource coresight_etb_resources[] = {
 	{
+		.name  = "etb-base",
 		.start = CORESIGHT_ETB_PHYS_BASE,
 		.end   = CORESIGHT_ETB_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,
@@ -4156,6 +4158,7 @@ struct platform_device coresight_etb_device = {
 
 static struct resource coresight_funnel_resources[] = {
 	{
+		.name  = "funnel-base",
 		.start = CORESIGHT_FUNNEL_PHYS_BASE,
 		.end   = CORESIGHT_FUNNEL_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,
@@ -4188,11 +4191,13 @@ struct platform_device coresight_funnel_device = {
 
 static struct resource coresight_stm_resources[] = {
 	{
+		.name  = "stm-base",
 		.start = CORESIGHT_STM_PHYS_BASE,
 		.end   = CORESIGHT_STM_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.name  = "stm-data-base",
 		.start = CORESIGHT_STM_CHANNEL_PHYS_BASE,
 		.end   = CORESIGHT_STM_CHANNEL_PHYS_BASE + SZ_1M + SZ_512K - 1,
 		.flags = IORESOURCE_MEM,
@@ -4225,6 +4230,7 @@ struct platform_device coresight_stm_device = {
 
 static struct resource coresight_etm0_resources[] = {
 	{
+		.name  = "etm-base",
 		.start = CORESIGHT_ETM0_PHYS_BASE,
 		.end   = CORESIGHT_ETM0_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,
@@ -4257,6 +4263,7 @@ struct platform_device coresight_etm0_device = {
 
 static struct resource coresight_etm1_resources[] = {
 	{
+		.name  = "etm-base",
 		.start = CORESIGHT_ETM1_PHYS_BASE,
 		.end   = CORESIGHT_ETM1_PHYS_BASE + SZ_4K - 1,
 		.flags = IORESOURCE_MEM,

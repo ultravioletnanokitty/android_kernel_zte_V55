@@ -1569,7 +1569,9 @@ int tspp_close_channel(u32 dev, u32 channel_id)
 {
 	int i;
 	int id;
+	int table_idx;
 	u32 val;
+	unsigned long flags;
 
 	struct sps_connect *config;
 	struct tspp_device *pdev;
@@ -1590,6 +1592,15 @@ int tspp_close_channel(u32 dev, u32 channel_id)
 	if (!channel->used)
 		return 0;
 
+	/*
+	 * Need to protect access to used and waiting fields, as they are
+	 * used by the tasklet which is invoked from interrupt context
+	 */
+	spin_lock_irqsave(&pdev->spinlock, flags);
+	channel->used = 0;
+	channel->waiting = NULL;
+	spin_unlock_irqrestore(&pdev->spinlock, flags);
+
 	if (channel->expiration_period_ms)
 		del_timer(&channel->expiration_timer);
 
@@ -1606,16 +1617,18 @@ int tspp_close_channel(u32 dev, u32 channel_id)
 	wmb();
 
 	/* unregister all filters for this channel */
-	for (i = 0; i < TSPP_NUM_PRIORITIES; i++) {
-		struct tspp_pid_filter *tspp_filter =
-			&pdev->filters[channel->src]->filter[i];
-		id = FILTER_GET_PIPE_NUMBER0(tspp_filter);
-		if (id == channel->id) {
-			if (FILTER_HAS_ENCRYPTION(tspp_filter))
-				tspp_free_key_entry(
-					FILTER_GET_KEY_NUMBER(tspp_filter));
-			tspp_filter->config = 0;
-			tspp_filter->filter = 0;
+	for (table_idx = 0; table_idx < TSPP_FILTER_TABLES; table_idx++) {
+		for (i = 0; i < TSPP_NUM_PRIORITIES; i++) {
+			struct tspp_pid_filter *filter =
+				&pdev->filters[table_idx]->filter[i];
+			id = FILTER_GET_PIPE_NUMBER0(filter);
+			if (id == channel->id) {
+				if (FILTER_HAS_ENCRYPTION(filter))
+					tspp_free_key_entry(
+						FILTER_GET_KEY_NUMBER(filter));
+				filter->config = 0;
+				filter->filter = 0;
+			}
 		}
 	}
 	channel->filter_count = 0;
@@ -1641,9 +1654,7 @@ int tspp_close_channel(u32 dev, u32 channel_id)
 	channel->buffer_count = 0;
 	channel->data = NULL;
 	channel->read = NULL;
-	channel->waiting = NULL;
 	channel->locked = NULL;
-	channel->used = 0;
 
 	if (tspp_channels_in_use(pdev) == 0) {
 		wake_unlock(&pdev->wake_lock);
@@ -2582,28 +2593,27 @@ static void tsif_debugfs_init(struct tspp_tsif_device *tsif_device,
 
 		debugfs_create_u32(
 			"stat_rx_chunks",
-			S_IRUGO|S_IWUGO,
+			S_IRUGO | S_IWUSR | S_IWGRP,
 			tsif_device->dent_tsif,
 			&tsif_device->stat_rx);
 
 		debugfs_create_u32(
 			"stat_overflow",
-			S_IRUGO|S_IWUGO,
+			S_IRUGO | S_IWUSR | S_IWGRP,
 			tsif_device->dent_tsif,
 			&tsif_device->stat_overflow);
 
 		debugfs_create_u32(
 			"stat_lost_sync",
-			S_IRUGO|S_IWUGO,
+			S_IRUGO | S_IWUSR | S_IWGRP,
 			tsif_device->dent_tsif,
 			&tsif_device->stat_lost_sync);
 
 		debugfs_create_u32(
 			"stat_timeout",
-			S_IRUGO|S_IWUGO,
+			S_IRUGO | S_IWUSR | S_IWGRP,
 			tsif_device->dent_tsif,
 			&tsif_device->stat_timeout);
-
 	}
 }
 
@@ -2837,8 +2847,6 @@ static int __devinit msm_tspp_probe(struct platform_device *pdev)
 	if (data->tsif_pclk) {
 		device->tsif_pclk = clk_get(&pdev->dev, data->tsif_pclk);
 		if (IS_ERR(device->tsif_pclk)) {
-			pr_err("tspp: failed to get %s",
-				data->tsif_pclk);
 			rc = PTR_ERR(device->tsif_pclk);
 			device->tsif_pclk = NULL;
 			goto err_pclock;
@@ -2847,8 +2855,6 @@ static int __devinit msm_tspp_probe(struct platform_device *pdev)
 	if (data->tsif_ref_clk) {
 		device->tsif_ref_clk = clk_get(&pdev->dev, data->tsif_ref_clk);
 		if (IS_ERR(device->tsif_ref_clk)) {
-			pr_err("tspp: failed to get %s",
-				data->tsif_ref_clk);
 			rc = PTR_ERR(device->tsif_ref_clk);
 			device->tsif_ref_clk = NULL;
 			goto err_refclock;

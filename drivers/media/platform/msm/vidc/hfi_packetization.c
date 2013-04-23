@@ -34,6 +34,17 @@ static int profile_table[] = {
 		HFI_H264_PROFILE_CONSTRAINED_HIGH,
 };
 
+static int entropy_mode[] = {
+	[ilog2(HAL_H264_ENTROPY_CAVLC)] = HFI_H264_ENTROPY_CAVLC,
+	[ilog2(HAL_H264_ENTROPY_CABAC)] = HFI_H264_ENTROPY_CABAC,
+};
+
+static int cabac_model[] = {
+	[ilog2(HAL_H264_CABAC_MODEL_0)] = HFI_H264_CABAC_MODEL_0,
+	[ilog2(HAL_H264_CABAC_MODEL_1)] = HFI_H264_CABAC_MODEL_1,
+	[ilog2(HAL_H264_CABAC_MODEL_2)] = HFI_H264_CABAC_MODEL_2,
+};
+
 static inline int hal_to_hfi_type(int property, int hal_type)
 {
 	if (hal_type && (roundup_pow_of_two(hal_type) != hal_type)) {
@@ -49,6 +60,12 @@ static inline int hal_to_hfi_type(int property, int hal_type)
 	case HAL_PARAM_PROFILE_LEVEL_CURRENT:
 		return (hal_type >= ARRAY_SIZE(profile_table)) ?
 			-ENOTSUPP : profile_table[hal_type];
+	case HAL_PARAM_VENC_H264_ENTROPY_CONTROL:
+		return (hal_type >= ARRAY_SIZE(entropy_mode)) ?
+			-ENOTSUPP : entropy_mode[hal_type];
+	case HAL_PARAM_VENC_H264_ENTROPY_CABAC_MODEL:
+		return (hal_type >= ARRAY_SIZE(cabac_model)) ?
+			-ENOTSUPP : cabac_model[hal_type];
 	default:
 		return -ENOTSUPP;
 	}
@@ -879,6 +896,19 @@ int create_pkt_cmd_session_set_property(
 		pkt->size += sizeof(u32) + sizeof(struct hfi_bitrate);
 		break;
 	}
+	case HAL_CONFIG_VENC_MAX_BITRATE:
+	{
+		struct hfi_bitrate *hfi;
+
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_CONFIG_VENC_MAX_BITRATE;
+		hfi = (struct hfi_bitrate *) &pkt->rg_property_data[1];
+		hfi->bit_rate = ((struct hal_bitrate *)pdata)->bit_rate;
+		hfi->layer_id = ((struct hal_bitrate *)pdata)->layer_id;
+
+		pkt->size += sizeof(u32) + sizeof(struct hfi_bitrate);
+		break;
+	}
 	case HAL_PARAM_PROFILE_LEVEL_CURRENT:
 	{
 		struct hfi_profile_level *hfi;
@@ -918,35 +948,13 @@ int create_pkt_cmd_session_set_property(
 			HFI_PROPERTY_PARAM_VENC_H264_ENTROPY_CONTROL;
 		hfi = (struct hfi_h264_entropy_control *)
 			&pkt->rg_property_data[1];
-		switch (prop->entropy_mode) {
-		case HAL_H264_ENTROPY_CAVLC:
-			hfi->cabac_model = HFI_H264_ENTROPY_CAVLC;
-			break;
-		case HAL_H264_ENTROPY_CABAC:
-			hfi->cabac_model = HFI_H264_ENTROPY_CABAC;
-			switch (prop->cabac_model) {
-			case HAL_H264_CABAC_MODEL_0:
-				hfi->cabac_model = HFI_H264_CABAC_MODEL_0;
-				break;
-			case HAL_H264_CABAC_MODEL_1:
-				hfi->cabac_model = HFI_H264_CABAC_MODEL_1;
-				break;
-			case HAL_H264_CABAC_MODEL_2:
-				hfi->cabac_model = HFI_H264_CABAC_MODEL_2;
-				break;
-			default:
-				dprintk(VIDC_ERR,
-					"Invalid cabac model 0x%x",
-					prop->entropy_mode);
-				break;
-			}
-		break;
-		default:
-			dprintk(VIDC_ERR,
-				"Invalid entropy selected: 0x%x",
-				prop->cabac_model);
-			break;
-		}
+		hfi->entropy_mode = hal_to_hfi_type(
+		   HAL_PARAM_VENC_H264_ENTROPY_CONTROL,
+		   prop->entropy_mode);
+		if (hfi->entropy_mode == HAL_H264_ENTROPY_CABAC)
+			hfi->cabac_model = hal_to_hfi_type(
+			   HAL_PARAM_VENC_H264_ENTROPY_CABAC_MODEL,
+			   prop->cabac_model);
 		pkt->size += sizeof(u32) + sizeof(
 			struct hfi_h264_entropy_control);
 		break;
@@ -1047,6 +1055,40 @@ int create_pkt_cmd_session_set_property(
 		hfi->qp_b = hal_quant->qpb;
 		hfi->layer_id = hal_quant->layer_id;
 		pkt->size += sizeof(u32) + sizeof(struct hfi_quantization);
+		break;
+	}
+	case HAL_PARAM_VENC_SESSION_QP_RANGE:
+	{
+		struct hfi_quantization_range *hfi;
+		struct hfi_quantization_range *hal_range =
+			(struct hfi_quantization_range *) pdata;
+		u32 min_qp, max_qp;
+
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_PARAM_VENC_SESSION_QP_RANGE;
+		hfi = (struct hfi_quantization_range *)
+				&pkt->rg_property_data[1];
+
+		min_qp = hal_range->min_qp;
+		max_qp = hal_range->max_qp;
+
+		/* We'll be packing in the qp, so make sure we
+		 * won't be losing data when masking */
+		if (min_qp > 0xff || max_qp > 0xff) {
+			dprintk(VIDC_ERR, "qp value out of range\n");
+			rc = -ERANGE;
+			break;
+		}
+
+		/* When creating the packet, pack the qp value as
+		 * 0xiippbb, where ii = qp range for I-frames,
+		 * pp = qp range for P-frames, etc. */
+		hfi->min_qp = min_qp | min_qp << 8 | min_qp << 16;
+		hfi->max_qp = max_qp | max_qp << 8 | max_qp << 16;
+		hfi->layer_id = hal_range->layer_id;
+
+		pkt->size += sizeof(u32) +
+			sizeof(struct hfi_quantization_range);
 		break;
 	}
 	case HAL_CONFIG_VENC_INTRA_PERIOD:
@@ -1175,8 +1217,36 @@ int create_pkt_cmd_session_set_property(
 		pkt->size += sizeof(u32) + sizeof(struct hfi_enable);
 		break;
 	}
+	case HAL_PARAM_VENC_H264_VUI_TIMING_INFO:
+	{
+		struct hfi_h264_vui_timing_info *hfi;
+		struct hal_h264_vui_timing_info *timing_info = pdata;
+
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_PARAM_VENC_H264_VUI_TIMING_INFO;
+
+		hfi = (struct hfi_h264_vui_timing_info *)&pkt->
+			rg_property_data[1];
+		hfi->enable = timing_info->enable;
+		hfi->fixed_frame_rate = timing_info->fixed_frame_rate;
+		hfi->time_scale = timing_info->time_scale;
+
+		pkt->size += sizeof(u32) +
+			sizeof(struct hfi_h264_vui_timing_info);
+		break;
+	}
 	case HAL_CONFIG_VPE_DEINTERLACE:
 		break;
+	case HAL_PARAM_VENC_H264_GENERATE_AUDNAL:
+	{
+		struct hfi_enable *hfi;
+		pkt->rg_property_data[0] =
+			HFI_PROPERTY_PARAM_VENC_H264_GENERATE_AUDNAL;
+		hfi = (struct hfi_enable *) &pkt->rg_property_data[1];
+		hfi->enable = ((struct hal_enable *) pdata)->enable;
+		pkt->size += sizeof(u32) + sizeof(struct hfi_enable);
+		break;
+	}
 	/* FOLLOWING PROPERTIES ARE NOT IMPLEMENTED IN CORE YET */
 	case HAL_CONFIG_BUFFER_REQUIREMENTS:
 	case HAL_CONFIG_PRIORITY:
@@ -1205,6 +1275,7 @@ int create_pkt_cmd_session_set_property(
 	case HAL_PARAM_VENC_LOW_LATENCY:
 	default:
 		dprintk(VIDC_ERR, "DEFAULT: Calling 0x%x", ptype);
+		rc = -ENOTSUPP;
 		break;
 	}
 	return rc;

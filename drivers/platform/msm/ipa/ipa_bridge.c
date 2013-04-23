@@ -43,6 +43,7 @@ struct ipa_bridge_pipe_context {
 	struct sps_mem_buffer desc_mem_buf;
 	struct sps_register_event register_event;
 	struct list_head free_desc_list;
+	bool valid;
 };
 
 struct ipa_bridge_context {
@@ -402,7 +403,7 @@ static int setup_bridge_to_ipa(enum ipa_bridge_dir dir,
 		sys->connection.dest_pipe_index = ipa_ctx->a5_pipe_index++;
 		sys->connection.mode = SPS_MODE_SRC;
 		sys->connection.options = SPS_O_AUTO_ENABLE | SPS_O_EOT |
-		      SPS_O_ACK_TRANSFERS;
+		      SPS_O_ACK_TRANSFERS | SPS_O_NO_DISABLE;
 	}
 
 	sys->desc_mem_buf.size = props->desc_fifo_sz;
@@ -465,6 +466,7 @@ static int setup_bridge_to_ipa(enum ipa_bridge_dir dir,
 	}
 
 	*clnt_hdl = ipa_ep_idx;
+	sys->valid = true;
 
 	return 0;
 
@@ -620,6 +622,8 @@ static int setup_bridge_to_a2(enum ipa_bridge_dir dir,
 		}
 	}
 
+	sys->valid = true;
+
 	return 0;
 
 event_reg_failed:
@@ -722,10 +726,7 @@ int ipa_bridge_setup(enum ipa_bridge_dir dir, enum ipa_bridge_type type,
 		return -EINVAL;
 	}
 
-	if (atomic_inc_return(&ipa_ctx->ipa_active_clients) == 1) {
-		if (ipa_ctx->ipa_hw_mode == IPA_HW_MODE_NORMAL)
-			ipa_enable_clks();
-	}
+	ipa_inc_client_enable_clks();
 
 	if (setup_bridge_to_ipa(dir, type, props, clnt_hdl)) {
 		IPAERR("fail to setup SYS pipe to IPA dir=%d type=%d\n",
@@ -747,10 +748,7 @@ int ipa_bridge_setup(enum ipa_bridge_dir dir, enum ipa_bridge_type type,
 bail_a2:
 	ipa_bridge_teardown(dir, type, *clnt_hdl);
 bail_ipa:
-	if (atomic_dec_return(&ipa_ctx->ipa_active_clients) == 0) {
-		if (ipa_ctx->ipa_hw_mode == IPA_HW_MODE_NORMAL)
-			ipa_disable_clks();
-	}
+	ipa_dec_client_disable_clks();
 	return ret;
 }
 EXPORT_SYMBOL(ipa_bridge_setup);
@@ -809,20 +807,20 @@ int ipa_bridge_teardown(enum ipa_bridge_dir dir, enum ipa_bridge_type type,
 
 	for (; lo <= hi; lo++) {
 		sys = &bridge[type].pipe[lo];
-		sps_disconnect(sys->pipe);
-		dma_free_coherent(NULL, sys->desc_mem_buf.size,
-				  sys->desc_mem_buf.base,
-				  sys->desc_mem_buf.phys_base);
-		sps_free_endpoint(sys->pipe);
-		ipa_bridge_free_resources(sys);
+		if (sys->valid) {
+			sps_disconnect(sys->pipe);
+			dma_free_coherent(NULL, sys->desc_mem_buf.size,
+					  sys->desc_mem_buf.base,
+					  sys->desc_mem_buf.phys_base);
+			sps_free_endpoint(sys->pipe);
+			ipa_bridge_free_resources(sys);
+			sys->valid = false;
+		}
 	}
 
 	memset(&ipa_ctx->ep[clnt_hdl], 0, sizeof(struct ipa_ep_context));
 
-	if (atomic_dec_return(&ipa_ctx->ipa_active_clients) == 0) {
-		if (ipa_ctx->ipa_hw_mode == IPA_HW_MODE_NORMAL)
-			ipa_disable_clks();
-	}
+	ipa_dec_client_disable_clks();
 
 	return 0;
 }

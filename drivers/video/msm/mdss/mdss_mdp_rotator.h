@@ -30,25 +30,30 @@ struct mdss_mdp_rotator_session {
 	u16 img_width;
 	u16 img_height;
 	struct mdss_mdp_img_rect src_rect;
+	struct mdss_mdp_img_rect dst;
 
 	u32 bwc_mode;
 	struct mdss_mdp_pipe *pipe;
 
 	struct mutex lock;
-	struct completion comp;
 	u8 busy;
 	u8 no_wait;
 
 	struct list_head head;
+	struct mdss_mdp_rotator_session *next;
 };
 
 static inline u32 mdss_mdp_get_rotator_dst_format(u32 in_format)
 {
 	switch (in_format) {
+	case MDP_RGB_565:
+	case MDP_BGR_565:
+		return MDP_RGB_888;
 	case MDP_Y_CBCR_H2V2_VENUS:
-		return MDP_Y_CBCR_H2V2;
+	case MDP_Y_CB_CR_H2V2:
 	case MDP_Y_CR_CB_GH2V2:
-		return MDP_Y_CR_CB_H2V2;
+	case MDP_Y_CR_CB_H2V2:
+		return MDP_Y_CRCB_H2V2;
 	default:
 		return in_format;
 	}
@@ -57,6 +62,7 @@ static inline u32 mdss_mdp_get_rotator_dst_format(u32 in_format)
 struct mdss_mdp_rotator_session *mdss_mdp_rotator_session_alloc(void);
 struct mdss_mdp_rotator_session *mdss_mdp_rotator_session_get(u32 session_id);
 
+int mdss_mdp_rotator_setup(struct mdss_mdp_rotator_session *rot);
 int mdss_mdp_rotator_queue(struct mdss_mdp_rotator_session *rot,
 			   struct mdss_mdp_data *src_data,
 			   struct mdss_mdp_data *dst_data);
