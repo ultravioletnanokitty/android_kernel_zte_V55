@@ -30,6 +30,7 @@
 #include <mach/msm_bus.h>
 #include <mach/subsystem_restart.h>
 #include <mach/ramdump.h>
+#include <mach/msm_smem.h>
 
 #include "peripheral-loader.h"
 #include "scm-pas.h"
@@ -203,7 +204,7 @@ static int pil_gss_reset(struct pil_desc *pil)
 {
 	struct gss_data *drv = dev_get_drvdata(pil->dev);
 	void __iomem *base = drv->base;
-	unsigned long start_addr = pil_get_entry_addr(pil);
+	phys_addr_t start_addr = pil_get_entry_addr(pil);
 	void __iomem *cbase = drv->cbase;
 	int ret;
 
@@ -569,6 +570,8 @@ static int __devinit pil_gss_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_smem;
 	}
+
+	scm_pas_init(MSM_BUS_MASTER_SPS);
 
 	ret = devm_request_irq(&pdev->dev, drv->irq, gss_wdog_bite_irq,
 			IRQF_TRIGGER_RISING, "gss_a5_wdog", drv);

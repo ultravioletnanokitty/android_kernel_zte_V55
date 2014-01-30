@@ -42,9 +42,12 @@ struct ispif_device {
 	struct platform_device *pdev;
 	struct msm_sd_subdev msm_sd;
 	struct resource *mem;
+	struct resource *clk_mux_mem;
 	struct resource *irq;
 	struct resource *io;
+	struct resource *clk_mux_io;
 	void __iomem *base;
+	void __iomem *clk_mux_base;
 	struct mutex mutex;
 	uint8_t start_ack_pending;
 	uint32_t csid_version;
@@ -55,5 +58,7 @@ struct ispif_device {
 	enum msm_ispif_state_t ispif_state;
 	struct msm_ispif_vfe_info vfe_info;
 	struct clk *ahb_clk;
+	struct completion reset_complete[VFE_MAX];
+	uint32_t hw_num_isps;
 };
 #endif

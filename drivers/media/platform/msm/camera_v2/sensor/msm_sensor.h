@@ -37,6 +37,11 @@
 
 struct msm_sensor_ctrl_t;
 
+enum msm_sensor_state_t {
+	MSM_SENSOR_POWER_DOWN,
+	MSM_SENSOR_POWER_UP,
+};
+
 struct msm_sensor_fn_t {
 	int (*sensor_config) (struct msm_sensor_ctrl_t *, void __user *);
 	int (*sensor_power_down)
@@ -62,9 +67,12 @@ struct msm_sensor_ctrl_t {
 	struct v4l2_subdev_ops *sensor_v4l2_subdev_ops;
 	struct msm_sensor_fn_t *func_tbl;
 	struct msm_camera_i2c_reg_setting stop_setting;
+	bool stop_setting_valid;
 	bool free_power_setting;
 	struct msm_cam_clk_info *clk_info;
 	uint16_t clk_info_size;
+	void *misc_regulator;
+	enum msm_sensor_state_t sensor_state;
 };
 
 int32_t msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl,
@@ -80,8 +88,19 @@ int32_t msm_sensor_platform_probe(struct platform_device *pdev,
 	void *data);
 
 int32_t msm_sensor_i2c_probe(struct i2c_client *client,
-	const struct i2c_device_id *id);
+	const struct i2c_device_id *id, struct msm_sensor_ctrl_t *s_ctrl);
 
 int32_t msm_sensor_free_sensor_data(struct msm_sensor_ctrl_t *s_ctrl);
 
+int32_t msm_sensor_get_dt_gpio_req_tbl(struct device_node *of_node,
+	struct msm_camera_gpio_conf *gconf, uint16_t *gpio_array,
+	uint16_t gpio_array_size);
+
+int32_t msm_sensor_get_dt_gpio_set_tbl(struct device_node *of_node,
+	struct msm_camera_gpio_conf *gconf, uint16_t *gpio_array,
+	uint16_t gpio_array_size);
+
+int32_t msm_sensor_init_gpio_pin_tbl(struct device_node *of_node,
+	struct msm_camera_gpio_conf *gconf, uint16_t *gpio_array,
+	uint16_t gpio_array_size);
 #endif

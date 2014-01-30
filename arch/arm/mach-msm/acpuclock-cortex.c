@@ -66,11 +66,17 @@ static int increase_vdd(unsigned int vdd_cpu, unsigned int vdd_mem)
 {
 	int rc = 0;
 
-	/* Increase vdd_mem before vdd_cpu. vdd_mem should be >= vdd_cpu. */
-	rc = regulator_set_voltage(priv->vdd_mem, vdd_mem, priv->vdd_max_mem);
-	if (rc) {
-		pr_err("vdd_mem increase failed (%d)\n", rc);
-		return rc;
+	if (priv->vdd_mem) {
+		/*
+		 * Increase vdd_mem before vdd_cpu. vdd_mem should
+		 * be >= vdd_cpu.
+		 */
+		rc = regulator_set_voltage(priv->vdd_mem, vdd_mem,
+						priv->vdd_max_mem);
+		if (rc) {
+			pr_err("vdd_mem increase failed (%d)\n", rc);
+			return rc;
+		}
 	}
 
 	rc = regulator_set_voltage(priv->vdd_cpu, vdd_cpu, priv->vdd_max_cpu);
@@ -91,6 +97,9 @@ static void decrease_vdd(unsigned int vdd_cpu, unsigned int vdd_mem)
 		pr_err("vdd_cpu decrease failed (%d)\n", ret);
 		return;
 	}
+
+	if (!priv->vdd_mem)
+		return;
 
 	/* Decrease vdd_mem after vdd_cpu. vdd_mem should be >= vdd_cpu. */
 	ret = regulator_set_voltage(priv->vdd_mem, vdd_mem, priv->vdd_max_mem);
@@ -129,15 +138,73 @@ static void select_clk_source_div(struct acpuclk_drv_data *drv_data,
 		pr_warn("acpu rcg didn't update its configuration\n");
 }
 
-/*
- * This function can be called in both atomic and nonatomic context.
- * Since regulator APIS can sleep, we cannot always use the clk prepare
- * unprepare API.
- */
-static int set_speed(struct clkctl_acpu_speed *tgt_s, bool atomic)
+static struct clkctl_acpu_speed *__init find_cur_cpu_level(void)
+{
+	struct clkctl_acpu_speed *f, *max = priv->freq_tbl;
+	void __iomem *apcs_rcg_config = priv->apcs_rcg_config;
+	struct acpuclk_reg_data *r = &priv->reg_data;
+	u32 regval, div, src;
+	unsigned long rate;
+	struct clk *parent;
+
+	regval = readl_relaxed(apcs_rcg_config);
+	src = regval & r->cfg_src_mask;
+	src >>= r->cfg_src_shift;
+
+	div = regval & r->cfg_div_mask;
+	div >>= r->cfg_div_shift;
+	/* No support for half-integer dividers */
+	div = div > 1 ? (div + 1) / 2 : 0;
+
+	for (f = priv->freq_tbl; f->khz; f++) {
+		if (f->use_for_scaling)
+			max = f;
+
+		if (f->src_sel != src || f->src_div != div)
+			continue;
+
+		parent = priv->src_clocks[f->src].clk;
+		rate = parent->rate / (div ? div : 1);
+		if (f->khz * 1000 == rate)
+			break;
+	}
+
+	if (f->khz)
+		return f;
+
+	pr_err("CPUs are running at an unknown rate. Defaulting to %u KHz.\n",
+		max->khz);
+
+	/* Change to a safe frequency */
+	select_clk_source_div(priv, priv->freq_tbl);
+	/* Default to largest frequency */
+	return max;
+}
+
+static int set_speed_atomic(struct clkctl_acpu_speed *tgt_s)
+{
+	struct clkctl_acpu_speed *strt_s = priv->current_speed;
+	struct clk *strt = priv->src_clocks[strt_s->src].clk;
+	struct clk *tgt = priv->src_clocks[tgt_s->src].clk;
+	int rc = 0;
+
+	WARN(strt_s->src == ACPUPLL && tgt_s->src == ACPUPLL,
+		"can't reprogram ACPUPLL during atomic context\n");
+	rc = clk_enable(tgt);
+	if (rc)
+		return rc;
+
+	select_clk_source_div(priv, tgt_s);
+	clk_disable(strt);
+
+	return rc;
+}
+
+static int set_speed(struct clkctl_acpu_speed *tgt_s)
 {
 	int rc = 0;
-	unsigned int tgt_freq_hz = tgt_s->khz * 1000;
+	unsigned int div = tgt_s->src_div ? tgt_s->src_div : 1;
+	unsigned int tgt_freq_hz = tgt_s->khz * 1000 * div;
 	struct clkctl_acpu_speed *strt_s = priv->current_speed;
 	struct clkctl_acpu_speed *cxo_s = &priv->freq_tbl[0];
 	struct clk *strt = priv->src_clocks[strt_s->src].clk;
@@ -148,19 +215,13 @@ static int set_speed(struct clkctl_acpu_speed *tgt_s, bool atomic)
 		select_clk_source_div(priv, cxo_s);
 
 		/* Re-program acpu pll */
-		if (atomic)
-			clk_disable(tgt);
-		else
-			clk_disable_unprepare(tgt);
+		clk_disable_unprepare(tgt);
 
 		rc = clk_set_rate(tgt, tgt_freq_hz);
 		if (rc)
 			pr_err("Failed to set ACPU PLL to %u\n", tgt_freq_hz);
 
-		if (atomic)
-			BUG_ON(clk_enable(tgt));
-		else
-			BUG_ON(clk_prepare_enable(tgt));
+		BUG_ON(clk_prepare_enable(tgt));
 
 		/* Switch back to acpu pll */
 		select_clk_source_div(priv, tgt_s);
@@ -172,10 +233,7 @@ static int set_speed(struct clkctl_acpu_speed *tgt_s, bool atomic)
 			return rc;
 		}
 
-		if (atomic)
-			rc = clk_enable(tgt);
-		else
-			rc = clk_prepare_enable(tgt);
+		rc = clk_prepare_enable(tgt);
 
 		if (rc) {
 			pr_err("ACPU PLL enable failed\n");
@@ -184,16 +242,10 @@ static int set_speed(struct clkctl_acpu_speed *tgt_s, bool atomic)
 
 		select_clk_source_div(priv, tgt_s);
 
-		if (atomic)
-			clk_disable(strt);
-		else
-			clk_disable_unprepare(strt);
+		clk_disable_unprepare(strt);
 
 	} else {
-		if (atomic)
-			rc = clk_enable(tgt);
-		else
-			rc = clk_prepare_enable(tgt);
+		rc = clk_prepare_enable(tgt);
 
 		if (rc) {
 			pr_err("%s enable failed\n",
@@ -203,10 +255,7 @@ static int set_speed(struct clkctl_acpu_speed *tgt_s, bool atomic)
 
 		select_clk_source_div(priv, tgt_s);
 
-		if (atomic)
-			clk_disable(strt);
-		else
-			clk_disable_unprepare(strt);
+		clk_disable_unprepare(strt);
 
 	}
 
@@ -225,7 +274,7 @@ static int acpuclk_cortex_set_rate(int cpu, unsigned long rate,
 	strt_s = priv->current_speed;
 
 	/* Return early if rate didn't change */
-	if (rate == strt_s->khz)
+	if (rate == strt_s->khz && reason != SETRATE_INIT)
 		goto out;
 
 	/* Find target frequency */
@@ -238,7 +287,7 @@ static int acpuclk_cortex_set_rate(int cpu, unsigned long rate,
 	}
 
 	/* Increase VDD levels if needed */
-	if ((reason == SETRATE_CPUFREQ || reason == SETRATE_INIT)
+	if ((reason == SETRATE_CPUFREQ)
 			&& (tgt_s->khz > strt_s->khz)) {
 		rc = increase_vdd(tgt_s->vdd_cpu, tgt_s->vdd_mem);
 		if (rc)
@@ -250,9 +299,9 @@ static int acpuclk_cortex_set_rate(int cpu, unsigned long rate,
 
 	/* Switch CPU speed. Flag indicates atomic context */
 	if (reason == SETRATE_CPUFREQ || reason == SETRATE_INIT)
-		rc = set_speed(tgt_s, false);
+		rc = set_speed(tgt_s);
 	else
-		rc = set_speed(tgt_s, true);
+		rc = set_speed_atomic(tgt_s);
 
 	if (rc)
 		goto out;
@@ -268,7 +317,7 @@ static int acpuclk_cortex_set_rate(int cpu, unsigned long rate,
 	set_bus_bw(tgt_s->bw_level);
 
 	/* Drop VDD levels if we can. */
-	if (tgt_s->khz < strt_s->khz)
+	if (tgt_s->khz < strt_s->khz || reason == SETRATE_INIT)
 		decrease_vdd(tgt_s->vdd_cpu, tgt_s->vdd_mem);
 
 out:
@@ -319,11 +368,45 @@ static struct acpuclk_data acpuclk_cortex_data = {
 	.get_rate = acpuclk_cortex_get_rate,
 };
 
+void __init get_speed_bin(void __iomem *base, struct bin_info *bin)
+{
+	u32 pte_efuse, redundant_sel;
+
+	pte_efuse = readl_relaxed(base);
+	redundant_sel = (pte_efuse >> 24) & 0x7;
+	bin->speed = pte_efuse & 0x7;
+
+	if (redundant_sel == 1)
+		bin->speed = (pte_efuse >> 27) & 0x7;
+
+	bin->speed_valid = !!(pte_efuse & BIT(3));
+}
+
+static struct clkctl_acpu_speed *__init select_freq_plan(void)
+{
+	struct bin_info bin;
+
+	if (!priv->pte_efuse_base)
+		return priv->freq_tbl;
+
+	get_speed_bin(priv->pte_efuse_base, &bin);
+
+	if (bin.speed_valid) {
+		pr_info("SPEED BIN: %d\n", bin.speed);
+	} else {
+		bin.speed = 0;
+		pr_warn("SPEED BIN: Defaulting to %d\n",
+			 bin.speed);
+	}
+
+	return priv->pvs_tables[bin.speed];
+}
+
 int __init acpuclk_cortex_init(struct platform_device *pdev,
 	struct acpuclk_drv_data *data)
 {
-	unsigned long max_cpu_khz = 0;
-	int i, rc;
+	int rc;
+	int parent;
 
 	priv = data;
 	mutex_init(&priv->lock);
@@ -331,49 +414,53 @@ int __init acpuclk_cortex_init(struct platform_device *pdev,
 	acpuclk_cortex_data.power_collapse_khz = priv->wait_for_irq_khz;
 	acpuclk_cortex_data.wait_for_irq_khz = priv->wait_for_irq_khz;
 
+	priv->freq_tbl = select_freq_plan();
+	if (!priv->freq_tbl) {
+		pr_err("Invalid freq table selected\n");
+		BUG();
+	}
+
 	bus_perf_client = msm_bus_scale_register_client(priv->bus_scale);
 	if (!bus_perf_client) {
 		pr_err("Unable to register bus client\n");
 		BUG();
 	}
 
-	/* Improve boot time by ramping up CPU immediately */
-	for (i = 0; priv->freq_tbl[i].khz != 0; i++)
-		if (priv->freq_tbl[i].use_for_scaling)
-			max_cpu_khz = priv->freq_tbl[i].khz;
-
 	/* Initialize regulators */
 	rc = increase_vdd(priv->vdd_max_cpu, priv->vdd_max_mem);
 	if (rc)
-		goto err_vdd;
+		return rc;
 
-	rc = regulator_enable(priv->vdd_mem);
-	if (rc) {
-		dev_err(&pdev->dev, "regulator_enable for mem failed\n");
-		goto err_vdd;
+	if (priv->vdd_mem) {
+		rc = regulator_enable(priv->vdd_mem);
+		if (rc) {
+			dev_err(&pdev->dev, "regulator_enable for mem failed\n");
+			return rc;
+		}
 	}
 
 	rc = regulator_enable(priv->vdd_cpu);
 	if (rc) {
 		dev_err(&pdev->dev, "regulator_enable for cpu failed\n");
-		goto err_vdd_cpu;
+		return rc;
 	}
 
-	/*
-	 * Select a state which is always a valid transition to align SW with
-	 * the HW configuration set by the bootloaders.
-	 */
-	acpuclk_cortex_set_rate(0, acpuclk_cortex_data.power_collapse_khz,
-		SETRATE_INIT);
-	acpuclk_cortex_set_rate(0, max_cpu_khz, SETRATE_INIT);
+	priv->current_speed = find_cur_cpu_level();
+	parent = priv->current_speed->src;
+	rc = clk_prepare_enable(priv->src_clocks[parent].clk);
+	if (rc) {
+		dev_err(&pdev->dev, "handoff: prepare_enable failed\n");
+		return rc;
+	}
+
+	rc = acpuclk_cortex_set_rate(0, priv->current_speed->khz, SETRATE_INIT);
+	if (rc) {
+		dev_err(&pdev->dev, "handoff: set rate failed\n");
+		return rc;
+	}
 
 	acpuclk_register(&acpuclk_cortex_data);
 	cpufreq_table_init();
 
 	return 0;
-
-err_vdd_cpu:
-	regulator_disable(priv->vdd_mem);
-err_vdd:
-	return rc;
 }

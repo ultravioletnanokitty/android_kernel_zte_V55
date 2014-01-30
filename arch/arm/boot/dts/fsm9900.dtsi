@@ -1,0 +1,272 @@
+/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/include/ "skeleton64.dtsi"
+
+/ {
+	model = "Qualcomm FSM9900";
+	compatible = "qcom,fsm9900";
+	interrupt-parent = <&intc>;
+	soc: soc { };
+};
+
+&soc {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	ranges = <0 0 0 0xffffffff>;
+
+	intc: interrupt-controller@f9000000 {
+		compatible = "qcom,msm-qgic2";
+		interrupt-controller;
+		#interrupt-cells = <3>;
+		reg = <0xF9000000 0x1000>,
+		      <0xF9002000 0x1000>;
+	};
+
+	msmgpio: gpio@fd510000 {
+		compatible = "qcom,msm-gpio";
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		reg = <0xfd510000 0x4000>;
+		ngpio = <142>;
+		interrupts = <0 208 0>;
+		qcom,direct-connect-irqs = <5>;
+	};
+
+	timer {
+		compatible = "arm,armv7-timer";
+		interrupts = <1 2 0 1 3 0>;
+		clock-frequency = <19200000>;
+	};
+
+	serial@f9960000 {
+		compatible = "qcom,msm-lsuart-v14";
+		reg = <0xf9960000 0x1000>;
+		interrupts = <0 104 0>;
+		status = "disabled";
+	};
+
+	cpu-pmu {
+		compatible = "qcom,krait-pmu";
+		qcom,irq-is-percpu;
+		interrupts = <1 7 0xf00>;
+	};
+
+	qcom,msm-imem@fe805000 {
+		compatible = "qcom,msm-imem";
+		reg = <0xfe805000 0x1000>; /* Address and size of IMEM */
+	};
+
+	qcom,cache_erp {
+		compatible = "qcom,cache_erp";
+		interrupts = <1 9 0>, <0 2 0>;
+		interrupt-names = "l1_irq", "l2_irq";
+	};
+
+	qcom,cache_dump {
+		compatible = "qcom,cache_dump";
+		qcom,l1-dump-size = <0x100000>;
+		qcom,l2-dump-size = <0x500000>;
+	};
+
+	qcom,ion {
+		compatible = "qcom,msm-ion";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		qcom,ion-heap@30 { /* SYSTEM HEAP */
+			reg = <30>;
+		};
+	};
+
+	qcom,wdt@f9017000 {
+		compatible = "qcom,msm-watchdog";
+		reg = <0xf9017000 0x1000>;
+		interrupts = <0 3 0>, <0 4 0>;
+		qcom,bark-time = <11000>;
+		qcom,pet-time = <10000>;
+		qcom,ipi-ping;
+	};
+
+	i2c@f9966000 { /* BLSP-2 QUP-4 */
+		cell-index = <0>;
+		compatible = "qcom,i2c-qup";
+		reg = <0xf9966000 0x500>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		interrupts = <0 103 0>;
+		interrupt-names = "qup_err_intr";
+		qcom,i2c-bus-freq = <100000>;
+		qcom,i2c-src-freq = <100000000>;
+		qcom,sda-gpio = <&msmgpio 38 0>;
+		qcom,scl-gpio = <&msmgpio 39 0>;
+		qcom,master-id = <84>;
+	};
+
+	i2c@f9967000 { /* BLSP-2 QUP-5 */
+		cell-index = <0>;
+		compatible = "qcom,i2c-qup";
+		reg = <0Xf9967000 0x500>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		interrupts = <0 105 0>;
+		interrupt-names = "qup_err_intr";
+		qcom,i2c-bus-freq = <100000>;
+		qcom,i2c-src-freq = <10000000>;
+		qcom,sda-gpio = <&msmgpio 137 0>;
+		qcom,scl-gpio = <&msmgpio 141 0>;
+		qcom,master-id = <84>;
+		status = "disabled";
+	};
+
+
+	i2c@f9924000 { /* BLSP-1 QUP-2 */
+		cell-index = <1>;
+		compatible = "qcom,i2c-qup";
+		reg = <0xf9924000 0x500>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		interrupts = <0 96 0>;
+		interrupt-names = "qup_err_intr";
+		qcom,i2c-bus-freq = <100000>;
+		qcom,i2c-src-freq = <100000000>;
+		qcom,sda-gpio = <&msmgpio 6 0>;
+		qcom,scl-gpio = <&msmgpio 7 0>;
+		qcom,master-id = <86>;
+	};
+
+	sdcc1: qcom,sdcc@f9824000 {
+		cell-index = <1>; /* SDC1 eMMC slot */
+		compatible = "qcom,msm-sdcc";
+		reg = <0xf9824000 0x800>;
+		reg-names = "core_mem";
+		interrupts = <0 123 0>;
+		interrupt-names = "core_irq";
+
+		qcom,bus-width = <8>;
+		status = "disabled";
+	};
+
+	sdcc2: qcom,sdcc@f98a4000 {
+		cell-index = <2>; /* SDC2 SD card slot */
+		compatible = "qcom,msm-sdcc";
+		reg = <0xf98a4000 0x800>;
+		reg-names = "core_mem";
+		interrupts = <0 125 0>;
+		interrupt-names = "core_irq";
+
+		qcom,bus-width = <4>;
+		status = "disabled";
+	};
+
+	sdhc_1: sdhci@f9824900 {
+		qcom,bus-width = <8>;
+		compatible = "qcom,sdhci-msm";
+		reg = <0xf9824900 0x11c>, <0xf9824000 0x800>;
+		reg-names = "hc_mem", "core_mem";
+		interrupts = <0 123 0>, <0 138 0>;
+		interrupt-names = "hc_irq", "pwr_irq";
+		qcom,bus-speed-mode = "HS200_1p8v", "DDR_1p8v";
+		qcom,cpu-dma-latency-us = <200>;
+
+		qcom,msm-bus,name = "sdhc1";
+		qcom,msm-bus,num-cases = <8>;
+		qcom,msm-bus,active-only = <0>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps = <78 512 0 0>, /* No vote */
+				<78 512 1600 3200>,    /* 400 KB/s*/
+				<78 512 80000 160000>, /* 20 MB/s */
+				<78 512 100000 200000>, /* 25 MB/s */
+				<78 512 200000 400000>, /* 50 MB/s */
+				<78 512 400000 800000>, /* 100 MB/s */
+				<78 512 800000 1600000>, /* 200 MB/s */
+				<78 512 2048000 4096000>; /* Max. bandwidth */
+		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
+		status = "disable";
+	};
+
+	sdhc_2: sdhci@f98a4900 {
+		compatible = "qcom,sdhci-msm";
+		reg = <0xf98a4900 0x11c>, <0xf98a4000 0x800>;
+		reg-names = "hc_mem", "core_mem";
+		interrupts = <0 125 0>, <0 221 0>;
+		interrupt-names = "hc_irq", "pwr_irq";
+
+		qcom,bus-width = <4>;
+		qcom,cpu-dma-latency-us = <200>;
+
+		qcom,msm-bus,name = "sdhc2";
+		qcom,msm-bus,num-cases = <8>;
+		qcom,msm-bus,active-only = <0>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps = <81 512 0 0>, /* No vote */
+				<81 512 1600 3200>,    /* 400 KB/s*/
+				<81 512 80000 160000>, /* 20 MB/s */
+				<81 512 100000 200000>, /* 25 MB/s */
+				<81 512 200000 400000>, /* 50 MB/s */
+				<81 512 400000 800000>, /* 100 MB/s */
+				<81 512 800000 1600000>, /* 200 MB/s */
+				<81 512 2048000 4096000>; /* Max. bandwidth */
+		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
+		status = "disable";
+	};
+
+	qcom,sps@0xfe204000 {
+		compatible = "qcom,msm_sps";
+		reg = <0xfe204000 0x15000>,
+		<0xfe223000 0xb000>;
+		interrupts = <0 94 0>;
+	};
+
+	qcom,qcrypto@fd400000 {
+		compatible = "qcom,qcrypto";
+		reg = <0xfd400000 0x20000>,
+			<0xfd404000 0x8000>;
+		reg-names = "crypto-base","crypto-bam-base";
+		interrupts = <0 109 0>;
+		qcom,bam-pipe-pair = <1>;
+		qcom,ce-hw-instance = <0>;
+	};
+
+	qcom,qcrypto@fd440000 {
+		compatible = "qcom,qcrypto";
+		reg = <0xfd440000 0x20000>,
+			<0xfd444000 0x8000>;
+		reg-names = "crypto-base","crypto-bam-base";
+		interrupts = <0 110 0>;
+		qcom,bam-pipe-pair = <1>;
+		qcom,ce-hw-instance = <1>;
+	};
+	qcom,qcota@fe140000 {
+		compatible = "qcom,qcota";
+		reg = <0xfe140000 0x20000>,
+			<0xfe144000 0x8000>;
+			reg-names = "crypto-base","crypto-bam-base";
+			interrupts = <0 111 0>;
+			qcom,bam-pipe-pair = <1>;
+			qcom,ce-hw-instance = <2>;
+	};
+	qcom,qcota@fe100000 {
+		compatible = "qcom,qcota";
+		reg = <0xfe100000 0x20000>,
+			<0xfe104000 0x8000>;
+			reg-names = "crypto-base","crypto-bam-base";
+			interrupts = <0 112 0>;
+			qcom,bam-pipe-pair = <1>;
+			qcom,ce-hw-instance = <3>;
+	};
+};

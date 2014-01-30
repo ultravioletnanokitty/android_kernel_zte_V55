@@ -40,12 +40,13 @@
 #include <mach/rpm-smd.h>
 #include <mach/rpm-regulator-smd.h>
 #include <mach/socinfo.h>
+#include <mach/msm_smem.h>
 #include "board-dt.h"
 #include "clock.h"
 #include "devices.h"
 #include "spm.h"
+#include "pm.h"
 #include "modem_notifier.h"
-#include "lpm_resources.h"
 #include "platsmp.h"
 
 
@@ -91,10 +92,11 @@ static void __init msm8974_early_memory(void)
  */
 void __init msm8974_add_drivers(void)
 {
+	msm_smem_init();
 	msm_init_modem_notifier_list();
 	msm_smd_init();
 	msm_rpm_driver_init();
-	msm_lpmrs_module_init();
+	msm_pm_sleep_status_init();
 	rpm_regulator_smd_driver_init();
 	msm_spm_device_init();
 	krait_power_init();
@@ -163,7 +165,7 @@ void __init msm8974_init(void)
 
 	msm_8974_init_gpiomux();
 	regulator_has_full_constraints();
-	of_platform_populate(NULL, of_default_bus_match_table, adata, NULL);
+	board_dt_populate(adata);
 	msm8974_add_drivers();
 }
 
@@ -174,6 +176,7 @@ void __init msm8974_init_very_early(void)
 
 static const char *msm8974_dt_match[] __initconst = {
 	"qcom,msm8974",
+	"qcom,apq8074",
 	NULL
 };
 

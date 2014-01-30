@@ -46,6 +46,9 @@
 #define ISPIF_VFE_m_RDI_INTF_n_STATUS(m, n)      (0x2D0 + ISPIF_VFE(m) + 4*(n))
 #define ISPIF_VFE_m_3D_DESKEW_SIZE(m)            (0x2E4 + ISPIF_VFE(m))
 
+/* CSID CLK MUX SEL REGISTERS */
+#define ISPIF_RDI_CLK_MUX_SEL_ADDR               0x8
+
 /*ISPIF RESET BITS*/
 #define VFE_CLK_DOMAIN_RST                       BIT(31)
 #define PIX_1_CLK_DOMAIN_RST                     BIT(30)
@@ -87,5 +90,7 @@
 #define ISPIF_IRQ_STATUS_RDI2_SOF_MASK           0x249
 
 #define ISPIF_IRQ_GLOBAL_CLEAR_CMD               0x1
+
+#define ISPIF_STOP_INTF_IMMEDIATELY              0xAAAAAAAA
 
 #endif /* __MSM_ISPIF_HWREG_V2_H__ */

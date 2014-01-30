@@ -34,9 +34,9 @@
 struct clk_freq_tbl {
 	unsigned long	freq_hz;
 	struct clk	*src_clk;
-	const u32	m_val;
-	const u32	n_val;
-	const u32	d_val;
+	u32	m_val;
+	u32	n_val;
+	u32	d_val;
 	u32	div_src_val;
 	const unsigned	sys_vdd;
 };
@@ -174,8 +174,13 @@ extern struct clk_ops clk_ops_rcg_mnd;
 extern struct clk_ops clk_ops_branch;
 extern struct clk_ops clk_ops_vote;
 extern struct clk_ops clk_ops_rcg_hdmi;
+extern struct clk_ops clk_ops_rcg_edp;
 extern struct clk_ops clk_ops_byte;
 extern struct clk_ops clk_ops_pixel;
+extern struct clk_ops clk_ops_edppixel;
+
+enum handoff pixel_rcg_handoff(struct clk *clk);
+enum handoff byte_rcg_handoff(struct clk *clk);
 
 /*
  * Clock definition macros

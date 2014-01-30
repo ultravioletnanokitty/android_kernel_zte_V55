@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  */
 
-/ {
+&soc {
 	qcom,ion {
 		compatible = "qcom,msm-ion";
 		#address-cells = <1>;
@@ -31,10 +31,23 @@
 		qcom,ion-heap@27 { /* QSECOM HEAP */
 			compatible = "qcom,msm-ion-reserve";
 			reg = <27>;
-			qcom,heap-align = <0x1000>;
-			qcom,memory-reservation-type = "EBI1"; /* reserve EBI memory */
-			qcom,memory-reservation-size = <0x100000>;
+			linux,contiguous-region = <&qsecom_mem>;
 		};
+
+		qcom,ion-heap@23 { /* OTHER PIL HEAP */
+			compatible = "qcom,msm-ion-reserve";
+			reg = <23>;
+			qcom,heap-align = <0x1000>;
+			qcom,memory-fixed = <0x0c500000 0x1300000>;
+		};
+
+		qcom,ion-heap@26 { /* MODEM HEAP */
+			compatible = "qcom,msm-ion-reserve";
+			reg = <26>;
+			qcom,heap-align = <0x1000>;
+			qcom,memory-fixed = <0x08800000 0x3d00000>;
+		};
+
 	};
 };
 

@@ -18,6 +18,14 @@
 
 #define QSEECOM_KEY_ID_SIZE   32
 
+#define	QSEOS_RESULT_FAIL_LOAD_KS         -57
+#define	QSEOS_RESULT_FAIL_SAVE_KS         -58
+#define	QSEOS_RESULT_FAIL_MAX_KEYS        -59
+#define	QSEOS_RESULT_FAIL_KEY_ID_EXISTS   -60
+#define	QSEOS_RESULT_FAIL_KEY_ID_DNE      -61
+#define	QSEOS_RESULT_FAIL_KS_OP           -62
+#define	QSEOS_RESULT_FAIL_CE_PIPE_INVALID -63
+
 enum qseecom_command_scm_resp_type {
 	QSEOS_APP_ID = 0xEE01,
 	QSEOS_LISTENER_ID
@@ -38,8 +46,12 @@ enum qseecom_qceos_cmd_id {
 	QSEOS_UNLOAD_SERV_IMAGE_COMMAND,
 	QSEOS_APP_REGION_NOTIFICATION,
 	QSEOS_REGISTER_LOG_BUF_COMMAND,
-	QSEE_RPMB_PROVISION_KEY_COMMAND,
-	QSEE_RPMB_ERASE_COMMAND,
+	QSEOS_RPMB_PROVISION_KEY_COMMAND,
+	QSEOS_RPMB_ERASE_COMMAND,
+	QSEOS_GENERATE_KEY  = 0x11,
+	QSEOS_DELETE_KEY,
+	QSEOS_MAX_KEY_COUNT,
+	QSEOS_SET_KEY,
 	QSEOS_CMD_MAX     = 0xEFFFFFFF
 };
 
@@ -47,6 +59,13 @@ enum qseecom_qceos_cmd_status {
 	QSEOS_RESULT_SUCCESS = 0,
 	QSEOS_RESULT_INCOMPLETE,
 	QSEOS_RESULT_FAILURE  = 0xFFFFFFFF
+};
+
+enum qseecom_pipe_type {
+	QSEOS_PIPE_ENC = 0x1,
+	QSEOS_PIPE_ENC_XTS = 0x2,
+	QSEOS_PIPE_AUTH = 0x4,
+	QSEOS_PIPE_ENUM_FILL = 0x7FFFFFFF
 };
 
 __packed  struct qsee_apps_region_info_ireq {
@@ -143,29 +162,24 @@ __packed struct qseecom_client_send_service_ireq {
 	unsigned int rsp_len; /* in/out */
 };
 
-/* Key Management requests */
-enum qseecom_qceos_key_gen_cmd_id {
-	QSEOS_GENERATE_KEY      = 0x02,
-	QSEOS_SET_KEY,
-	QSEOS_DELETE_KEY,
-	QSEOS_MAX_KEY_COUNT,
-	QSEOS_KEY_CMD_MAX     = 0xEFFFFFFF
-};
-
 __packed struct qseecom_key_generate_ireq {
+	uint32_t qsee_command_id;
 	uint32_t flags;
 	uint8_t key_id[QSEECOM_KEY_ID_SIZE];
 };
 
 __packed struct qseecom_key_select_ireq {
+	uint32_t qsee_command_id;
 	uint32_t ce;
 	uint32_t pipe;
+	uint32_t pipe_type;
 	uint32_t flags;
 	uint8_t key_id[QSEECOM_KEY_ID_SIZE];
 	unsigned char hash[QSEECOM_HASH_SIZE];
 };
 
 __packed struct qseecom_key_delete_ireq {
+	uint32_t qsee_command_id;
 	uint32_t flags;
 	uint8_t key_id[QSEECOM_KEY_ID_SIZE];
 };
@@ -178,10 +192,5 @@ __packed struct qseecom_key_max_count_query_irsp {
 	uint32_t max_key_count;
 };
 
-struct key_id_info {
-	uint32_t	ce_hw;
-	uint32_t	pipe;
-	bool		flags;
-};
 
 #endif /* __QSEECOMI_H_ */

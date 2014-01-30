@@ -30,7 +30,8 @@
 #define IPA_COOKIE 0xfacefeed
 
 #define IPA_NUM_PIPES 0x14
-#define IPA_SYS_DESC_FIFO_SZ (0x800)
+#define IPA_SYS_DESC_FIFO_SZ 0x800
+#define IPA_SYS_TX_DATA_DESC_FIFO_SZ 0x1000
 
 #ifdef IPA_DEBUG
 #define IPADBG(fmt, args...) \
@@ -40,10 +41,11 @@
 #define IPADBG(fmt, args...)
 #endif
 
-#define WLAN_AMPDU_TX_EP (15)
-#define WLAN_PROD_TX_EP (19)
-#define MAX_NUM_EXCP	 (8)
-#define MAX_NUM_IMM_CMD	 (17)
+#define WLAN_AMPDU_TX_EP 15
+#define WLAN_PROD_TX_EP  19
+
+#define MAX_NUM_EXCP     8
+#define MAX_NUM_IMM_CMD 17
 
 #define IPA_STATS
 
@@ -116,7 +118,6 @@
 
 #define IPA_DFLT_HDR_NAME "ipa_excp_hdr"
 #define IPA_INVALID_L4_PROTOCOL 0xFF
-
 
 #define IPA_CLIENT_IS_PROD(x) (x >= IPA_CLIENT_PROD && x < IPA_CLIENT_CONS)
 #define IPA_CLIENT_IS_CONS(x) (x >= IPA_CLIENT_CONS && x < IPA_CLIENT_MAX)
@@ -348,6 +349,7 @@ struct ipa_ep_context {
 	enum ipa_client_type client;
 	struct sps_pipe *ep_hdl;
 	struct ipa_ep_cfg cfg;
+	struct ipa_ep_cfg_holb holb;
 	u32 dst_pipe_index;
 	u32 rt_tbl_idx;
 	struct sps_connect connect;
@@ -370,7 +372,6 @@ struct ipa_ep_context {
  * @spinlock: protects the list and its size
  * @event: used to request CALLBACK mode from SPS driver
  * @ep: IPA EP context
- * @wait_desc_list: used to hold completed Tx packets
  *
  * IPA context specific to the system-bam pipes a.k.a LAN IN/OUT and WAN
  */
@@ -380,7 +381,8 @@ struct ipa_sys_context {
 	spinlock_t spinlock;
 	struct sps_register_event event;
 	struct ipa_ep_context *ep;
-	struct list_head wait_desc_list;
+	atomic_t curr_polling_state;
+	struct delayed_work switch_to_intr_work;
 };
 
 /**
@@ -477,6 +479,14 @@ struct ipa_rx_pkt_wrapper {
  * @is_sys_mem: flag indicating if NAT memory is sys memory
  * @is_dev_init: flag indicating if NAT device is initialized
  * @lock: NAT memory mutex
+ * @nat_base_address: nat table virutal address
+ * @ipv4_rules_addr: base nat table address
+ * @ipv4_expansion_rules_addr: expansion table address
+ * @index_table_addr: index table address
+ * @index_table_expansion_addr: index expansion table address
+ * @size_base_tables: base table size
+ * @size_expansion_tables: expansion table size
+ * @public_ip_addr: ip address of nat table
  */
 struct ipa_nat_mem {
 	struct class *class;
@@ -490,6 +500,14 @@ struct ipa_nat_mem {
 	bool is_sys_mem;
 	bool is_dev_init;
 	struct mutex lock;
+	void *nat_base_address;
+	char *ipv4_rules_addr;
+	char *ipv4_expansion_rules_addr;
+	char *index_table_addr;
+	char *index_table_expansion_addr;
+	u32 size_base_tables;
+	u32 size_expansion_tables;
+	u32 public_ip_addr;
 };
 
 /**
@@ -528,6 +546,7 @@ struct ipa_stats {
 	u32 bridged_pkts[IPA_BRIDGE_TYPE_MAX][IPA_BRIDGE_DIR_MAX];
 	u32 rx_repl_repost;
 	u32 x_intr_repost;
+	u32 x_intr_repost_tx;
 	u32 rx_q_len;
 	u32 msg_w[IPA_EVENT_MAX];
 	u32 msg_r[IPA_EVENT_MAX];
@@ -630,7 +649,6 @@ struct ipa_context {
 	struct rb_root rt_rule_hdl_tree;
 	struct rb_root rt_tbl_hdl_tree;
 	struct rb_root flt_rule_hdl_tree;
-	struct rb_root tag_tree;
 	struct ipa_nat_mem nat_mem;
 	u32 excp_hdr_hdl;
 	u32 dflt_v4_rt_rule_hdl;
@@ -639,7 +657,6 @@ struct ipa_context {
 	uint aggregation_type;
 	uint aggregation_byte_limit;
 	uint aggregation_time_limit;
-	atomic_t curr_polling_state;
 	struct delayed_work poll_work;
 	bool hdr_tbl_lcl;
 	struct ipa_mem_buffer hdr_mem;
@@ -665,6 +682,7 @@ struct ipa_context {
 	enum ipa_hw_mode ipa_hw_mode;
 	/* featurize if memory footprint becomes a concern */
 	struct ipa_stats stats;
+	void *smem_pipe_mem;
 };
 
 /**
@@ -749,7 +767,7 @@ int ipa_get_a2_mux_pipe_info(enum a2_mux_pipe_direction pipe_dir,
 				struct a2_mux_pipe_connection *pipe_connect);
 int ipa_get_a2_mux_bam_info(u32 *a2_bam_mem_base, u32 *a2_bam_mem_size,
 			    u32 *a2_bam_irq);
-void rmnet_bridge_get_client_handles(u32 *producer_handle,
+void teth_bridge_get_client_handles(u32 *producer_handle,
 		u32 *consumer_handle);
 int ipa_send_one(struct ipa_sys_context *sys, struct ipa_desc *desc,
 		bool in_atomic);
@@ -794,7 +812,10 @@ void ipa_replenish_rx_cache(void);
 void ipa_cleanup_rx(void);
 int ipa_cfg_filter(u32 disable);
 void ipa_wq_write_done(struct work_struct *work);
-int ipa_handle_rx_core(bool process_all, bool in_poll_state);
+int ipa_handle_rx_core(struct ipa_sys_context *sys, bool process_all,
+		bool in_poll_state);
+int ipa_handle_tx_core(struct ipa_sys_context *sys, bool process_all,
+		bool in_poll_state);
 int ipa_pipe_mem_init(u32 start_ofst, u32 size);
 int ipa_pipe_mem_alloc(u32 *ofst, u32 size);
 int ipa_pipe_mem_free(u32 ofst, u32 size);

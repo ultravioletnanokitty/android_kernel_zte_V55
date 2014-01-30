@@ -231,7 +231,7 @@ this needs to be removed after interface validation
 
 static int map_device_to_dolby_endpoint(int device)
 {
-	int i, dolby_dap_device = DOLBY_ENDP_INT_SPEAKERS;
+	int i, dolby_dap_device = DOLBY_ENDP_EXT_SPEAKERS;
 	for (i = 0; i < NUM_DOLBY_ENDP_DEVICE; i++) {
 		if (dolby_dap_endp_params[i].device == device) {
 			dolby_dap_device = dolby_dap_endp_params[i].dap_device;
@@ -437,7 +437,8 @@ static int map_device_to_port_id(int device)
 	if (device == DEVICE_OUT_ALL) {
 		port_id = PRIMARY_I2S_RX | SLIMBUS_0_RX | HDMI_RX |
 				INT_BT_SCO_RX | INT_FM_RX |
-				RT_PROXY_PORT_001_RX | PCM_RX |
+				RT_PROXY_PORT_001_RX |
+				AFE_PORT_ID_PRIMARY_PCM_RX |
 				MI2S_RX | SECONDARY_I2S_RX |
 				SLIMBUS_1_RX | SLIMBUS_4_RX | SLIMBUS_3_RX |
 				AFE_PORT_ID_SECONDARY_MI2S_RX;
@@ -556,7 +557,7 @@ int msm_routing_get_dolby_dap_param_to_get_control(
 		return -ENOMEM;
 	}
 	if (DOLBY_PARAM_ID_VER == dolby_dap_params_get.param_id) {
-		rc = adm_dolby_dap_get_params(dolby_dap_params_get.port_id,
+		rc = adm_get_params(dolby_dap_params_get.port_id,
 						DOLBY_BUNDLE_MODULE_ID,
 						DOLBY_PARAM_ID_VER,
 						params_length +
@@ -574,7 +575,7 @@ int msm_routing_get_dolby_dap_param_to_get_control(
 			params_length = (dolby_dap_params_length[i] +
 						DOLBY_PARAM_PAYLOAD_SIZE) *
 						sizeof(uint32_t);
-			rc = adm_dolby_dap_get_params(
+			rc = adm_get_params(
 						dolby_dap_params_get.port_id,
 						DOLBY_BUNDLE_MODULE_ID,
 						dolby_dap_params_id[i],
@@ -640,7 +641,7 @@ int msm_routing_get_dolby_dap_param_visualizer_control(
 		DOLBY_PARAM_PAYLOAD_SIZE * sizeof(uint32_t);
 	int port_id = dolby_dap_params_states.port_id;
 	if (port_id == DOLBY_INVALID_PORT_ID) {
-		pr_err("%s, port_id not set, returning error", __func__);
+		pr_debug("%s, port_id not set, returning error", __func__);
 		ucontrol->value.integer.value[0] = 0;
 		return -EINVAL;
 	}
@@ -651,7 +652,7 @@ int msm_routing_get_dolby_dap_param_visualizer_control(
 	}
 	offset = 0;
 	params_length = length * sizeof(uint32_t);
-	rc = adm_dolby_dap_get_params(dolby_dap_params_states.port_id,
+	rc = adm_get_params(dolby_dap_params_states.port_id,
 					DOLBY_BUNDLE_MODULE_ID,
 					DOLBY_PARAM_ID_VCBG,
 					params_length + param_payload_len,
@@ -663,7 +664,7 @@ int msm_routing_get_dolby_dap_param_visualizer_control(
 	}
 
 	offset = length * sizeof(uint32_t);
-	rc = adm_dolby_dap_get_params(dolby_dap_params_states.port_id,
+	rc = adm_get_params(dolby_dap_params_states.port_id,
 					DOLBY_BUNDLE_MODULE_ID,
 					DOLBY_PARAM_ID_VCBE,
 					params_length + param_payload_len,

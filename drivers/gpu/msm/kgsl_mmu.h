@@ -14,12 +14,16 @@
 #define __KGSL_MMU_H
 
 #include <mach/iommu.h>
-
+#include "kgsl_iommu.h"
 /*
  * These defines control the address range for allocations that
  * are mapped into all pagetables.
  */
+#ifndef CONFIG_MSM_KGSL_CFF_DUMP
 #define KGSL_IOMMU_GLOBAL_MEM_BASE	0xf8000000
+#else
+#define KGSL_IOMMU_GLOBAL_MEM_BASE      (0x09F00000 - SZ_4M)
+#endif
 #define KGSL_IOMMU_GLOBAL_MEM_SIZE	SZ_4M
 
 #define KGSL_MMU_ALIGN_MASK     (~((1 << PAGE_SHIFT) - 1))
@@ -133,28 +137,35 @@ struct kgsl_mmu_ops {
 	int (*mmu_close) (struct kgsl_mmu *mmu);
 	int (*mmu_start) (struct kgsl_mmu *mmu);
 	void (*mmu_stop) (struct kgsl_mmu *mmu);
-	void (*mmu_setstate) (struct kgsl_mmu *mmu,
+	int (*mmu_setstate) (struct kgsl_mmu *mmu,
 		struct kgsl_pagetable *pagetable,
 		unsigned int context_id);
-	void (*mmu_device_setstate) (struct kgsl_mmu *mmu,
+	int (*mmu_device_setstate) (struct kgsl_mmu *mmu,
 					uint32_t flags);
 	void (*mmu_pagefault) (struct kgsl_mmu *mmu);
-	unsigned int (*mmu_get_current_ptbase)
+	phys_addr_t (*mmu_get_current_ptbase)
+			(struct kgsl_mmu *mmu);
+	void (*mmu_pagefault_resume)
 			(struct kgsl_mmu *mmu);
 	void (*mmu_disable_clk_on_ts)
 		(struct kgsl_mmu *mmu, uint32_t ts, bool ts_valid);
 	int (*mmu_enable_clk)
 		(struct kgsl_mmu *mmu, int ctx_id);
-	int (*mmu_get_pt_lsb)(struct kgsl_mmu *mmu,
+	void (*mmu_disable_clk)
+		(struct kgsl_mmu *mmu);
+	phys_addr_t (*mmu_get_default_ttbr0)(struct kgsl_mmu *mmu,
 				unsigned int unit_id,
 				enum kgsl_iommu_context_id ctx_id);
 	unsigned int (*mmu_get_reg_gpuaddr)(struct kgsl_mmu *mmu,
 			int iommu_unit_num, int ctx_id, int reg);
+	unsigned int (*mmu_get_reg_ahbaddr)(struct kgsl_mmu *mmu,
+			int iommu_unit_num, int ctx_id,
+			enum kgsl_iommu_reg_map reg);
 	int (*mmu_get_num_iommu_units)(struct kgsl_mmu *mmu);
 	int (*mmu_pt_equal) (struct kgsl_mmu *mmu,
 			struct kgsl_pagetable *pt,
-			unsigned int pt_base);
-	unsigned int (*mmu_get_pt_base_addr)
+			phys_addr_t pt_base);
+	phys_addr_t (*mmu_get_pt_base_addr)
 			(struct kgsl_mmu *mmu,
 			struct kgsl_pagetable *pt);
 	int (*mmu_setup_pt) (struct kgsl_mmu *mmu,
@@ -165,6 +176,7 @@ struct kgsl_mmu_ops {
 			(struct kgsl_mmu *mmu, unsigned int *cmds);
 	unsigned int (*mmu_sync_unlock)
 			(struct kgsl_mmu *mmu, unsigned int *cmds);
+	int (*mmu_hw_halt_supported)(struct kgsl_mmu *mmu, int iommu_unit_num);
 };
 
 struct kgsl_mmu_pt_ops {
@@ -194,7 +206,7 @@ struct kgsl_mmu {
 	struct kgsl_pagetable  *hwpagetable;
 	const struct kgsl_mmu_ops *mmu_ops;
 	void *priv;
-	int fault;
+	atomic_t fault;
 	unsigned long pt_base;
 	unsigned long pt_size;
 	bool pt_per_process;
@@ -216,17 +228,21 @@ int kgsl_mmu_start(struct kgsl_device *device);
 int kgsl_mmu_close(struct kgsl_device *device);
 int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 		 struct kgsl_memdesc *memdesc);
+int kgsl_mmu_get_gpuaddr(struct kgsl_pagetable *pagetable,
+		 struct kgsl_memdesc *memdesc);
 int kgsl_mmu_map_global(struct kgsl_pagetable *pagetable,
 			struct kgsl_memdesc *memdesc);
 int kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
 		    struct kgsl_memdesc *memdesc);
+int kgsl_mmu_put_gpuaddr(struct kgsl_pagetable *pagetable,
+		 struct kgsl_memdesc *memdesc);
 unsigned int kgsl_virtaddr_to_physaddr(void *virtaddr);
-void kgsl_setstate(struct kgsl_mmu *mmu, unsigned int context_id,
+int kgsl_setstate(struct kgsl_mmu *mmu, unsigned int context_id,
 			uint32_t flags);
 int kgsl_mmu_get_ptname_from_ptbase(struct kgsl_mmu *mmu,
-					unsigned int pt_base);
+					phys_addr_t pt_base);
 unsigned int kgsl_mmu_log_fault_addr(struct kgsl_mmu *mmu,
-			unsigned int pt_base, unsigned int addr);
+			phys_addr_t pt_base, unsigned int addr);
 int kgsl_mmu_pt_get_flags(struct kgsl_pagetable *pt,
 			enum kgsl_deviceid id);
 void kgsl_mmu_ptpool_destroy(void *ptpool);
@@ -242,7 +258,7 @@ int kgsl_mmu_gpuaddr_in_range(struct kgsl_pagetable *pt, unsigned int gpuaddr);
  * of as wrappers around the actual function
  */
 
-static inline unsigned int kgsl_mmu_get_current_ptbase(struct kgsl_mmu *mmu)
+static inline phys_addr_t kgsl_mmu_get_current_ptbase(struct kgsl_mmu *mmu)
 {
 	if (mmu->mmu_ops && mmu->mmu_ops->mmu_get_current_ptbase)
 		return mmu->mmu_ops->mmu_get_current_ptbase(mmu);
@@ -250,19 +266,23 @@ static inline unsigned int kgsl_mmu_get_current_ptbase(struct kgsl_mmu *mmu)
 		return 0;
 }
 
-static inline void kgsl_mmu_setstate(struct kgsl_mmu *mmu,
+static inline int kgsl_mmu_setstate(struct kgsl_mmu *mmu,
 			struct kgsl_pagetable *pagetable,
 			unsigned int context_id)
 {
 	if (mmu->mmu_ops && mmu->mmu_ops->mmu_setstate)
-		mmu->mmu_ops->mmu_setstate(mmu, pagetable, context_id);
+		return mmu->mmu_ops->mmu_setstate(mmu, pagetable, context_id);
+
+	return 0;
 }
 
-static inline void kgsl_mmu_device_setstate(struct kgsl_mmu *mmu,
+static inline int kgsl_mmu_device_setstate(struct kgsl_mmu *mmu,
 						uint32_t flags)
 {
 	if (mmu->mmu_ops && mmu->mmu_ops->mmu_device_setstate)
-		mmu->mmu_ops->mmu_device_setstate(mmu, flags);
+		return mmu->mmu_ops->mmu_device_setstate(mmu, flags);
+
+	return 0;
 }
 
 static inline void kgsl_mmu_stop(struct kgsl_mmu *mmu)
@@ -273,7 +293,7 @@ static inline void kgsl_mmu_stop(struct kgsl_mmu *mmu)
 
 static inline int kgsl_mmu_pt_equal(struct kgsl_mmu *mmu,
 			struct kgsl_pagetable *pt,
-			unsigned int pt_base)
+			phys_addr_t pt_base)
 {
 	if (mmu->mmu_ops && mmu->mmu_ops->mmu_pt_equal)
 		return mmu->mmu_ops->mmu_pt_equal(mmu, pt, pt_base);
@@ -281,7 +301,7 @@ static inline int kgsl_mmu_pt_equal(struct kgsl_mmu *mmu,
 		return 1;
 }
 
-static inline unsigned int kgsl_mmu_get_pt_base_addr(struct kgsl_mmu *mmu,
+static inline phys_addr_t kgsl_mmu_get_pt_base_addr(struct kgsl_mmu *mmu,
 						struct kgsl_pagetable *pt)
 {
 	if (mmu->mmu_ops && mmu->mmu_ops->mmu_get_pt_base_addr)
@@ -290,12 +310,13 @@ static inline unsigned int kgsl_mmu_get_pt_base_addr(struct kgsl_mmu *mmu,
 		return 0;
 }
 
-static inline int kgsl_mmu_get_pt_lsb(struct kgsl_mmu *mmu,
+static inline phys_addr_t kgsl_mmu_get_default_ttbr0(struct kgsl_mmu *mmu,
 					unsigned int unit_id,
 					enum kgsl_iommu_context_id ctx_id)
 {
-	if (mmu->mmu_ops && mmu->mmu_ops->mmu_get_pt_lsb)
-		return mmu->mmu_ops->mmu_get_pt_lsb(mmu, unit_id, ctx_id);
+	if (mmu->mmu_ops && mmu->mmu_ops->mmu_get_default_ttbr0)
+		return mmu->mmu_ops->mmu_get_default_ttbr0(mmu, unit_id,
+							ctx_id);
 	else
 		return 0;
 }
@@ -307,6 +328,12 @@ static inline int kgsl_mmu_enable_clk(struct kgsl_mmu *mmu,
 		return mmu->mmu_ops->mmu_enable_clk(mmu, ctx_id);
 	else
 		return 0;
+}
+
+static inline void kgsl_mmu_disable_clk(struct kgsl_mmu *mmu)
+{
+	if (mmu->mmu_ops && mmu->mmu_ops->mmu_disable_clk)
+		mmu->mmu_ops->mmu_disable_clk(mmu);
 }
 
 static inline void kgsl_mmu_disable_clk_on_ts(struct kgsl_mmu *mmu,
@@ -337,10 +364,49 @@ static inline unsigned int kgsl_mmu_get_reg_gpuaddr(struct kgsl_mmu *mmu,
 		return 0;
 }
 
+/*
+ * kgsl_mmu_get_reg_ahbaddr() - Calls the mmu specific function pointer to
+ * return the address that GPU can use to access register
+ * @mmu:		Pointer to the device mmu
+ * @iommu_unit_num:	There can be multiple iommu units used for graphics.
+ *			This parameter is an index to the iommu unit being used
+ * @ctx_id:		The context id within the iommu unit
+ * @reg:		Register whose address is to be returned
+ *
+ * Returns the ahb address of reg else 0
+ */
+static inline unsigned int kgsl_mmu_get_reg_ahbaddr(struct kgsl_mmu *mmu,
+						int iommu_unit_num,
+						int ctx_id,
+						enum kgsl_iommu_reg_map reg)
+{
+	if (mmu->mmu_ops && mmu->mmu_ops->mmu_get_reg_ahbaddr)
+		return mmu->mmu_ops->mmu_get_reg_ahbaddr(mmu, iommu_unit_num,
+							ctx_id, reg);
+	else
+		return 0;
+}
+
 static inline int kgsl_mmu_get_num_iommu_units(struct kgsl_mmu *mmu)
 {
 	if (mmu->mmu_ops && mmu->mmu_ops->mmu_get_num_iommu_units)
 		return mmu->mmu_ops->mmu_get_num_iommu_units(mmu);
+	else
+		return 0;
+}
+
+/*
+ * kgsl_mmu_hw_halt_supported() - Runtime check for iommu hw halt
+ * @mmu: the mmu
+ *
+ * Returns non-zero if the iommu supports hw halt,
+ * 0 if not.
+ */
+static inline int kgsl_mmu_hw_halt_supported(struct kgsl_mmu *mmu,
+						int iommu_unit_num)
+{
+	if (mmu->mmu_ops && mmu->mmu_ops->mmu_hw_halt_supported)
+		return mmu->mmu_ops->mmu_hw_halt_supported(mmu, iommu_unit_num);
 	else
 		return 0;
 }
@@ -367,7 +433,7 @@ static inline int kgsl_mmu_is_perprocess(struct kgsl_mmu *mmu)
  */
 static inline int kgsl_mmu_use_cpu_map(struct kgsl_mmu *mmu)
 {
-	return mmu->pt_per_process;
+	return mmu->use_cpu_map;
 }
 
 /*

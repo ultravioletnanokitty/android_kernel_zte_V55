@@ -9,7 +9,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-/ {
+&soc {
 	msm_gpu: qcom,kgsl-3d0@fdb00000 {
 		label = "kgsl-3d0";
 		compatible = "qcom,kgsl-3d0", "qcom,kgsl-3d";
@@ -26,7 +26,6 @@
 		qcom,step-pwrlevel = <2>;
 
 		qcom,idle-timeout = <8>; //<HZ/12>
-		qcom,nap-allowed = <1>;
 		qcom,strtstp-sleepwake;
 		qcom,clk-map = <0x0000006>; //KGSL_CLK_CORE | KGSL_CLK_IFACE
 
@@ -50,6 +49,14 @@
 
 		/* IOMMU Data */
 		iommu = <&kgsl_iommu>;
+
+		/* Trace bus */
+		coresight-id = <67>;
+		coresight-name = "coresight-gfx";
+		coresight-nr-inports = <0>;
+		coresight-outports = <0>;
+		coresight-child-list = <&funnel_mmss>;
+		coresight-child-ports = <7>;
 
 		qcom,gpu-pwrlevels {
 			#address-cells = <1>;

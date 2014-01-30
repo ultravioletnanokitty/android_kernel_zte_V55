@@ -70,7 +70,7 @@ error1:
 }
 
 static struct msm_cam_clk_info jpeg_8x_clk_info[] = {
-	{"core_clk", 228570000},
+	{"core_clk", JPEG_CLK_RATE},
 	{"iface_clk", -1},
 	{"bus_clk0", -1},
 	{"camss_top_ahb_clk", -1},
@@ -135,8 +135,8 @@ static struct msm_bus_vectors msm_jpeg_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_JPEG,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = 1027648000,
-		.ib  = 1105920000,
+		.ab  = JPEG_CLK_RATE * 2.5,
+		.ib  = JPEG_CLK_RATE * 2.5,
 	},
 };
 
@@ -171,6 +171,8 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 	void *jpeg_base;
 	struct msm_jpeg_device *pgmn_dev =
 		(struct msm_jpeg_device *) context;
+
+	pgmn_dev->state = MSM_JPEG_IDLE;
 
 	jpeg_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!jpeg_mem) {
@@ -271,6 +273,7 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 	pgmn_dev->jpeg_client = msm_ion_client_create(-1, "camera/jpeg");
 	JPEG_DBG("%s:%d] success\n", __func__, __LINE__);
 
+	pgmn_dev->state = MSM_JPEG_INIT;
 	return rc;
 
 fail_request_irq:
@@ -345,6 +348,7 @@ int msm_jpeg_platform_release(struct resource *mem, void *base, int irq,
 	iounmap(base);
 	release_mem_region(mem->start, resource_size(mem));
 	ion_client_destroy(pgmn_dev->jpeg_client);
+	pgmn_dev->state = MSM_JPEG_IDLE;
 	JPEG_DBG("%s:%d] success\n", __func__, __LINE__);
 	return result;
 }

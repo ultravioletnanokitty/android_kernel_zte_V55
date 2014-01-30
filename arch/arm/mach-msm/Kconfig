@@ -145,7 +145,7 @@ config ARCH_MSM8960
 	select CPU_V7
 	select GPIO_MSM_V2
 	select MSM_GPIOMUX
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_DIRECT_SCLK_ACCESS
 	select REGULATOR
 	select MSM_RPM_REGULATOR
@@ -187,7 +187,7 @@ config ARCH_MSM8930
 	select CPU_V7
 	select GPIO_MSM_V2
 	select MSM_GPIOMUX
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_DIRECT_SCLK_ACCESS
 	select REGULATOR
 	select MSM_RPM_REGULATOR
@@ -223,7 +223,7 @@ config ARCH_APQ8064
 	select GPIO_MSM_V2
 	select ARM_GIC
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_GPIOMUX
 	select MSM_REMOTE_SPINLOCK_SFPB
 	select MSM_PIL
@@ -257,7 +257,7 @@ config ARCH_MSM8974
 	select GPIO_MSM_V3
 	select ARM_GIC
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_GPIOMUX
 	select MULTI_IRQ_HANDLER
 	select MSM_MULTIMEDIA_USE_ION
@@ -280,19 +280,20 @@ config ARCH_MSM8974
 	select MEMORY_HOLE_CARVEOUT
 	select MSM_RPM_STATS_LOG
 	select QMI_ENCDEC
-	select DONT_MAP_HOLE_AFTER_MEMBANK0
 	select MSM_ULTRASOUND_B
-	select MSM_LPM_TEST
 	select MSM_RPM_LOG
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
+	select KRAIT_REGULATOR
+	select USB_ARCH_HAS_XHCI
+	select ENABLE_VMALLOC_SAVING
 
-config ARCH_MSMZINC
-	bool "MSMZINC"
+config ARCH_APQ8084
+	bool "APQ8084"
 	select ARCH_MSM_KRAITMP
 	select GPIO_MSM_V3
 	select ARM_GIC
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MSM_GPIOMUX
 	select MULTI_IRQ_HANDLER
 	select MSM_NATIVE_RESTART
@@ -304,6 +305,14 @@ config ARCH_MSMZINC
 	select ARM_HAS_SG_CHAIN
 	select ARCH_DMA_ADDR_T_64BIT if ARM_LPAE
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
+	select MEMORY_HOLE_CARVEOUT
+	select DONT_MAP_HOLE_AFTER_MEMBANK0
+	select QMI_ENCDEC
+	select MSM_SPM_V2
+	select MSM_L2_SPM
+	select MSM_PM8X60 if PM
+	select MSM_RPM_SMD
+	select USB_ARCH_HAS_XHCI
 
 config ARCH_MPQ8092
 	bool "MPQ8092"
@@ -315,6 +324,29 @@ config ARCH_MPQ8092
 	select MSM_GPIOMUX
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
+	select MSM_NOPM
+	select MEMORY_HOLE_CARVEOUT
+	select DONT_MAP_HOLE_AFTER_MEMBANK0
+	select QMI_ENCDEC
+	select ARM_HAS_SG_CHAIN
+
+config ARCH_FSM9900
+	bool "FSM9900"
+	select ARCH_MSM_KRAITMP
+	select GPIO_MSM_V3
+	select ARM_GIC
+	select CPU_V7
+	select MSM_SCM
+	select MSM_GPIOMUX
+	select MULTI_IRQ_HANDLER
+	select MSM_PIL
+	select MSM_NATIVE_RESTART
+	select MSM_RESTART_V2
+	select MAY_HAVE_SPARSE_IRQ
+	select SPARSE_IRQ
+	select REGULATOR
+	select ARM_HAS_SG_CHAIN
+	select MSM_RUN_QUEUE_STATS
 	select MSM_NOPM
 
 config ARCH_FSM9XXX
@@ -378,11 +410,11 @@ config ARCH_MSM9625
 	select MSM_RESTART_V2
 	select MSM_SPM_V2
 	select MSM_PM8X60 if PM
-	select MSM_SCM if SMP
 	select MULTI_IRQ_HANDLER
 	select GPIO_MSM_V3
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
+	select CPU_FREQ_MSM
 	select MSM_MULTIMEDIA_USE_ION
 	select MSM_RPM_STATS_LOG
 	select MSM_QDSP6_APRV2
@@ -407,6 +439,8 @@ config ARCH_MSMKRYPTON
 	select GPIO_MSM_V3
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
+	select MEMORY_HOLE_CARVEOUT
+	select QMI_ENCDEC
 
 config ARCH_MSM8610
 	bool "MSM8610"
@@ -414,10 +448,11 @@ config ARCH_MSM8610
 	select GIC_SECURE
 	select ARCH_MSM_CORTEXMP
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
 	select MULTI_IRQ_HANDLER
+	select ARM_TICKET_LOCKS
 	select GPIO_MSM_V3
 	select MSM_GPIOMUX
 	select MSM_NATIVE_RESTART
@@ -431,12 +466,9 @@ config ARCH_MSM8610
 	select MSM_L2_SPM
 	select MSM_PM8X60 if PM
 	select MEMORY_HOLE_CARVEOUT
-	select DONT_MAP_HOLE_AFTER_MEMBANK0
 	select MSM_BUS_SCALING
 	select CPU_FREQ_MSM
 	select CPU_FREQ
-	select CPU_FREQ_GOV_USERSPACE
-	select CPU_FREQ_GOV_ONDEMAND
 	select MSM_PIL
 	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
@@ -447,6 +479,7 @@ config ARCH_MSM8610
 	select MSM_CPR_REGULATOR
 	select MSM_RPM_LOG
 	select MSM_RPM_STATS_LOG
+	select ENABLE_VMALLOC_SAVING
 
 config ARCH_MSM8226
 	bool "MSM8226"
@@ -454,10 +487,11 @@ config ARCH_MSM8226
 	select GIC_SECURE
 	select ARCH_MSM_CORTEXMP
 	select CPU_V7
-	select MSM_SCM if SMP
+	select MSM_SCM
 	select MAY_HAVE_SPARSE_IRQ
 	select SPARSE_IRQ
 	select MULTI_IRQ_HANDLER
+	select ARM_TICKET_LOCKS
 	select GPIO_MSM_V3
 	select MSM_GPIOMUX
 	select MSM_NATIVE_RESTART
@@ -471,12 +505,9 @@ config ARCH_MSM8226
 	select MSM_L2_SPM
 	select MSM_PM8X60 if PM
 	select MEMORY_HOLE_CARVEOUT
-	select DONT_MAP_HOLE_AFTER_MEMBANK0
 	select MSM_BUS_SCALING
 	select CPU_FREQ_MSM
 	select CPU_FREQ
-	select CPU_FREQ_GOV_USERSPACE
-	select CPU_FREQ_GOV_ONDEMAND
 	select MSM_PIL
 	select MSM_RUN_QUEUE_STATS
 	select ARM_HAS_SG_CHAIN
@@ -488,6 +519,34 @@ config ARCH_MSM8226
 	select MSM_RPM_LOG
 	select MSM_RPM_STATS_LOG
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
+	select PINCTRL
+	select PINCTRL_MSM_TLMM_V3
+	select ENABLE_VMALLOC_SAVING
+
+config ARCH_MSMSAMARIUM
+	bool "MSMSAMARIUM"
+	select ARCH_MSM_KRAITMP
+	select GPIO_MSM_V3
+	select ARM_GIC
+	select CPU_V7
+	select MSM_SCM
+	select MSM_PIL
+	select MSM_GPIOMUX
+	select MULTI_IRQ_HANDLER
+	select MSM_SPM_V2
+	select MSM_L2_SPM
+	select MSM_NATIVE_RESTART
+	select MSM_RESTART_V2
+	select MSM_PM8X60 if PM
+	select MSM_RPM_SMD
+	select REGULATOR
+	select MSM_RPM_REGULATOR_SMD
+	select MAY_HAVE_SPARSE_IRQ
+	select SPARSE_IRQ
+	select ARM_HAS_SG_CHAIN
+	select MSM_RUN_QUEUE_STATS
+	select ARCH_WANT_KMAP_ATOMIC_FLUSH
+	select QMI_ENCDEC
 endmenu
 
 choice
@@ -1086,13 +1145,15 @@ config PHYS_OFFSET
 	default "0x80200000" if ARCH_MSM8960
 	default "0x80200000" if ARCH_MSM8930
 	default "0x00000000" if ARCH_MSM8974
-	default "0x00000000" if ARCH_MSMZINC
+	default "0x00000000" if ARCH_APQ8084
 	default "0x00000000" if ARCH_MPQ8092
 	default "0x00000000" if ARCH_MSM8226
 	default "0x00000000" if ARCH_MSM8610
+	default "0x00000000" if ARCH_MSMSAMARIUM
 	default "0x10000000" if ARCH_FSM9XXX
-	default "0x00200000" if ARCH_MSM9625
-	default "0x00200000" if ARCH_MSMKRYPTON
+	default "0x00000000" if ARCH_FSM9900
+	default "0x00300000" if ARCH_MSM9625
+	default "0x00000000" if ARCH_MSMKRYPTON
 	default "0x00200000" if !MSM_STACKED_MEMORY
 	default "0x00000000" if ARCH_QSD8X50 && MSM_SOC_REV_A
 	default "0x20000000" if ARCH_QSD8X50
@@ -1112,14 +1173,14 @@ config KERNEL_MSM_CONTIG_MEM_REGION
 config KERNEL_PMEM_SMI_REGION
 	bool "Enable in-kernel PMEM region for SMI"
 	default y if ARCH_MSM8X60
-	depends on ANDROID_PMEM && ((ARCH_QSD8X50 && !PMEM_GPU0) || (ARCH_MSM8X60 && !VCM))
+	depends on (ARCH_QSD8X50 && !PMEM_GPU0) || (ARCH_MSM8X60 && !VCM)
 	help
 	   Enable the in-kernel PMEM allocator to use SMI memory.
 
 config PMEM_GPU0
 	bool "Enable PMEM GPU0 region"
 	default y
-	depends on ARCH_QSD8X50 && ANDROID_PMEM
+	depends on ARCH_QSD8X50
 	help
 	  Enable the PMEM GPU0 device on SMI Memory.
 
@@ -1239,13 +1300,45 @@ choice
                   Say Y here if you want the debug print routines to direct
                   their output to the serial port on MPQ8092 devices.
 
-	config DEBUG_MSMZINC_UART
-                bool "Kernel low-level debugging messages via MSMZINC UART"
-                depends on ARCH_MSMZINC
+	config DEBUG_APQ8084_UART
+                bool "Kernel low-level debugging messages via APQ8084 UART"
+                depends on ARCH_APQ8084
                 select MSM_HAS_DEBUG_UART_HS_V14
                 help
                   Say Y here if you want the debug print routines to direct
-                  their output to the serial port on MSMZINC devices.
+                  their output to the serial port on APQ8084 devices.
+
+	config DEBUG_MSM9625_UART
+                bool "Kernel low-level debugging messages via MSM9625 UART"
+                depends on ARCH_MSM9625
+                select MSM_HAS_DEBUG_UART_HS_V14
+                help
+                  Say Y here if you want the debug print routines to direct
+                  their output to the serial port on MSM9625 devices.
+
+	config DEBUG_FSM9900_UART
+		bool "Kernel low-level debugging messages via FSM9900 UART"
+		depends on ARCH_FSM9900
+		select MSM_HAS_DEBUG_UART_HS_V14
+		help
+		  Say Y here if you want the debug print routines to direct
+		  their output to the serial port on FSM9900 devices.
+
+	config DEBUG_MSMSAMARIUM_UART
+		bool "Kernel low-level debugging messages via MSM SAMARIUM UART"
+		depends on ARCH_MSMSAMARIUM
+		select MSM_HAS_DEBUG_UART_HS_V14
+		help
+		  Say Y here if you want the debug print routines to direct
+		  their output to the serial port on MSM SAMARIUM devices.
+
+	config DEBUG_MSM8226_UART
+		bool "Kernel low-level debugging messages via MSM 8226 UART"
+		depends on ARCH_MSM8226
+		select MSM_HAS_DEBUG_UART_HS_V14
+		help
+		  Say Y here if you want the debug print routines to direct
+		  their output to the serial port on MSM 8226 devices.
 endchoice
 
 choice
@@ -1679,6 +1772,16 @@ config MSM_IPC_ROUTER_SMD_XPRT
 	help
 	  SMD Transport Layer for IPC Router
 
+config MSM_IPC_ROUTER_HSIC_XPRT
+	depends on USB_QCOM_IPC_BRIDGE
+	depends on MSM_IPC_ROUTER
+	bool "MSM HSIC XPRT Layer"
+	help
+	  HSIC Transport Layer that enables off-chip communication of
+	  IPC Router. When the HSIC endpoint becomes available, this layer
+	  registers the transport with IPC Router and enable message
+	  exchange.
+
 config MSM_IPC_ROUTER_SECURITY
 	depends on MSM_IPC_ROUTER
 	bool "MSM IPC Router Security support"
@@ -1847,7 +1950,6 @@ config MSM_AVS_HW
 
 config MSM_HW3D
 	tristate "MSM Hardware 3D Register Driver"
-	depends on ANDROID_PMEM
 	help
 	  Provides access to registers needed by the userspace OpenGL|ES
 	  library.
@@ -1855,7 +1957,6 @@ config MSM_HW3D
 config MSM_ADSP
 	depends on (ARCH_MSM7X01A || ARCH_MSM7X25 || ARCH_MSM7X27)
 	tristate "MSM ADSP driver"
-	depends on ANDROID_PMEM
 	default y
 	help
 	  Provides access to registers needed by the userspace aDSP library.
@@ -1881,7 +1982,7 @@ endchoice
 
 config MSM7KV2_AUDIO
 	bool "MSM7K v2 audio"
-	depends on (ARCH_MSM7X30 && ANDROID_PMEM)
+	depends on ARCH_MSM7X30
 	default y
 	help
 	  Enables QDSP5V2-based audio drivers for audio playbacks and
@@ -1897,14 +1998,14 @@ config MSM_ADSP_REPORT_EVENTS
 
 config MSM_QDSP6
 	tristate "QDSP6 support"
-	depends on ARCH_QSD8X50 && ANDROID_PMEM
+	depends on ARCH_QSD8X50
 	default y
 	help
 	  Enable support for qdsp6. This provides audio and video functionality.
 
 config MSM8X60_AUDIO
 	tristate "MSM8X60 audio support"
-	depends on ARCH_MSM8X60 && ANDROID_PMEM
+	depends on ARCH_MSM8X60
 	default y
 	help
 	  Enable support for qdsp6v2. This provides audio functionality.
@@ -1963,7 +2064,7 @@ config WIFI_MEM_PREALLOC
 
 config QSD_AUDIO
 	bool "QSD audio"
-	depends on ARCH_MSM_SCORPION && MSM_DALRPC && ANDROID_PMEM && !MSM_SMP
+	depends on ARCH_MSM_SCORPION && MSM_DALRPC && !MSM_SMP
 	default y
 	help
 	  Provides PCM, MP3, and AAC audio playback.
@@ -2099,12 +2200,12 @@ config MSM_SPM_REGULATOR
 config MSM_SMCMOD
 	tristate "Secure Monitor Call (SMC) Module"
 	default n
-	depends on (ARCH_FSM9XXX && ION && ION_MSM && MSM_SCM)
+	depends on (ION && ION_MSM && MSM_SCM)
 	help
 	  Enable support for smcmod driver. This driver provides a mechanism
 	  to execute the Secure Monitor Call (SMC) to switch from non-secure
-	  to secure execution in the fsm9xxx targets. This module utilizes Ion
-	  for buffer management.
+	  to secure execution in the fsm9xxx and msm8x26 targets. This module
+	  utilizes Ion for buffer management.
 
 config MSM_SUBSYSTEM_RESTART
 	bool "MSM Subsystem Restart"
@@ -2260,8 +2361,8 @@ config SCORPION_Uni_45nm_BUG
 
 config MSM_BUSPM_DEV
 	tristate "MSM Bus Performance Monitor Kernel Module"
-	depends on (ARCH_MSM8X60 || ARCH_MSM8960 || ARCH_MSM8974)
-	default m
+	depends on MSM_BUS_SCALING
+	default n
 	help
 	  This kernel module is used to mmap() hardware registers for the
 	  performance monitors, counters, etc. The module can also be used to
@@ -2307,6 +2408,15 @@ config MSM_RPM_RBCPR_STATS_LOG
           memory location. These messages provide statistical information about
           RBCPR (Rapid Bridge Core Power Reduction) information . The drivers
           outputs the message via a debugfs node.
+
+config MSM_RPM_RBCPR_STATS_V2_LOG
+        tristate "MSM Resource Power Manager RPBCPR Stat Driver"
+        depends on DEBUG_FS
+          help
+          This option enables v2 of the rpmrbcpr_stats driver which reads RPM
+          memory for statistics pertaining to RPM's RBCPR(Rapid Bridge Core
+          Power Reduction) driver. The drivers outputs the message via a
+          debugfs node.
 
 config MSM_DIRECT_SCLK_ACCESS
 	bool "Direct access to the SCLK timer"
@@ -2537,7 +2647,7 @@ config MSM_AUDIO_QDSP6V2
 config MSM_ADSP_LOADER
         tristate "ADSP loader support"
         select SND_SOC_MSM_APRV2_INTF
-	depends on MSM_AUDIO_QDSP6V2 && m
+	depends on MSM_AUDIO_QDSP6V2
         help
           Enable ADSP image loader.
 	  The ADSP loader brings ADSP out of reset
@@ -2654,14 +2764,25 @@ config MSM_OCMEM_POWER_DEBUG
 	  related operations of OCMEM. Both local power management
 	  and RPM assisted power management operations are supported.
 
-config MSM_OCMEM_POWER_DISABLE
-	bool "OCMEM Disable Power Control"
+config MSM_OCMEM_DEBUG_ALWAYS_ON
+	bool "Keep OCMEM always turned ON"
 	depends on MSM_OCMEM_DEBUG
 	help
+	  Always vote for all OCMEM clocks and keep all OCMEM
+	  macros turned ON and never allow them to be turned OFF.
+	  Both local power management and RPM assisted power modes
+	  are supported for individual macro power control operations.
+
+config MSM_OCMEM_POWER_DISABLE
+	bool "OCMEM Disable Power Control"
+	depends on MSM_OCMEM
+	help
 	  Disable all OCMEM power management.
-	  This keeps all OCMEM macros turned ON at all times thus
-	  never allowing them to be turned OFF. Both local power
-	  management and RPM assisted power modes are supported.
+	  Skip all OCMEM power operations that turn ON or
+	  turn OFF the macros. Both local power management and
+	  RPM assisted power management operations are skipped.
+	  Enable this configuration if OCMEM is being exclusively
+	  used as GMEM or OCIMEM.
 
 config SENSORS_ADSP
 	bool "Enable Sensors Driver Support for ADSP"
@@ -2945,4 +3066,28 @@ config MSM_CPR_REGULATOR
 	  suggestions in efuse as initial settings. It converts corner vote
 	  to voltage value before writing to a voltage regulator API, such as
 	  that provided by spm-regulator driver.
+
+config WALL_CLK
+	tristate "Wall Clock hardware block simulation"
+	depends on ARCH_APQ8064
+	help
+	 This driver simulates the wall-clock hardware block on fsm8064_ep
+	 femto emulation platform. This block will be used to provide
+	 clock information to the LTE Layer 2 module running on the hexagon
+	 processor.
+
+config WALL_CLK_SYSFS
+	tristate "Wall Clock SysFS Support"
+	depends on SYSFS && WALL_CLK
+	help
+	 Support the wallclk directory in sysfs filesystem to enable the
+	 wall clock simulation and read the current SFN.
+
+config KRAIT_REGULATOR
+	bool "Support Kraits powered via ganged regulators in the pmic"
+	help
+	 Certain MSMs have the Krait CPUs powered via a single supply
+	 line from the PMIC. This supply line is powered by multiple
+	 regulators running in ganged mode inside the PMIC. Enable
+	 this option to support such configurations.
 endif

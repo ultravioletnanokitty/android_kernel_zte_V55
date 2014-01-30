@@ -19,7 +19,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
-#include <mach/msm_smsm.h>
+#include <mach/msm_smem.h>
 #include <mach/msm_ipc_logging.h>
 #include "smp2p_private_api.h"
 #include "smp2p_private.h"
@@ -379,7 +379,7 @@ static void *smp2p_get_remote_smem_item(int remote_pid,
 	struct smp2p_out_list_item *out_item)
 {
 	void *item_ptr = NULL;
-	unsigned size;
+	unsigned size = 0;
 
 	if (!out_item)
 		return item_ptr;
@@ -1241,7 +1241,7 @@ int msm_smp2p_in_read(int remote_pid, const char *name, uint32_t *data)
 {
 	unsigned long flags;
 	struct smp2p_out_list_item *out_item;
-	uint32_t *entry_ptr;
+	uint32_t *entry_ptr = NULL;
 
 	if (remote_pid >= SMP2P_NUM_PROCS)
 		return -EINVAL;

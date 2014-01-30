@@ -368,6 +368,7 @@ int ipa_generate_flt_hw_tbl(enum ipa_ip_type ip, struct ipa_mem_buffer *mem)
 	return 0;
 proc_err:
 	dma_free_coherent(NULL, mem->size, mem->base, mem->phys_base);
+	mem->base = NULL;
 error:
 
 	return -EPERM;
@@ -456,7 +457,7 @@ static int __ipa_commit_flt(enum ipa_ip_type ip)
 
 	if (mem->size > avail) {
 		IPAERR("tbl too big, needed %d avail %d\n", mem->size, avail);
-		goto fail_hw_tbl_gen;
+		goto fail_send_cmd;
 	}
 
 	if (ip == IPA_IP_v4) {
@@ -633,12 +634,13 @@ static int __ipa_add_ep_flt_rule(enum ipa_ip_type ip, enum ipa_client_type ep,
 		return -EINVAL;
 	}
 	ipa_ep_idx = ipa_get_ep_mapping(ipa_ctx->mode, ep);
-	if (ipa_ep_idx == IPA_FLT_TABLE_INDEX_NOT_FOUND ||
-				ipa_ctx->ep[ipa_ep_idx].valid == 0) {
-		IPAERR("ep not valid and/or connected ep_idx=%d\n", ipa_ep_idx);
-
+	if (ipa_ep_idx == IPA_FLT_TABLE_INDEX_NOT_FOUND) {
+		IPAERR("ep not valid ep=%d\n", ep);
 		return -EINVAL;
 	}
+	if (ipa_ctx->ep[ipa_ep_idx].valid == 0)
+		IPADBG("ep not connected ep_idx=%d\n", ipa_ep_idx);
+
 	tbl = &ipa_ctx->flt_tbl[ipa_ep_idx][ip];
 	IPADBG("add ep flt rule ip=%d ep=%d\n", ip, ep);
 

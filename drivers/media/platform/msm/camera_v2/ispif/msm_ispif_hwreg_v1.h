@@ -50,6 +50,8 @@
 
 
 
+/* CSID CLK MUX SEL REGISTERS */
+#define ISPIF_RDI_CLK_MUX_SEL_ADDR              0x8
 
 /*ISPIF RESET BITS*/
 #define VFE_CLK_DOMAIN_RST                 BIT(31)
@@ -101,4 +103,5 @@
 
 #define ISPIF_IRQ_GLOBAL_CLEAR_CMD        0x000001
 
+#define ISPIF_STOP_INTF_IMMEDIATELY              0xAAAAAAAA
 #endif /* __MSM_ISPIF_HWREG_V1_H__ */

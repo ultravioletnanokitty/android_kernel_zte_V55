@@ -21,6 +21,7 @@
 #include <linux/ioport.h>
 #include <linux/types.h>
 #include <linux/errno.h>
+#include <linux/err.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/init.h>
@@ -994,7 +995,7 @@ static int pxa25x_udc_vbus_draw(struct usb_gadget *_gadget, unsigned mA)
 
 	udc = container_of(_gadget, struct pxa25x_udc, gadget);
 
-	if (udc->transceiver)
+	if (!IS_ERR_OR_NULL(udc->transceiver))
 		return usb_phy_set_power(udc->transceiver, mA);
 	return -EOPNOTSUPP;
 }
@@ -1301,7 +1302,7 @@ fail:
 	DMSG("registered gadget driver '%s'\n", driver->driver.name);
 
 	/* connect to bus through transceiver */
-	if (dev->transceiver) {
+	if (!IS_ERR_OR_NULL(dev->transceiver)) {
 		retval = otg_set_peripheral(dev->transceiver->otg,
 						&dev->gadget);
 		if (retval) {
@@ -1361,7 +1362,7 @@ static int pxa25x_stop(struct usb_gadget_driver *driver)
 	stop_activity(dev, driver);
 	local_irq_enable();
 
-	if (dev->transceiver)
+	if (!IS_ERR_OR_NULL(dev->transceiver))
 		(void) otg_set_peripheral(dev->transceiver->otg, NULL);
 
 	driver->unbind(&dev->gadget);
@@ -2161,7 +2162,7 @@ static int __init pxa25x_udc_probe(struct platform_device *pdev)
 	dev->dev = &pdev->dev;
 	dev->mach = pdev->dev.platform_data;
 
-	dev->transceiver = usb_get_transceiver();
+	dev->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
 
 	if (gpio_is_valid(dev->mach->gpio_pullup)) {
 		if ((retval = gpio_request(dev->mach->gpio_pullup,
@@ -2239,8 +2240,8 @@ lubbock_fail0:
 	if (gpio_is_valid(dev->mach->gpio_pullup))
 		gpio_free(dev->mach->gpio_pullup);
  err_gpio_pullup:
-	if (dev->transceiver) {
-		usb_put_transceiver(dev->transceiver);
+	if (!IS_ERR_OR_NULL(dev->transceiver)) {
+		usb_put_phy(dev->transceiver);
 		dev->transceiver = NULL;
 	}
 	clk_put(dev->clk);
@@ -2281,8 +2282,8 @@ static int __exit pxa25x_udc_remove(struct platform_device *pdev)
 
 	clk_put(dev->clk);
 
-	if (dev->transceiver) {
-		usb_put_transceiver(dev->transceiver);
+	if (!IS_ERR_OR_NULL(dev->transceiver)) {
+		usb_put_phy(dev->transceiver);
 		dev->transceiver = NULL;
 	}
 

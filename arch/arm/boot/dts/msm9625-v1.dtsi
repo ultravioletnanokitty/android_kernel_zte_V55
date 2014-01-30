@@ -18,7 +18,7 @@
 
 /include/ "msm9625.dtsi"
 
-/ {
+&soc {
 	qcom,msm-imem@fc42a800 {
 		compatible = "qcom,msm-imem";
 		reg = <0xfc42a800 0x1000>; /* Address and size of IMEM */
@@ -37,6 +37,10 @@
 	};
 };
 
+&hsic_host {
+	qcom,disable-park-mode;
+};
+
 &ipa_hw {
 	qcom,ipa-hw-ver = <1>; /* IPA h-w revision */
 };
@@ -44,6 +48,7 @@
 /* CoreSight */
 &tmc_etr {
 	qcom,reset-flush-race;
+	qcom,byte-cntr-absent;
 };
 
 &stm {

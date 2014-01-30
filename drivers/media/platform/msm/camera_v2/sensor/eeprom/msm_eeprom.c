@@ -42,13 +42,13 @@ int32_t msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 			e_ctrl->eboard_info->eeprom_name,
 			sizeof(cdata->cfg.eeprom_name));
 		break;
-	case CFG_EEPROM_GET_DATA:
-		CDBG("%s E CFG_EEPROM_GET_DATA\n", __func__);
+	case CFG_EEPROM_GET_CAL_DATA:
+		CDBG("%s E CFG_EEPROM_GET_CAL_DATA\n", __func__);
 		cdata->cfg.get_data.num_bytes =
 			e_ctrl->num_bytes;
 		break;
-	case CFG_EEPROM_READ_DATA:
-		CDBG("%s E CFG_EEPROM_READ_DATA\n", __func__);
+	case CFG_EEPROM_READ_CAL_DATA:
+		CDBG("%s E CFG_EEPROM_READ_CAL_DATA\n", __func__);
 		rc = copy_to_user(cdata->cfg.read_data.dbuffer,
 			e_ctrl->memory_data,
 			cdata->cfg.read_data.num_bytes);
@@ -98,6 +98,7 @@ static struct msm_camera_i2c_fn_t msm_eeprom_cci_func_tbl = {
 	.i2c_read = msm_camera_cci_i2c_read,
 	.i2c_read_seq = msm_camera_cci_i2c_read_seq,
 	.i2c_write = msm_camera_cci_i2c_write,
+	.i2c_write_seq = msm_camera_cci_i2c_write_seq,
 	.i2c_write_table = msm_camera_cci_i2c_write_table,
 	.i2c_write_seq_table = msm_camera_cci_i2c_write_seq_table,
 	.i2c_write_table_w_microdelay =
@@ -130,12 +131,6 @@ static int msm_eeprom_open(struct v4l2_subdev *sd,
 		pr_err("%s failed e_ctrl is NULL\n", __func__);
 		return -EINVAL;
 	}
-	if (e_ctrl->eeprom_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
-		rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_util(
-		&e_ctrl->i2c_client, MSM_CCI_INIT);
-		if (rc < 0)
-			pr_err("%s cci_init failed\n", __func__);
-	}
 	CDBG("%s X\n", __func__);
 	return rc;
 }
@@ -148,12 +143,6 @@ static int msm_eeprom_close(struct v4l2_subdev *sd,
 	if (!e_ctrl) {
 		pr_err("%s failed e_ctrl is NULL\n", __func__);
 		return -EINVAL;
-	}
-	if (e_ctrl->eeprom_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
-		rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_util(
-			&e_ctrl->i2c_client, MSM_CCI_RELEASE);
-		if (rc < 0)
-			pr_err("%s cci_init failed\n", __func__);
 	}
 	CDBG("%s X\n", __func__);
 	return rc;
@@ -192,7 +181,17 @@ int32_t read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl)
 				return rc;
 			}
 		}
-
+		if (emap[j].pageen.valid_size) {
+			e_ctrl->i2c_client.addr_type = emap[j].pageen.addr_t;
+			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
+				&(e_ctrl->i2c_client), emap[j].pageen.addr,
+				emap[j].pageen.data, emap[j].pageen.data_t);
+				msleep(emap[j].pageen.delay);
+			if (rc < 0) {
+				pr_err("%s: page enable failed\n", __func__);
+				return rc;
+			}
+		}
 		if (emap[j].poll.valid_size) {
 			e_ctrl->i2c_client.addr_type = emap[j].poll.addr_t;
 			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_poll(
@@ -216,6 +215,16 @@ int32_t read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl)
 			}
 			memptr += emap[j].mem.valid_size;
 		}
+		if (emap[j].pageen.valid_size) {
+			e_ctrl->i2c_client.addr_type = emap[j].pageen.addr_t;
+			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
+				&(e_ctrl->i2c_client), emap[j].pageen.addr,
+				0, emap[j].pageen.data_t);
+			if (rc < 0) {
+				pr_err("%s: page disable failed\n", __func__);
+				return rc;
+			}
+		}
 	}
 	return rc;
 }
@@ -224,7 +233,7 @@ static int msm_eeprom_alloc_memory_map(struct msm_eeprom_ctrl_t *e_ctrl,
 				       struct device_node *of)
 {
 	int i, rc = 0;
-	char property[12];
+	char property[14];
 	uint32_t count = 6;
 	struct msm_eeprom_board_info *eb = e_ctrl->eboard_info;
 
@@ -251,6 +260,12 @@ static int msm_eeprom_alloc_memory_map(struct msm_eeprom_ctrl_t *e_ctrl,
 			pr_err("%s: failed %d\n", __func__, __LINE__);
 			goto out;
 		}
+
+		snprintf(property, 14, "qcom,pageen%d", i);
+		rc = of_property_read_u32_array(of, property,
+			(uint32_t *) &eb->eeprom_map[i].pageen, count);
+		if (rc < 0)
+			pr_err("%s: pageen not needed\n", __func__);
 
 		snprintf(property, 12, "qcom,poll%d", i);
 		rc = of_property_read_u32_array(of, property,
@@ -445,21 +460,27 @@ static int msm_eeprom_get_dt_data(struct msm_eeprom_ctrl_t *e_ctrl)
 	struct msm_eeprom_board_info *eb_info;
 	struct msm_camera_power_ctrl_t *power_info =
 		&e_ctrl->eboard_info->power_info;
-	struct spi_device *spi = e_ctrl->i2c_client.spi_client->spi_master;
-	struct device_node *of_node = spi->dev.of_node;
+	struct device_node *of_node = NULL;
 	struct msm_camera_gpio_conf *gconf = NULL;
 	uint16_t gpio_array_size = 0;
 	uint16_t *gpio_array = NULL;
 
 	eb_info = e_ctrl->eboard_info;
-	rc = msm_camera_get_dt_power_setting_data(spi->dev.of_node,
-		  &power_info->power_setting, &power_info->power_setting_size);
-	if (rc)
-		return rc;
+	if (e_ctrl->eeprom_device_type == MSM_CAMERA_SPI_DEVICE)
+		of_node = e_ctrl->i2c_client.
+			spi_client->spi_master->dev.of_node;
+	else if (e_ctrl->eeprom_device_type == MSM_CAMERA_PLATFORM_DEVICE)
+		of_node = e_ctrl->pdev->dev.of_node;
 
 	rc = msm_camera_get_dt_vreg_data(of_node, &power_info->cam_vreg,
 					     &power_info->num_vreg);
-	if (rc)
+	if (rc < 0)
+		return rc;
+
+	rc = msm_camera_get_dt_power_setting_data(of_node,
+		power_info->cam_vreg, power_info->num_vreg,
+		&power_info->power_setting, &power_info->power_setting_size);
+	if (rc < 0)
 		goto ERROR1;
 
 	power_info->gpio_conf = kzalloc(sizeof(struct msm_camera_gpio_conf),
@@ -787,26 +808,35 @@ static int32_t msm_eeprom_platform_probe(struct platform_device *pdev)
 		goto board_free;
 	}
 
-	if (e_ctrl->eeprom_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
-		rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_util(
-		&e_ctrl->i2c_client, MSM_CCI_INIT);
-		if (rc < 0)
-			pr_err("%s cci_init failed\n", __func__);
-	}
+	rc = msm_eeprom_get_dt_data(e_ctrl);
+	if (rc)
+		goto board_free;
 
 	rc = msm_eeprom_alloc_memory_map(e_ctrl, of_node);
 	if (rc)
 		goto board_free;
 
+	rc = msm_camera_power_up(power_info, e_ctrl->eeprom_device_type,
+		&e_ctrl->i2c_client);
+	if (rc) {
+		pr_err("failed rc %d\n", rc);
+		goto memdata_free;
+	}
 	rc = read_eeprom_memory(e_ctrl);
 	if (rc < 0) {
 		pr_err("%s read_eeprom_memory failed\n", __func__);
-		goto memdata_free;
+		goto power_down;
 	}
 		pr_err("%s line %d\n", __func__, __LINE__);
 	for (j = 0; j < e_ctrl->num_bytes; j++)
 		CDBG("memory_data[%d] = 0x%X\n", j, e_ctrl->memory_data[j]);
 
+	rc = msm_camera_power_down(power_info, e_ctrl->eeprom_device_type,
+		&e_ctrl->i2c_client);
+	if (rc) {
+		pr_err("failed rc %d\n", rc);
+		goto memdata_free;
+	}
 	v4l2_subdev_init(&e_ctrl->msm_sd.sd,
 		e_ctrl->eeprom_v4l2_subdev_ops);
 	v4l2_set_subdevdata(&e_ctrl->msm_sd.sd, e_ctrl);
@@ -821,16 +851,13 @@ static int32_t msm_eeprom_platform_probe(struct platform_device *pdev)
 	msm_sd_register(&e_ctrl->msm_sd);
 
 
-	if (e_ctrl->eeprom_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
-		rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_util(
-			&e_ctrl->i2c_client, MSM_CCI_RELEASE);
-		if (rc < 0)
-			pr_err("%s cci_init failed\n", __func__);
-	}
 	e_ctrl->is_supported = 1;
 	CDBG("%s X\n", __func__);
 	return rc;
 
+power_down:
+	msm_camera_power_down(power_info, e_ctrl->eeprom_device_type,
+		&e_ctrl->i2c_client);
 memdata_free:
 	kfree(e_ctrl->memory_data);
 	kfree(eb_info->eeprom_map);

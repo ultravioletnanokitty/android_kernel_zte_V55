@@ -76,10 +76,10 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 
 	if (!ION_IS_CACHED(flags))
 		info->cpu_addr = dma_alloc_writecombine(dev, len,
-					&(info->handle), 0);
+					&(info->handle), GFP_KERNEL);
 	else
 		info->cpu_addr = dma_alloc_nonconsistent(dev, len,
-					&(info->handle), 0);
+					&(info->handle), GFP_KERNEL);
 
 	if (!info->cpu_addr) {
 		dev_err(dev, "Fail to allocate buffer\n");
@@ -115,6 +115,7 @@ static void ion_cma_free(struct ion_buffer *buffer)
 	dev_dbg(dev, "Release buffer %p\n", buffer);
 	/* release memory */
 	dma_free_coherent(dev, buffer->size, info->cpu_addr, info->handle);
+	sg_free_table(info->table);
 	/* release sg table */
 	kfree(info->table);
 	kfree(info);

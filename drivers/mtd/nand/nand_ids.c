@@ -161,6 +161,7 @@ struct nand_flash_dev nand_flash_ids[] = {
 	 BBT_AUTO_REFRESH
 	},
 
+	{"NAND 4GiB 1,8V 8-bit",       0xAC, 2048, 4096, 0x20000, 0},
 	{NULL,}
 };
 
@@ -178,6 +179,7 @@ struct nand_manufacturers nand_manuf_ids[] = {
 	{NAND_MFR_MICRON, "Micron"},
 	{NAND_MFR_AMD, "AMD"},
 	{NAND_MFR_MACRONIX, "Macronix"},
+	{NAND_MFR_ESMT, "Elite Semiconductor"},
 	{0x0, "Unknown"}
 };
 

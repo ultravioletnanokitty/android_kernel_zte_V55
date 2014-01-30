@@ -55,8 +55,7 @@ obj-$(CONFIG_SND_SOC_MSM8X60) += snd-soc-lpass-dma.o
 # for MSM 8960 sound card driver
 
 obj-$(CONFIG_SND_SOC_MSM_QDSP6_INTF) += qdsp6/
-
-snd-soc-qdsp6-objs := msm-dai-q6.o msm-pcm-q6.o msm-multi-ch-pcm-q6.o msm-lowlatency-pcm-q6.o msm-pcm-routing.o msm-dai-fe.o msm-compr-q6.o msm-dai-stub.o
+snd-soc-qdsp6-objs := msm-dai-q6.o msm-pcm-q6.o msm-multi-ch-pcm-q6.o msm-lowlatency-pcm-q6.o msm-pcm-loopback.o msm-pcm-routing.o msm-dai-fe.o msm-compr-q6.o msm-dai-stub.o
 obj-$(CONFIG_SND_SOC_MSM_QDSP6_HDMI_AUDIO) += msm-dai-q6-hdmi.o
 obj-$(CONFIG_SND_SOC_VOICE) += msm-pcm-voice.o msm-pcm-voip.o msm-pcm-dtmf.o msm-pcm-host-voice.o
 snd-soc-qdsp6-objs += msm-pcm-lpa.o msm-pcm-afe.o
@@ -84,6 +83,10 @@ obj-$(CONFIG_SND_SOC_MSM8974) += snd-soc-msm8974.o
 
 snd-soc-qdsp6v2-objs := msm-dai-fe.o
 obj-$(CONFIG_SND_SOC_QDSP6V2) += snd-soc-qdsp6v2.o
+
+# for APQ 8074 sound card driver
+snd-soc-apq8074-objs := apq8074.o
+obj-$(CONFIG_SND_SOC_APQ8074) += snd-soc-apq8074.o
 
 #for MDM9625 sound card driver
 snd-soc-mdm9625-objs := mdm9625.o

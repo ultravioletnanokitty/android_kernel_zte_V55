@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -331,6 +331,8 @@ static int mport_tsif[] = {MASTER_PORT_TSIF,};
 static int mport_bam_dma[] = {MASTER_PORT_BAM_DMA,};
 static int mport_blsp_2[] = {MASTER_PORT_BLSP_2,};
 static int mport_usb_hsic[] = {MASTER_PORT_USB_HSIC,};
+static int mport_usb_hs1[] = {MASTER_PORT_USB_HS1,};
+static int mport_usb_hs2[] = {MASTER_PORT_USB_HS2,};
 static int mport_blsp_1[] = {MASTER_PORT_BLSP_1,};
 static int mport_pnoc_cfg[] = {MASTER_PORT_PNOC_CFG,};
 static int mport_qpic[] = {MASTER_PORT_QPIC,};
@@ -524,6 +526,7 @@ static struct msm_bus_node_info sys_noc_info[] = {
 		.mode = NOC_QOS_MODE_FIXED,
 		.qport = qports_ipa,
 		.mas_hw_id = MAS_IPA,
+		.hw_sel = MSM_BUS_NOC,
 	},
 	{
 		.id = MSM_BUS_MASTER_QDSS_ETR,
@@ -595,8 +598,8 @@ static struct msm_bus_node_info bimc_info[]  = {
 		.ws = 10000,
 		.mas_hw_id = MAS_APPSS_PROC,
 		.prio_lvl = 0,
-		.prio_rd = 2,
-		.prio_wr = 2,
+		.prio_rd = 0,
+		.prio_wr = 0,
 	},
 	{
 		.id = MSM_BUS_MASTER_MSS_PROC,
@@ -723,6 +726,22 @@ static struct msm_bus_node_info periph_noc_info[] = {
 		.num_tiers = ARRAY_SIZE(tier2),
 		.buswidth = 8,
 		.mas_hw_id = MAS_USB_HSIC,
+	},
+	{
+		.id = MSM_BUS_MASTER_USB_HS,
+		.masterp = mport_usb_hs1,
+		.num_mports = ARRAY_SIZE(mport_usb_hs1),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
+		.buswidth = 8,
+	},
+	{
+		.id = MSM_BUS_MASTER_USB_HS2,
+		.masterp = mport_usb_hs2,
+		.num_mports = ARRAY_SIZE(mport_usb_hs2),
+		.tier = tier2,
+		.num_tiers = ARRAY_SIZE(tier2),
+		.buswidth = 8,
 	},
 	{
 		.id = MSM_BUS_MASTER_BLSP_1,
@@ -1304,4 +1323,13 @@ struct msm_bus_fabric_registration msm_bus_9625_config_noc_pdata = {
 
 void msm_bus_board_init(struct msm_bus_fabric_registration *pdata)
 {
+}
+
+void msm_bus_board_set_nfab(struct msm_bus_fabric_registration *pdata,
+	int nfab)
+{
+	if (nfab <= 0)
+		return;
+
+	msm_bus_board_algo.board_nfab = nfab;
 }

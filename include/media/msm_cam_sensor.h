@@ -46,10 +46,13 @@
 
 #define MAX_EEPROM_NAME 32
 
+#define MAX_AF_ITERATIONS 3
+
 enum msm_camera_i2c_reg_addr_type {
 	MSM_CAMERA_I2C_BYTE_ADDR = 1,
 	MSM_CAMERA_I2C_WORD_ADDR,
 	MSM_CAMERA_I2C_3B_ADDR,
+	MSM_CAMERA_I2C_ADDR_TYPE_MAX,
 };
 
 enum msm_camera_i2c_data_type {
@@ -60,6 +63,7 @@ enum msm_camera_i2c_data_type {
 	MSM_CAMERA_I2C_SET_WORD_MASK,
 	MSM_CAMERA_I2C_UNSET_WORD_MASK,
 	MSM_CAMERA_I2C_SET_BYTE_WRITE_MASK_DATA,
+	MSM_CAMERA_I2C_DATA_TYPE_MAX,
 };
 
 enum msm_sensor_power_seq_type_t {
@@ -78,6 +82,11 @@ enum msm_sensor_clk_type_t {
 enum msm_sensor_power_seq_gpio_t {
 	SENSOR_GPIO_RESET,
 	SENSOR_GPIO_STANDBY,
+	SENSOR_GPIO_AF_PWDM,
+	SENSOR_GPIO_VIO,
+	SENSOR_GPIO_VANA,
+	SENSOR_GPIO_VDIG,
+	SENSOR_GPIO_VAF,
 	SENSOR_GPIO_MAX,
 };
 
@@ -108,11 +117,67 @@ enum sensor_sub_module_t {
 	SUB_MODULE_EEPROM,
 	SUB_MODULE_LED_FLASH,
 	SUB_MODULE_STROBE_FLASH,
-	SUB_MODULE_CSIPHY,
-	SUB_MODULE_CSIPHY_3D,
 	SUB_MODULE_CSID,
 	SUB_MODULE_CSID_3D,
+	SUB_MODULE_CSIPHY,
+	SUB_MODULE_CSIPHY_3D,
 	SUB_MODULE_MAX,
+};
+
+enum {
+	MSM_CAMERA_EFFECT_MODE_OFF,
+	MSM_CAMERA_EFFECT_MODE_MONO,
+	MSM_CAMERA_EFFECT_MODE_NEGATIVE,
+	MSM_CAMERA_EFFECT_MODE_SOLARIZE,
+	MSM_CAMERA_EFFECT_MODE_SEPIA,
+	MSM_CAMERA_EFFECT_MODE_POSTERIZE,
+	MSM_CAMERA_EFFECT_MODE_WHITEBOARD,
+	MSM_CAMERA_EFFECT_MODE_BLACKBOARD,
+	MSM_CAMERA_EFFECT_MODE_AQUA,
+	MSM_CAMERA_EFFECT_MODE_EMBOSS,
+	MSM_CAMERA_EFFECT_MODE_SKETCH,
+	MSM_CAMERA_EFFECT_MODE_NEON,
+	MSM_CAMERA_EFFECT_MODE_MAX
+};
+
+enum {
+	MSM_CAMERA_WB_MODE_AUTO,
+	MSM_CAMERA_WB_MODE_CUSTOM,
+	MSM_CAMERA_WB_MODE_INCANDESCENT,
+	MSM_CAMERA_WB_MODE_FLUORESCENT,
+	MSM_CAMERA_WB_MODE_WARM_FLUORESCENT,
+	MSM_CAMERA_WB_MODE_DAYLIGHT,
+	MSM_CAMERA_WB_MODE_CLOUDY_DAYLIGHT,
+	MSM_CAMERA_WB_MODE_TWILIGHT,
+	MSM_CAMERA_WB_MODE_SHADE,
+	MSM_CAMERA_WB_MODE_OFF,
+	MSM_CAMERA_WB_MODE_MAX
+};
+
+enum {
+	MSM_CAMERA_SCENE_MODE_OFF,
+	MSM_CAMERA_SCENE_MODE_AUTO,
+	MSM_CAMERA_SCENE_MODE_LANDSCAPE,
+	MSM_CAMERA_SCENE_MODE_SNOW,
+	MSM_CAMERA_SCENE_MODE_BEACH,
+	MSM_CAMERA_SCENE_MODE_SUNSET,
+	MSM_CAMERA_SCENE_MODE_NIGHT,
+	MSM_CAMERA_SCENE_MODE_PORTRAIT,
+	MSM_CAMERA_SCENE_MODE_BACKLIGHT,
+	MSM_CAMERA_SCENE_MODE_SPORTS,
+	MSM_CAMERA_SCENE_MODE_ANTISHAKE,
+	MSM_CAMERA_SCENE_MODE_FLOWERS,
+	MSM_CAMERA_SCENE_MODE_CANDLELIGHT,
+	MSM_CAMERA_SCENE_MODE_FIREWORKS,
+	MSM_CAMERA_SCENE_MODE_PARTY,
+	MSM_CAMERA_SCENE_MODE_NIGHT_PORTRAIT,
+	MSM_CAMERA_SCENE_MODE_THEATRE,
+	MSM_CAMERA_SCENE_MODE_ACTION,
+	MSM_CAMERA_SCENE_MODE_AR,
+	MSM_CAMERA_SCENE_MODE_FACE_PRIORITY,
+	MSM_CAMERA_SCENE_MODE_BARCODE,
+	MSM_CAMERA_SCENE_MODE_HDR,
+	MSM_CAMERA_SCENE_MODE_MAX
 };
 
 enum csid_cfg_type_t {
@@ -131,6 +196,11 @@ enum camera_vreg_type {
 	REG_LDO,
 	REG_VS,
 	REG_GPIO,
+};
+
+enum sensor_af_t {
+	SENSOR_AF_FOCUSSED,
+	SENSOR_AF_NOT_FOCUSSED,
 };
 
 struct msm_sensor_power_setting {
@@ -161,6 +231,7 @@ struct msm_camera_sensor_slave_info {
 struct msm_camera_i2c_reg_array {
 	uint16_t reg_addr;
 	uint16_t reg_data;
+	uint32_t delay;
 };
 
 struct msm_camera_i2c_reg_setting {
@@ -182,6 +253,18 @@ struct msm_camera_i2c_seq_reg_setting {
 	uint16_t size;
 	enum msm_camera_i2c_reg_addr_type addr_type;
 	uint16_t delay;
+};
+
+struct msm_camera_i2c_array_write_config {
+	struct msm_camera_i2c_reg_setting conf_array;
+	uint16_t slave_addr;
+};
+
+struct msm_camera_i2c_read_config {
+	uint16_t slave_addr;
+	uint16_t reg_addr;
+	enum msm_camera_i2c_data_type data_type;
+	uint16_t *data;
 };
 
 struct msm_camera_csid_vc_cfg {
@@ -207,6 +290,7 @@ struct msm_camera_csiphy_params {
 	uint8_t settle_cnt;
 	uint16_t lane_mask;
 	uint8_t combo_mode;
+	uint8_t csid_core;
 };
 
 struct msm_camera_csi2_params {
@@ -288,22 +372,23 @@ struct csiphy_cfg_data {
 
 enum eeprom_cfg_type_t {
 	CFG_EEPROM_GET_INFO,
-	CFG_EEPROM_GET_DATA,
-	CFG_EEPROM_READ_DATA,
+	CFG_EEPROM_GET_CAL_DATA,
+	CFG_EEPROM_READ_CAL_DATA,
 	CFG_EEPROM_WRITE_DATA,
 };
+
 struct eeprom_get_t {
-	uint16_t num_bytes;
+	uint32_t num_bytes;
 };
 
 struct eeprom_read_t {
 	uint8_t *dbuffer;
-	uint16_t num_bytes;
+	uint32_t num_bytes;
 };
 
 struct eeprom_write_t {
 	uint8_t *dbuffer;
-	uint16_t num_bytes;
+	uint32_t num_bytes;
 };
 
 struct msm_eeprom_cfg_data {
@@ -319,7 +404,9 @@ struct msm_eeprom_cfg_data {
 
 enum msm_sensor_cfg_type_t {
 	CFG_SET_SLAVE_INFO,
+	CFG_SLAVE_READ_I2C,
 	CFG_WRITE_I2C_ARRAY,
+	CFG_SLAVE_WRITE_I2C_ARRAY,
 	CFG_WRITE_I2C_SEQ_ARRAY,
 	CFG_POWER_UP,
 	CFG_POWER_DOWN,
@@ -330,6 +417,17 @@ enum msm_sensor_cfg_type_t {
 	CFG_SET_RESOLUTION,
 	CFG_SET_STOP_STREAM,
 	CFG_SET_START_STREAM,
+	CFG_SET_SATURATION,
+	CFG_SET_CONTRAST,
+	CFG_SET_SHARPNESS,
+	CFG_SET_ISO,
+	CFG_SET_EXPOSURE_COMPENSATION,
+	CFG_SET_ANTIBANDING,
+	CFG_SET_BESTSHOT_MODE,
+	CFG_SET_EFFECT,
+	CFG_SET_WHITE_BALANCE,
+	CFG_SET_AUTOFOCUS,
+	CFG_CANCEL_AUTOFOCUS,
 };
 
 enum msm_actuator_cfg_type_t {
@@ -492,6 +590,9 @@ struct msm_camera_led_cfg_t {
 
 #define VIDIOC_MSM_EEPROM_CFG \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 8, struct msm_eeprom_cfg_data)
+
+#define VIDIOC_MSM_SENSOR_GET_AF_STATUS \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 9, uint32_t)
 
 #define MSM_V4L2_PIX_FMT_META v4l2_fourcc('M', 'E', 'T', 'A') /* META */
 

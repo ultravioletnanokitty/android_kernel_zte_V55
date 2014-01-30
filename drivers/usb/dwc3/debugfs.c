@@ -693,9 +693,10 @@ static int dwc3_ep_req_list_show(struct seq_file *s, void *unused)
 	list_for_each(ptr, &dep->request_list) {
 		req = list_entry(ptr, struct dwc3_request, list);
 
-		seq_printf(s, "req:0x%p len: %d sts: %d dma:0x%x num_sgs: %d\n",
+		seq_printf(s,
+			"req:0x%p len: %d sts: %d dma:0x%pa num_sgs: %d\n",
 			req, req->request.length, req->request.status,
-			req->request.dma, req->request.num_sgs);
+			&req->request.dma, req->request.num_sgs);
 	}
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
@@ -731,9 +732,10 @@ static int dwc3_ep_queued_req_show(struct seq_file *s, void *unused)
 	list_for_each(ptr, &dep->req_queued) {
 		req = list_entry(ptr, struct dwc3_request, list);
 
-		seq_printf(s, "req:0x%p len:%d sts:%d dma:%x nsg:%d trb:0x%p\n",
+		seq_printf(s,
+			"req:0x%p len:%d sts:%d dma:%pa nsg:%d trb:0x%p\n",
 			req, req->request.length, req->request.status,
-			req->request.dma, req->request.num_sgs, req->trb);
+			&req->request.dma, req->request.num_sgs, req->trb);
 	}
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
@@ -967,6 +969,28 @@ void dbg_setup(u8 ep_num, const struct usb_ctrlrequest *req)
 			  le16_to_cpu(req->wIndex), le16_to_cpu(req->wLength));
 		dbg_print(ep_num, "SETUP", 0, msg);
 	}
+}
+
+/**
+ * dbg_print_reg: prints a reg value
+ * @name:   reg name
+ * @reg: reg value to be printed
+ */
+void dbg_print_reg(const char *name, int reg)
+{
+	unsigned long flags;
+
+	write_lock_irqsave(&dbg_dwc3_data.lck, flags);
+
+	scnprintf(dbg_dwc3_data.buf[dbg_dwc3_data.idx], DBG_DATA_MSG,
+		  "%s = 0x%08x\n", name, reg);
+
+	dbg_inc(&dbg_dwc3_data.idx);
+
+	write_unlock_irqrestore(&dbg_dwc3_data.lck, flags);
+
+	if (dbg_dwc3_data.tty != 0)
+		pr_notice("%s = 0x%08x\n", name, reg);
 }
 
 /**

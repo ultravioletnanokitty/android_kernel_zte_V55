@@ -25,6 +25,7 @@
 #include "dsi_v2.h"
 #include "dsi_io_v2.h"
 #include "dsi_host_v2.h"
+#include "mdss_debug.h"
 
 #define DSI_POLL_SLEEP_US 1000
 #define DSI_POLL_TIMEOUT_US 16000
@@ -35,11 +36,13 @@ struct dsi_host_v2_private {
 	struct completion dma_comp;
 	int irq_enabled;
 	spinlock_t irq_lock;
-	spinlock_t mdp_lock;
-	int mdp_busy;
+
 	int irq_no;
 	unsigned char *dsi_base;
+	size_t dsi_reg_size;
 	struct device dis_dev;
+
+	void (*debug_enable_clk)(int on);
 };
 
 static struct dsi_host_v2_private *dsi_host_private;
@@ -57,7 +60,6 @@ int msm_dsi_init(void)
 
 	init_completion(&dsi_host_private->dma_comp);
 	spin_lock_init(&dsi_host_private->irq_lock);
-	spin_lock_init(&dsi_host_private->mdp_lock);
 	return 0;
 }
 
@@ -140,14 +142,10 @@ void msm_dsi_enable_irq(void)
 	unsigned long flags;
 
 	spin_lock_irqsave(&dsi_host_private->irq_lock, flags);
-	if (dsi_host_private->irq_enabled) {
-		pr_debug("%s: IRQ aleady enabled\n", __func__);
-		spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
-		return;
-	}
+	dsi_host_private->irq_enabled++;
+	if (dsi_host_private->irq_enabled == 1)
+		enable_irq(dsi_host_private->irq_no);
 
-	enable_irq(dsi_host_private->irq_no);
-	dsi_host_private->irq_enabled = 1;
 	spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
 }
 
@@ -156,26 +154,19 @@ void msm_dsi_disable_irq(void)
 	unsigned long flags;
 
 	spin_lock_irqsave(&dsi_host_private->irq_lock, flags);
-	if (dsi_host_private->irq_enabled == 0) {
-		pr_debug("%s: IRQ already disabled\n", __func__);
-		spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
-		return;
-	}
-	disable_irq(dsi_host_private->irq_no);
-	dsi_host_private->irq_enabled = 0;
+	dsi_host_private->irq_enabled--;
+	if (dsi_host_private->irq_enabled == 0)
+		disable_irq(dsi_host_private->irq_no);
+
 	spin_unlock_irqrestore(&dsi_host_private->irq_lock, flags);
 }
 
 void msm_dsi_disable_irq_nosync(void)
 {
 	spin_lock(&dsi_host_private->irq_lock);
-	if (dsi_host_private->irq_enabled == 0) {
-		pr_debug("%s: IRQ cannot be disabled\n", __func__);
-		spin_unlock(&dsi_host_private->irq_lock);
-		return;
-	}
-	disable_irq_nosync(dsi_host_private->irq_no);
-	dsi_host_private->irq_enabled = 0;
+	dsi_host_private->irq_enabled--;
+	if (dsi_host_private->irq_enabled == 0)
+		disable_irq_nosync(dsi_host_private->irq_no);
 	spin_unlock(&dsi_host_private->irq_lock);
 }
 
@@ -191,13 +182,6 @@ irqreturn_t msm_dsi_isr(int irq, void *ptr)
 
 	if (isr & DSI_INTR_CMD_DMA_DONE)
 		complete(&dsi_host_private->dma_comp);
-
-	if (isr & DSI_INTR_CMD_MDP_DONE) {
-		spin_lock(&dsi_host_private->mdp_lock);
-		dsi_host_private->mdp_busy = false;
-		msm_dsi_disable_irq_nosync();
-		spin_unlock(&dsi_host_private->mdp_lock);
-	}
 
 	return IRQ_HANDLED;
 }
@@ -340,7 +324,7 @@ void msm_dsi_host_init(struct mipi_panel_info *pinfo)
 	wmb();
 }
 
-void msm_dsi_set_tx_power_mode(int mode)
+void dsi_set_tx_power_mode(int mode)
 {
 	u32 data;
 	unsigned char *ctrl_base = dsi_host_private->dsi_base;
@@ -448,16 +432,6 @@ void msm_dsi_op_mode_config(int mode, struct mdss_panel_data *pdata)
 	wmb();
 }
 
-void msm_dsi_cmd_mdp_start(void)
-{
-	unsigned long flag;
-
-	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
-	msm_dsi_enable_irq();
-	dsi_host_private->mdp_busy = true;
-	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
-}
-
 int msm_dsi_cmd_reg_tx(u32 data)
 {
 	unsigned char *ctrl_base = dsi_host_private->dsi_base;
@@ -551,7 +525,6 @@ int msm_dsi_cmds_tx(struct mdss_panel_data *pdata,
 	struct dsi_cmd_desc *cm;
 	u32 dsi_ctrl, ctrl;
 	int i, video_mode;
-	unsigned long flag;
 	unsigned char *ctrl_base = dsi_host_private->dsi_base;
 
 	/* turn on cmd mode
@@ -566,13 +539,9 @@ int msm_dsi_cmds_tx(struct mdss_panel_data *pdata,
 		MIPI_OUTP(ctrl_base + DSI_CTRL, ctrl);
 	}
 
-	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
 	msm_dsi_enable_irq();
-	dsi_host_private->mdp_busy = true;
-	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	cm = cmds;
-	dsi_buf_init(tp);
 	for (i = 0; i < cnt; i++) {
 		dsi_buf_init(tp);
 		dsi_cmd_dma_add(tp, cm);
@@ -582,10 +551,7 @@ int msm_dsi_cmds_tx(struct mdss_panel_data *pdata,
 		cm++;
 	}
 
-	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
-	dsi_host_private->mdp_busy = false;
 	msm_dsi_disable_irq();
-	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	if (video_mode)
 		MIPI_OUTP(ctrl_base + DSI_CTRL, dsi_ctrl);
@@ -617,7 +583,6 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 			struct dsi_cmd_desc *cmds, int rlen)
 {
 	int cnt, len, diff, pkt_size;
-	unsigned long flag;
 	char cmd;
 
 	if (pdata->panel_info.mipi.no_max_pkt_size)
@@ -645,10 +610,7 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 		cnt = len + 6; /* 4 bytes header + 2 bytes crc */
 	}
 
-	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
 	msm_dsi_enable_irq();
-	dsi_host_private->mdp_busy = true;
-	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	if (!pdata->panel_info.mipi.no_max_pkt_size) {
 		/* packet size need to be set at every read */
@@ -681,10 +643,7 @@ int msm_dsi_cmds_rx(struct mdss_panel_data *pdata,
 
 	msm_dsi_cmd_dma_rx(rp, cnt);
 
-	spin_lock_irqsave(&dsi_host_private->mdp_lock, flag);
-	dsi_host_private->mdp_busy = false;
 	msm_dsi_disable_irq();
-	spin_unlock_irqrestore(&dsi_host_private->mdp_lock, flag);
 
 	if (pdata->panel_info.mipi.no_max_pkt_size) {
 		/*
@@ -890,7 +849,7 @@ static int msm_dsi_off(struct mdss_panel_data *pdata)
 	msm_dsi_clk_set_rate(DSI_ESC_CLK_RATE, 0, 0, 0);
 	msm_dsi_clk_disable();
 	msm_dsi_unprepare_clocks();
-
+	msm_dsi_phy_off(dsi_host_private->dsi_base);
 	msm_dsi_ahb_ctrl(0);
 
 	ret = msm_dsi_regulator_disable();
@@ -901,6 +860,58 @@ static int msm_dsi_off(struct mdss_panel_data *pdata)
 
 	return ret;
 }
+
+static int msm_dsi_cont_on(struct mdss_panel_data *pdata)
+{
+	struct mdss_panel_info *pinfo;
+	int ret = 0;
+
+	pr_debug("%s:\n", __func__);
+
+	pinfo = &pdata->panel_info;
+	ret = msm_dsi_regulator_enable();
+	if (ret) {
+		pr_err("%s: DSI power on failed\n", __func__);
+		return ret;
+	}
+
+	msm_dsi_ahb_ctrl(1);
+	msm_dsi_prepare_clocks();
+	msm_dsi_clk_enable();
+	return 0;
+}
+
+static void msm_dsi_debug_enable_clock(int on)
+{
+	if (dsi_host_private->debug_enable_clk)
+		dsi_host_private->debug_enable_clk(on);
+
+	if (on)
+		msm_dsi_ahb_ctrl(1);
+	else
+		msm_dsi_ahb_ctrl(0);
+}
+
+static int msm_dsi_debug_init(void)
+{
+	int rc;
+
+	if (!mdss_res)
+		return 0;
+
+	dsi_host_private->debug_enable_clk =
+			mdss_res->debug_inf.debug_enable_clock;
+
+	mdss_res->debug_inf.debug_enable_clock = msm_dsi_debug_enable_clock;
+
+
+	rc = mdss_debug_register_base("dsi0",
+				dsi_host_private->dsi_base,
+				dsi_host_private->dsi_reg_size);
+
+	return rc;
+}
+
 
 static int __devinit msm_dsi_probe(struct platform_device *pdev)
 {
@@ -922,9 +933,11 @@ static int __devinit msm_dsi_probe(struct platform_device *pdev)
 				__func__, __LINE__);
 			return -ENOMEM;
 		} else {
+			dsi_host_private->dsi_reg_size =
+						resource_size(mdss_dsi_mres);
 			dsi_host_private->dsi_base = ioremap(
 						mdss_dsi_mres->start,
-						resource_size(mdss_dsi_mres));
+						dsi_host_private->dsi_reg_size);
 			if (!dsi_host_private->dsi_base) {
 				pr_err("%s:%d unable to remap dsi resources",
 					__func__, __LINE__);
@@ -970,12 +983,15 @@ static int __devinit msm_dsi_probe(struct platform_device *pdev)
 	dsi_host_private->dis_dev = pdev->dev;
 	intf.on = msm_dsi_on;
 	intf.off = msm_dsi_off;
+	intf.cont_on = msm_dsi_cont_on;
 	intf.op_mode_config = msm_dsi_op_mode_config;
 	intf.tx = msm_dsi_cmds_tx;
 	intf.rx = msm_dsi_cmds_rx;
 	intf.index = 0;
 	intf.private = NULL;
 	dsi_register_interface(&intf);
+
+	msm_dsi_debug_init();
 	pr_debug("%s success\n", __func__);
 	return 0;
 dsi_probe_error:

@@ -40,6 +40,7 @@ enum msm_bus_perf_setting {
 enum cci_i2c_master_t {
 	MASTER_0,
 	MASTER_1,
+	MASTER_MAX,
 };
 
 struct msm_camera_slave_info {
@@ -79,6 +80,7 @@ struct msm_camera_sensor_board_info {
 	struct msm_camera_i2c_conf *i2c_conf;
 	struct msm_sensor_info_t *sensor_info;
 	struct msm_sensor_init_params *sensor_init_params;
+	const char *misc_regulator;
 };
 
 enum msm_camera_i2c_cmd_type {
@@ -112,6 +114,7 @@ struct eeprom_map_t {
 
 struct eeprom_memory_map_t {
 	struct eeprom_map_t page;
+	struct eeprom_map_t pageen;
 	struct eeprom_map_t poll;
 	struct eeprom_map_t mem;
 };

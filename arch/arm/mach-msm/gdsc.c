@@ -22,6 +22,7 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/of_regulator.h>
+#include <linux/slab.h>
 #include <linux/clk.h>
 #include <mach/clk.h>
 
@@ -38,18 +39,27 @@
 #define EN_FEW_WAIT_VAL		(0x8 << 16)
 #define CLK_DIS_WAIT_VAL	(0x2 << 12)
 
-#define TIMEOUT_US		1000
+#define TIMEOUT_US		100
 
 struct gdsc {
 	struct regulator_dev	*rdev;
 	struct regulator_desc	rdesc;
 	void __iomem		*gdscr;
-	struct clk		*core_clk;
+	struct clk		**clocks;
+	int			clock_count;
+	bool			toggle_mem;
+	bool			toggle_periph;
+	bool			toggle_logic;
+	bool			resets_asserted;
+	bool			support_hw_trigger;
 };
 
 static int gdsc_is_enabled(struct regulator_dev *rdev)
 {
 	struct gdsc *sc = rdev_get_drvdata(rdev);
+
+	if (!sc->toggle_logic)
+		return !sc->resets_asserted;
 
 	return !!(readl_relaxed(sc->gdscr) & PWR_ON_MASK);
 }
@@ -58,22 +68,44 @@ static int gdsc_enable(struct regulator_dev *rdev)
 {
 	struct gdsc *sc = rdev_get_drvdata(rdev);
 	uint32_t regval;
-	int ret;
+	int i, ret;
 
-	regval = readl_relaxed(sc->gdscr);
-	regval &= ~SW_COLLAPSE_MASK;
-	writel_relaxed(regval, sc->gdscr);
+	if (sc->toggle_logic) {
+		regval = readl_relaxed(sc->gdscr);
+		if (regval & HW_CONTROL_MASK) {
+			dev_warn(&rdev->dev, "Invalid enable while %s is under HW control\n",
+				 sc->rdesc.name);
+			return -EBUSY;
+		}
 
-	ret = readl_tight_poll_timeout(sc->gdscr, regval, regval & PWR_ON_MASK,
-				       TIMEOUT_US);
-	if (ret) {
-		dev_err(&rdev->dev, "%s enable timed out\n", sc->rdesc.name);
-		return ret;
+		regval &= ~SW_COLLAPSE_MASK;
+		writel_relaxed(regval, sc->gdscr);
+
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					regval & PWR_ON_MASK, TIMEOUT_US);
+		if (ret) {
+			dev_err(&rdev->dev, "%s enable timed out\n",
+				sc->rdesc.name);
+			return ret;
+		}
+	} else {
+		for (i = 0; i < sc->clock_count; i++)
+			clk_reset(sc->clocks[i], CLK_RESET_DEASSERT);
+		sc->resets_asserted = false;
+	}
+
+	for (i = 0; i < sc->clock_count; i++) {
+		if (sc->toggle_mem)
+			clk_set_flags(sc->clocks[i], CLKFLAG_RETAIN_MEM);
+		if (sc->toggle_periph)
+			clk_set_flags(sc->clocks[i], CLKFLAG_RETAIN_PERIPH);
 	}
 
 	/*
 	 * If clocks to this power domain were already on, they will take an
 	 * additional 4 clock cycles to re-enable after the rail is enabled.
+	 * Delay to account for this. A delay is also needed to ensure clocks
+	 * are not enabled within 400ns of enabling power to the memories.
 	 */
 	udelay(1);
 
@@ -84,24 +116,129 @@ static int gdsc_disable(struct regulator_dev *rdev)
 {
 	struct gdsc *sc = rdev_get_drvdata(rdev);
 	uint32_t regval;
-	int ret;
+	int i, ret = 0;
 
-	regval = readl_relaxed(sc->gdscr);
-	regval |= SW_COLLAPSE_MASK;
-	writel_relaxed(regval, sc->gdscr);
+	for (i = sc->clock_count-1; i >= 0; i--) {
+		if (sc->toggle_mem)
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_MEM);
+		if (sc->toggle_periph)
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_PERIPH);
+	}
 
-	ret = readl_tight_poll_timeout(sc->gdscr, regval,
-				       !(regval & PWR_ON_MASK), TIMEOUT_US);
-	if (ret)
-		dev_err(&rdev->dev, "%s disable timed out\n", sc->rdesc.name);
+	if (sc->toggle_logic) {
+		regval = readl_relaxed(sc->gdscr);
+		if (regval & HW_CONTROL_MASK) {
+			dev_warn(&rdev->dev, "Invalid disable while %s is under HW control\n",
+				 sc->rdesc.name);
+			return -EBUSY;
+		}
+
+		regval |= SW_COLLAPSE_MASK;
+		writel_relaxed(regval, sc->gdscr);
+
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					       !(regval & PWR_ON_MASK),
+						TIMEOUT_US);
+		if (ret)
+			dev_err(&rdev->dev, "%s disable timed out\n",
+				sc->rdesc.name);
+	} else {
+		for (i = sc->clock_count-1; i >= 0; i--)
+			clk_reset(sc->clocks[i], CLK_RESET_ASSERT);
+		sc->resets_asserted = true;
+	}
 
 	return ret;
+}
+
+static unsigned int gdsc_get_mode(struct regulator_dev *rdev)
+{
+	struct gdsc *sc = rdev_get_drvdata(rdev);
+	uint32_t regval;
+
+	if (!sc->support_hw_trigger)
+		return REGULATOR_MODE_NORMAL;
+
+	regval = readl_relaxed(sc->gdscr);
+	if (regval & HW_CONTROL_MASK)
+		return REGULATOR_MODE_FAST;
+	return REGULATOR_MODE_NORMAL;
+}
+
+static int gdsc_set_mode(struct regulator_dev *rdev, unsigned int mode)
+{
+	struct gdsc *sc = rdev_get_drvdata(rdev);
+	uint32_t regval;
+	int ret;
+
+	if (!sc->support_hw_trigger) {
+		dev_err(&rdev->dev, "hw collapse not available\n");
+		return -ENODEV;
+	}
+
+	regval = readl_relaxed(sc->gdscr);
+
+	/*
+	 * HW control can only be enable/disabled when SW_COLLAPSE
+	 * indicates on.
+	 */
+	if (regval & SW_COLLAPSE_MASK) {
+		dev_err(&rdev->dev, "can't enable hw collapse now\n");
+		return -EBUSY;
+	}
+
+	switch (mode) {
+	case REGULATOR_MODE_FAST:
+		/* Turn on HW trigger mode */
+		regval |= HW_CONTROL_MASK;
+		writel_relaxed(regval, sc->gdscr);
+		/*
+		 * There may be a race with internal HW trigger signal,
+		 * that will result in GDSC going through a power down and
+		 * up cycle.  In case HW trigger signal is controlled by
+		 * firmware that also poll same status bits as we do, FW
+		 * might read an 'on' status before the GDSC can finish
+		 * power cycle.  We wait 1us before returning to ensure
+		 * FW can't immediately poll the status bit.
+		 */
+		mb();
+		udelay(1);
+		break;
+
+	case REGULATOR_MODE_NORMAL:
+		/* Turn off HW trigger mode */
+		regval &= ~HW_CONTROL_MASK;
+		writel_relaxed(regval, sc->gdscr);
+		/*
+		 * There may be a race with internal HW trigger signal,
+		 * that will result in GDSC going through a power down and
+		 * up cycle.  If we poll too early, status bit will
+		 * indicate 'on' before the GDSC can finish the power cycle.
+		 * Account for this case by waiting 1us before polling.
+		 */
+		mb();
+		udelay(1);
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					regval & PWR_ON_MASK, TIMEOUT_US);
+		if (ret) {
+			dev_err(&rdev->dev, "%s set_mode timed out\n",
+				sc->rdesc.name);
+			return ret;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static struct regulator_ops gdsc_ops = {
 	.is_enabled = gdsc_is_enabled,
 	.enable = gdsc_enable,
 	.disable = gdsc_disable,
+	.set_mode = gdsc_set_mode,
+	.get_mode = gdsc_get_mode,
 };
 
 static int __devinit gdsc_probe(struct platform_device *pdev)
@@ -111,8 +248,8 @@ static int __devinit gdsc_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct gdsc *sc;
 	uint32_t regval;
-	bool retain_mems;
-	int ret;
+	bool retain_mem, retain_periph;
+	int i, ret;
 
 	sc = devm_kzalloc(&pdev->dev, sizeof(struct gdsc), GFP_KERNEL);
 	if (sc == NULL)
@@ -125,6 +262,9 @@ static int __devinit gdsc_probe(struct platform_device *pdev)
 	if (of_get_property(pdev->dev.of_node, "parent-supply", NULL))
 		init_data->supply_regulator = "parent";
 
+	init_data->constraints.valid_ops_mask |= REGULATOR_CHANGE_MODE;
+	init_data->constraints.valid_modes_mask |= REGULATOR_MODE_NORMAL
+						| REGULATOR_MODE_FAST;
 	ret = of_property_read_string(pdev->dev.of_node, "regulator-name",
 				      &sc->rdesc.name);
 	if (ret)
@@ -136,6 +276,34 @@ static int __devinit gdsc_probe(struct platform_device *pdev)
 	sc->gdscr = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 	if (sc->gdscr == NULL)
 		return -ENOMEM;
+
+	sc->clock_count = of_property_count_strings(pdev->dev.of_node,
+					    "qcom,clock-names");
+	if (sc->clock_count == -EINVAL) {
+		sc->clock_count = 0;
+	} else if (IS_ERR_VALUE(sc->clock_count)) {
+		dev_err(&pdev->dev, "Failed to get clock names\n");
+		return -EINVAL;
+	}
+
+	sc->clocks = devm_kzalloc(&pdev->dev,
+			sizeof(struct clk *) * sc->clock_count, GFP_KERNEL);
+	if (!sc->clocks)
+		return -ENOMEM;
+	for (i = 0; i < sc->clock_count; i++) {
+		const char *clock_name;
+		of_property_read_string_index(pdev->dev.of_node,
+					      "qcom,clock-names", i,
+					      &clock_name);
+		sc->clocks[i] = devm_clk_get(&pdev->dev, clock_name);
+		if (IS_ERR(sc->clocks[i])) {
+			int rc = PTR_ERR(sc->clocks[i]);
+			if (rc != -EPROBE_DEFER)
+				dev_err(&pdev->dev, "Failed to get %s\n",
+					clock_name);
+			return rc;
+		}
+	}
 
 	sc->rdesc.id = atomic_inc_return(&gdsc_count);
 	sc->rdesc.ops = &gdsc_ops;
@@ -155,14 +323,39 @@ static int __devinit gdsc_probe(struct platform_device *pdev)
 	regval |= EN_REST_WAIT_VAL | EN_FEW_WAIT_VAL | CLK_DIS_WAIT_VAL;
 	writel_relaxed(regval, sc->gdscr);
 
-	retain_mems = of_property_read_bool(pdev->dev.of_node,
-					    "qcom,retain-mems");
-	if (retain_mems) {
-		sc->core_clk = devm_clk_get(&pdev->dev, "core_clk");
-		if (IS_ERR(sc->core_clk))
-			return PTR_ERR(sc->core_clk);
-		clk_set_flags(sc->core_clk, CLKFLAG_RETAIN_MEM);
-		clk_set_flags(sc->core_clk, CLKFLAG_RETAIN_PERIPH);
+	retain_mem = of_property_read_bool(pdev->dev.of_node,
+					    "qcom,retain-mem");
+	sc->toggle_mem = !retain_mem;
+	retain_periph = of_property_read_bool(pdev->dev.of_node,
+					    "qcom,retain-periph");
+	sc->toggle_periph = !retain_periph;
+	sc->toggle_logic = !of_property_read_bool(pdev->dev.of_node,
+						"qcom,skip-logic-collapse");
+	sc->support_hw_trigger = of_property_read_bool(pdev->dev.of_node,
+						    "qcom,support-hw-trigger");
+	if (!sc->toggle_logic) {
+		regval &= ~SW_COLLAPSE_MASK;
+		writel_relaxed(regval, sc->gdscr);
+
+		ret = readl_tight_poll_timeout(sc->gdscr, regval,
+					regval & PWR_ON_MASK, TIMEOUT_US);
+		if (ret) {
+			dev_err(&pdev->dev, "%s enable timed out\n",
+				sc->rdesc.name);
+			return ret;
+		}
+	}
+
+	for (i = 0; i < sc->clock_count; i++) {
+		if (retain_mem || (regval & PWR_ON_MASK))
+			clk_set_flags(sc->clocks[i], CLKFLAG_RETAIN_MEM);
+		else
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_MEM);
+
+		if (retain_periph || (regval & PWR_ON_MASK))
+			clk_set_flags(sc->clocks[i], CLKFLAG_RETAIN_PERIPH);
+		else
+			clk_set_flags(sc->clocks[i], CLKFLAG_NORETAIN_PERIPH);
 	}
 
 	sc->rdev = regulator_register(&sc->rdesc, &pdev->dev, init_data, sc,

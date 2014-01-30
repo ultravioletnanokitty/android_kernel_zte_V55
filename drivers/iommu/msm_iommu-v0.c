@@ -31,15 +31,8 @@
 #include <mach/iommu_hw-v0.h>
 #include <mach/msm_iommu_priv.h>
 #include <mach/iommu.h>
-#include <mach/msm_smsm.h>
-
-#define MRC(reg, processor, op1, crn, crm, op2)				\
-__asm__ __volatile__ (							\
-"   mrc   "   #processor "," #op1 ", %0,"  #crn "," #crm "," #op2 "\n"  \
-: "=r" (reg))
-
-#define RCP15_PRRR(reg)		MRC(reg, p15, 0, c10, c2, 0)
-#define RCP15_NMRR(reg)		MRC(reg, p15, 0, c10, c2, 1)
+#include <mach/msm_smem.h>
+#include <mach/msm_bus.h>
 
 /* Sharability attributes of MSM IOMMU mappings */
 #define MSM_IOMMU_ATTR_NON_SH		0x0
@@ -51,9 +44,8 @@ __asm__ __volatile__ (							\
 #define MSM_IOMMU_ATTR_CACHED_WB_NWA	0x2
 #define MSM_IOMMU_ATTR_CACHED_WT	0x3
 
-struct bus_type msm_iommu_sec_bus_type = {
-	.name = "msm_iommu_sec_bus",
-};
+static int msm_iommu_unmap_range(struct iommu_domain *domain, unsigned int va,
+				 unsigned int len);
 
 static inline void clean_pte(unsigned long *start, unsigned long *end,
 			     int redirect)
@@ -132,6 +124,20 @@ void *msm_iommu_lock_initialize(void)
 	return msm_iommu_remote_lock.lock;
 }
 
+static int apply_bus_vote(struct msm_iommu_drvdata *drvdata, unsigned int vote)
+{
+	int ret = 0;
+
+	if (drvdata->bus_client) {
+		ret = msm_bus_scale_client_update_request(drvdata->bus_client,
+							  vote);
+		if (ret)
+			pr_err("%s: Failed to vote for bus: %d\n", __func__,
+				vote);
+	}
+	return ret;
+}
+
 static int __enable_clocks(struct msm_iommu_drvdata *drvdata)
 {
 	int ret;
@@ -145,12 +151,26 @@ static int __enable_clocks(struct msm_iommu_drvdata *drvdata)
 		if (ret)
 			clk_disable_unprepare(drvdata->pclk);
 	}
+
+	if (ret)
+		goto fail;
+
+	if (drvdata->aclk) {
+		ret = clk_prepare_enable(drvdata->aclk);
+		if (ret) {
+			clk_disable_unprepare(drvdata->clk);
+			clk_disable_unprepare(drvdata->pclk);
+		}
+	}
+
 fail:
 	return ret;
 }
 
 static void __disable_clocks(struct msm_iommu_drvdata *drvdata)
 {
+	if (drvdata->aclk)
+		clk_disable_unprepare(drvdata->aclk);
 	if (drvdata->clk)
 		clk_disable_unprepare(drvdata->clk);
 	clk_disable_unprepare(drvdata->pclk);
@@ -167,6 +187,11 @@ static void __disable_regulators(struct msm_iommu_drvdata *drvdata)
 	/* No need to do anything. IOMMUv0 is always on. */
 }
 
+static void *_iommu_lock_initialize(void)
+{
+	return msm_iommu_lock_initialize();
+}
+
 static void _iommu_lock_acquire(void)
 {
 	msm_iommu_lock();
@@ -180,12 +205,13 @@ static void _iommu_lock_release(void)
 struct iommu_access_ops iommu_access_ops_v0 = {
 	.iommu_power_on = __enable_regulators,
 	.iommu_power_off = __disable_regulators,
+	.iommu_bus_vote = apply_bus_vote,
 	.iommu_clk_on = __enable_clocks,
 	.iommu_clk_off = __disable_clocks,
+	.iommu_lock_initialize = _iommu_lock_initialize,
 	.iommu_lock_acquire = _iommu_lock_acquire,
 	.iommu_lock_release = _iommu_lock_release,
 };
-EXPORT_SYMBOL(iommu_access_ops_v0);
 
 static int __flush_iotlb_va(struct iommu_domain *domain, unsigned int va)
 {
@@ -321,8 +347,8 @@ static void __program_context(void __iomem *base, void __iomem *glb_base,
 	SET_TRE(base, ctx, 1);
 
 	/* Set TEX remap attributes */
-	RCP15_PRRR(prrr);
-	RCP15_NMRR(nmrr);
+	prrr = msm_iommu_get_prrr();
+	nmrr = msm_iommu_get_nmrr();
 	SET_PRRR(base, ctx, prrr);
 	SET_NMRR(base, ctx, nmrr);
 
@@ -470,7 +496,7 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	++ctx_drvdata->attach_count;
 
 	if (ctx_drvdata->attach_count > 1)
-		goto unlock;
+		goto already_attached;
 
 	if (!list_empty(&ctx_drvdata->attached_elm)) {
 		ret = -EBUSY;
@@ -482,6 +508,11 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 			ret = -EBUSY;
 			goto unlock;
 		}
+
+	ret = apply_bus_vote(iommu_drvdata, 1);
+
+	if (ret)
+		goto unlock;
 
 	ret = __enable_clocks(iommu_drvdata);
 	if (ret)
@@ -497,6 +528,7 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 
 	ctx_drvdata->attached_domain = domain;
 
+already_attached:
 	mutex_unlock(&msm_iommu_lock);
 
 	msm_iommu_attached(dev->parent);
@@ -549,6 +581,9 @@ static void msm_iommu_detach_dev(struct iommu_domain *domain,
 	msm_iommu_remote_spin_unlock();
 
 	__disable_clocks(iommu_drvdata);
+
+	apply_bus_vote(iommu_drvdata, 0);
+
 	list_del_init(&ctx_drvdata->attached_elm);
 	ctx_drvdata->attached_domain = NULL;
 unlock:
@@ -953,6 +988,7 @@ static int msm_iommu_map_range(struct iommu_domain *domain, unsigned int va,
 			       int prot)
 {
 	unsigned int pa;
+	unsigned int start_va = va;
 	unsigned int offset = 0;
 	unsigned long *fl_table;
 	unsigned long *fl_pte;
@@ -1026,12 +1062,6 @@ static int msm_iommu_map_range(struct iommu_domain *domain, unsigned int va,
 				chunk_offset = 0;
 				sg = sg_next(sg);
 				pa = get_phys_addr(sg);
-				if (pa == 0) {
-					pr_debug("No dma address for sg %p\n",
-							sg);
-					ret = -EINVAL;
-					goto fail;
-				}
 			}
 			continue;
 		}
@@ -1085,12 +1115,6 @@ static int msm_iommu_map_range(struct iommu_domain *domain, unsigned int va,
 				chunk_offset = 0;
 				sg = sg_next(sg);
 				pa = get_phys_addr(sg);
-				if (pa == 0) {
-					pr_debug("No dma address for sg %p\n",
-							sg);
-					ret = -EINVAL;
-					goto fail;
-				}
 			}
 		}
 
@@ -1103,6 +1127,8 @@ static int msm_iommu_map_range(struct iommu_domain *domain, unsigned int va,
 	__flush_iotlb(domain);
 fail:
 	mutex_unlock(&msm_iommu_lock);
+	if (ret && offset > 0)
+		msm_iommu_unmap_range(domain, start_va, offset);
 	return ret;
 }
 
@@ -1243,7 +1269,7 @@ static int msm_iommu_domain_has_cap(struct iommu_domain *domain,
 	return 0;
 }
 
-static void print_ctx_regs(void __iomem *base, int ctx)
+static void __print_ctx_regs(void __iomem *base, int ctx)
 {
 	unsigned int fsr = GET_FSR(base, ctx);
 	pr_err("FAR    = %08x    PAR    = %08x\n",
@@ -1309,7 +1335,7 @@ irqreturn_t msm_iommu_fault_handler(int irq, void *dev_id)
 			pr_err("name    = %s\n", drvdata->name);
 			pr_err("context = %s (%d)\n", ctx_drvdata->name, num);
 			pr_err("Interesting registers:\n");
-			print_ctx_regs(base, num);
+			__print_ctx_regs(base, num);
 		}
 
 		SET_FSR(base, num, fsr);
@@ -1360,8 +1386,8 @@ static int __init get_tex_class(int icp, int ocp, int mt, int nos)
 	unsigned int nmrr = 0;
 	int c_icp, c_ocp, c_mt, c_nos;
 
-	RCP15_PRRR(prrr);
-	RCP15_NMRR(nmrr);
+	prrr = msm_iommu_get_prrr();
+	nmrr = msm_iommu_get_nmrr();
 
 	for (i = 0; i < NUM_TEX_CLASS; i++) {
 		c_nos = PRRR_NOS(prrr, i);

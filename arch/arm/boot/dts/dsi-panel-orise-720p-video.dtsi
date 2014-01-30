@@ -10,11 +10,9 @@
  * GNU General Public License for more details.
  */
 
-/ {
-	qcom,mdss_dsi_orise_720p_video {
-		compatible = "qcom,mdss-dsi-panel";
+&mdss_mdp {
+	dsi_orise_720_vid: qcom,mdss_dsi_orise_720p_video {
 		label = "orise 720p video mode dsi panel";
-		status = "disable";
 		qcom,dsi-ctrl-phandle = <&mdss_dsi1>;
 		qcom,mdss-pan-res = <720 1280>;
 		qcom,mdss-pan-bpp = <24>;
@@ -50,11 +48,11 @@
 					     00 c2 45 00 00 00 00 01 75 /* lane3 config */
 					     00 02 45 00 00 00 00 01 97]; /* Clk ln config */
 
-		qcom,panel-on-cmds = [05 01 00 00 78 02 11 00
-					05 01 00 00 78 02 29 00];
+		qcom,panel-on-cmds = [05 01 00 00 78 00 02 11 00
+					05 01 00 00 78 00 02 29 00];
 		qcom,on-cmds-dsi-state = "DSI_LP_MODE";
-		qcom,panel-off-cmds = [05 01 00 00 32 02 28 00
-					05 01 00 00 78 02 10 00];
+		qcom,panel-off-cmds = [05 01 00 00 32 00 02 28 00
+					05 01 00 00 78 00 02 10 00];
 		qcom,off-cmds-dsi-state = "DSI_LP_MODE";
 	};
 };

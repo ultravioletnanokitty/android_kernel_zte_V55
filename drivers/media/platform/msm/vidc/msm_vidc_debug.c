@@ -15,7 +15,8 @@
 #include "vidc_hfi_api.h"
 
 #define MAX_DBG_BUF_SIZE 4096
-int msm_vidc_debug = 0x3;
+int msm_vidc_debug = VIDC_ERR | VIDC_WARN;
+int msm_vidc_debug_out = VIDC_OUT_PRINTK;
 int msm_fw_debug = 0x18;
 int msm_fw_debug_mode = 0x1;
 int msm_fw_low_power_mode = 0x1;
@@ -171,6 +172,11 @@ struct dentry *msm_vidc_debugfs_init_core(struct msm_vidc_core *core,
 		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
 		goto failed_create_dir;
 	}
+	if (!debugfs_create_u32("debug_output", S_IRUGO | S_IWUSR,
+			parent, &msm_vidc_debug_out)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
 failed_create_dir:
 	return dir;
 }
@@ -198,6 +204,7 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 	write_str(&dbg_buf, "core: 0x%p\n", inst->core);
 	write_str(&dbg_buf, "height: %d\n", inst->prop.height);
 	write_str(&dbg_buf, "width: %d\n", inst->prop.width);
+	write_str(&dbg_buf, "fps: %d\n", inst->prop.fps);
 	write_str(&dbg_buf, "state: %d\n", inst->state);
 	write_str(&dbg_buf, "-----------Formats-------------\n");
 	for (i = 0; i < MAX_PORT_NUM; i++) {

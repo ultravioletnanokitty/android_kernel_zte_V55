@@ -80,11 +80,18 @@ static struct msm_isp_buffer *msm_isp_get_buf_ptr(
 }
 
 static uint32_t msm_isp_get_buf_handle(
-	struct msm_isp_buf_mgr *buf_mgr)
+	struct msm_isp_buf_mgr *buf_mgr,
+	uint32_t session_id, uint32_t stream_id)
 {
 	int i;
 	if ((buf_mgr->buf_handle_cnt << 8) == 0)
 		buf_mgr->buf_handle_cnt++;
+
+	for (i = 0; i < buf_mgr->num_buf_q; i++) {
+		if (buf_mgr->bufq[i].session_id == session_id &&
+			buf_mgr->bufq[i].stream_id == stream_id)
+			return 0;
+	}
 
 	for (i = 0; i < buf_mgr->num_buf_q; i++) {
 		if (buf_mgr->bufq[i].bufq_handle == 0) {
@@ -256,6 +263,13 @@ static int msm_isp_buf_unprepare(struct msm_isp_buf_mgr *buf_mgr,
 				buf_info->state ==
 					MSM_ISP_BUFFER_STATE_INITIALIZED)
 			continue;
+
+		if (!BUF_SRC(bufq->stream_id)) {
+			if (buf_info->state == MSM_ISP_BUFFER_STATE_DEQUEUED ||
+			buf_info->state == MSM_ISP_BUFFER_STATE_DIVERTED)
+				buf_mgr->vb2_ops->put_buf(buf_info->vb2_buf,
+					bufq->session_id, bufq->stream_id);
+		}
 		msm_isp_unprepare_v4l2_buf(buf_mgr, buf_info);
 	}
 	return 0;
@@ -274,6 +288,10 @@ static int msm_isp_get_buf(struct msm_isp_buf_mgr *buf_mgr, uint32_t id,
 		pr_err("%s: Invalid bufq\n", __func__);
 		return rc;
 	}
+	if (!bufq->bufq_handle) {
+		pr_err("%s: Invalid bufq handle\n", __func__);
+		return rc;
+	}
 
 	*buf_info = NULL;
 	spin_lock_irqsave(&bufq->bufq_lock, flags);
@@ -287,13 +305,15 @@ static int msm_isp_get_buf(struct msm_isp_buf_mgr *buf_mgr, uint32_t id,
 					bufq->buf_client_count)
 					list_del_init(
 					&temp_buf_info->share_list);
-				if (temp_buf_info->buf_reuse_flag)
+				if (temp_buf_info->buf_reuse_flag) {
 					kfree(temp_buf_info);
-				else
+				} else {
 					*buf_info = temp_buf_info;
+					rc = 0;
+				}
 				spin_unlock_irqrestore(
 					&bufq->bufq_lock, flags);
-				return 0;
+				return rc;
 			}
 		}
 	}
@@ -342,6 +362,7 @@ static int msm_isp_get_buf(struct msm_isp_buf_mgr *buf_mgr, uint32_t id,
 			(*buf_info)->buf_used[id] = 1;
 			(*buf_info)->buf_get_count = 1;
 			(*buf_info)->buf_put_count = 0;
+			(*buf_info)->buf_reuse_flag = 0;
 			list_add_tail(&(*buf_info)->share_list,
 						  &bufq->share_head);
 		}
@@ -375,7 +396,6 @@ static int msm_isp_put_buf(struct msm_isp_buf_mgr *buf_mgr,
 	switch (buf_info->state) {
 	case MSM_ISP_BUFFER_STATE_PREPARED:
 	case MSM_ISP_BUFFER_STATE_DEQUEUED:
-	case MSM_ISP_BUFFER_STATE_DISPATCHED:
 	case MSM_ISP_BUFFER_STATE_DIVERTED:
 		if (BUF_SRC(bufq->stream_id))
 			list_add_tail(&buf_info->list, &bufq->head);
@@ -383,6 +403,13 @@ static int msm_isp_put_buf(struct msm_isp_buf_mgr *buf_mgr,
 			buf_mgr->vb2_ops->put_buf(buf_info->vb2_buf,
 				bufq->session_id, bufq->stream_id);
 		buf_info->state = MSM_ISP_BUFFER_STATE_QUEUED;
+		rc = 0;
+		break;
+	case MSM_ISP_BUFFER_STATE_DISPATCHED:
+		buf_info->state = MSM_ISP_BUFFER_STATE_QUEUED;
+		rc = 0;
+		break;
+	case MSM_ISP_BUFFER_STATE_QUEUED:
 		rc = 0;
 		break;
 	default:
@@ -397,7 +424,7 @@ static int msm_isp_put_buf(struct msm_isp_buf_mgr *buf_mgr,
 
 static int msm_isp_buf_done(struct msm_isp_buf_mgr *buf_mgr,
 	uint32_t bufq_handle, uint32_t buf_index,
-	struct timeval *tv, uint32_t frame_id)
+	struct timeval *tv, uint32_t frame_id, uint32_t output_format)
 {
 	int rc = -1;
 	unsigned long flags;
@@ -444,6 +471,7 @@ static int msm_isp_buf_done(struct msm_isp_buf_mgr *buf_mgr,
 		} else {
 			buf_info->vb2_buf->v4l2_buf.timestamp = *tv;
 			buf_info->vb2_buf->v4l2_buf.sequence  = frame_id;
+			buf_info->vb2_buf->v4l2_buf.reserved = output_format;
 			buf_mgr->vb2_ops->buf_done(buf_info->vb2_buf,
 				bufq->session_id, bufq->stream_id);
 		}
@@ -544,11 +572,18 @@ static int msm_isp_buf_enqueue(struct msm_isp_buf_mgr *buf_mgr,
 	if (buf_state == MSM_ISP_BUFFER_STATE_DIVERTED) {
 		buf_info = msm_isp_get_buf_ptr(buf_mgr,
 						info->handle, info->buf_idx);
-		if (info->dirty_buf)
-			msm_isp_put_buf(buf_mgr, info->handle, info->buf_idx);
-		else
-			msm_isp_buf_done(buf_mgr, info->handle, info->buf_idx,
-				buf_info->tv, buf_info->frame_id);
+		if (info->dirty_buf) {
+			rc = msm_isp_put_buf(buf_mgr,
+				info->handle, info->buf_idx);
+		} else {
+			if (BUF_SRC(bufq->stream_id))
+				pr_err("%s: Invalid native buffer state\n",
+					__func__);
+			else
+				rc = msm_isp_buf_done(buf_mgr,
+					info->handle, info->buf_idx,
+					buf_info->tv, buf_info->frame_id, 0);
+		}
 	} else {
 		bufq = msm_isp_get_bufq(buf_mgr, info->handle);
 		if (BUF_SRC(bufq->stream_id)) {
@@ -583,12 +618,13 @@ static int msm_isp_request_bufq(struct msm_isp_buf_mgr *buf_mgr,
 	struct msm_isp_bufq *bufq = NULL;
 	CDBG("%s: E\n", __func__);
 
-	if (!buf_request->num_buf) {
+	if (!buf_request->num_buf || buf_request->num_buf > VIDEO_MAX_FRAME) {
 		pr_err("Invalid buffer request\n");
 		return rc;
 	}
 
-	buf_request->handle = msm_isp_get_buf_handle(buf_mgr);
+	buf_request->handle = msm_isp_get_buf_handle(buf_mgr,
+		buf_request->session_id, buf_request->stream_id);
 	if (!buf_request->handle) {
 		pr_err("Invalid buffer handle\n");
 		return rc;

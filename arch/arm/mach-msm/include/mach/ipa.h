@@ -186,6 +186,16 @@ struct ipa_ep_cfg_route {
 };
 
 /**
+ * struct ipa_ep_cfg_holb - head of line blocking configuration in IPA end-point
+ * @en: enable(1 => ok to drop pkt)/disable(0 => never drop pkt)
+ * @tmr_val: duration in units of 128 IPA clk clock cyles [0,511], 1 clk=1.28us
+ */
+struct ipa_ep_cfg_holb {
+	u16 en;
+	u16 tmr_val;
+};
+
+/**
  * struct ipa_ep_cfg - configuration of IPA end-point
  * @nat:	NAT parmeters
  * @hdr:	Header parameters
@@ -426,6 +436,18 @@ enum a2_mux_logical_channel_id {
 	A2_MUX_WWAN_6,
 	A2_MUX_WWAN_7,
 	A2_MUX_TETHERED_0,
+	A2_MUX_RESERVED_9,
+	A2_MUX_MULTI_RMNET_10,
+	A2_MUX_MULTI_RMNET_11,
+	A2_MUX_MULTI_RMNET_12,
+	A2_MUX_MULTI_MBIM_13,
+	A2_MUX_MULTI_MBIM_14,
+	A2_MUX_MULTI_MBIM_15,
+	A2_MUX_MULTI_MBIM_16,
+	A2_MUX_MULTI_MBIM_17,
+	A2_MUX_MULTI_MBIM_18,
+	A2_MUX_MULTI_MBIM_19,
+	A2_MUX_MULTI_MBIM_20,
 	A2_MUX_NUM_CHANNELS
 };
 
@@ -447,11 +469,13 @@ enum teth_tethering_mode {
  * @ipa_usb_pipe_hdl:	IPA to USB pipe handle, returned from ipa_connect()
  * @usb_ipa_pipe_hdl:	USB to IPA pipe handle, returned from ipa_connect()
  * @tethering_mode:	Rmnet or MBIM
+ * @ipa_client_type:    IPA "client" name (IPA_CLIENT_USB#_PROD)
  */
 struct teth_bridge_connect_params {
 	u32 ipa_usb_pipe_hdl;
 	u32 usb_ipa_pipe_hdl;
 	enum teth_tethering_mode tethering_mode;
+	enum ipa_client_type client_type;
 };
 
 #ifdef CONFIG_IPA
@@ -462,6 +486,13 @@ struct teth_bridge_connect_params {
 int ipa_connect(const struct ipa_connect_params *in, struct ipa_sps_params *sps,
 		u32 *clnt_hdl);
 int ipa_disconnect(u32 clnt_hdl);
+
+/*
+ * Resume / Suspend
+ */
+int ipa_resume(u32 clnt_hdl);
+
+int ipa_suspend(u32 clnt_hdl);
 
 /*
  * Configuration
@@ -477,6 +508,11 @@ int ipa_cfg_ep_mode(u32 clnt_hdl, const struct ipa_ep_cfg_mode *ipa_ep_cfg);
 int ipa_cfg_ep_aggr(u32 clnt_hdl, const struct ipa_ep_cfg_aggr *ipa_ep_cfg);
 
 int ipa_cfg_ep_route(u32 clnt_hdl, const struct ipa_ep_cfg_route *ipa_ep_cfg);
+
+int ipa_cfg_ep_holb(u32 clnt_hdl, const struct ipa_ep_cfg_holb *ipa_ep_cfg);
+
+int ipa_cfg_ep_holb_by_client(enum ipa_client_type client,
+				const struct ipa_ep_cfg_holb *ipa_ep_cfg);
 
 /*
  * Header removal / addition
@@ -557,17 +593,6 @@ int ipa_set_qcncm_ndp_sig(char sig[3]);
 int ipa_set_single_ndp_per_mbim(bool enable);
 
 /*
- * rmnet bridge
- */
-int rmnet_bridge_init(void);
-
-int rmnet_bridge_disconnect(void);
-
-int rmnet_bridge_connect(u32 producer_hdl,
-			 u32 consumer_hdl,
-			 int wwan_logical_channel_id);
-
-/*
  * SW bridge (between IPA and A2)
  */
 int ipa_bridge_setup(enum ipa_bridge_dir dir, enum ipa_bridge_type type,
@@ -593,6 +618,8 @@ int ipa_teardown_sys_pipe(u32 clnt_hdl);
  * Resource manager
  */
 int ipa_rm_create_resource(struct ipa_rm_create_params *create_params);
+
+int ipa_rm_delete_resource(enum ipa_rm_resource_name resource_name);
 
 int ipa_rm_register(enum ipa_rm_resource_name resource_name,
 			struct ipa_rm_register_params *reg_params);
@@ -635,24 +662,31 @@ int a2_mux_close_channel(enum a2_mux_logical_channel_id lcid);
 
 int a2_mux_write(enum a2_mux_logical_channel_id lcid, struct sk_buff *skb);
 
+int a2_mux_is_ch_empty(enum a2_mux_logical_channel_id lcid);
+
 int a2_mux_is_ch_low(enum a2_mux_logical_channel_id lcid);
 
 int a2_mux_is_ch_full(enum a2_mux_logical_channel_id lcid);
 
-int a2_mux_get_tethered_client_handles(enum a2_mux_logical_channel_id lcid,
+int a2_mux_get_client_handles(enum a2_mux_logical_channel_id lcid,
 		unsigned int *clnt_cons_handle,
 		unsigned int *clnt_prod_handle);
 
 /*
  * Tethering bridge (Rmnet / MBIM)
  */
-int teth_bridge_init(ipa_notify_cb *usb_notify_cb_ptr, void **private_data_ptr);
+int teth_bridge_init(ipa_notify_cb *usb_notify_cb_ptr, void **private_data_ptr,
+		enum ipa_client_type client);
 
-int teth_bridge_disconnect(void);
+int teth_bridge_disconnect(enum ipa_client_type client);
 
 int teth_bridge_connect(struct teth_bridge_connect_params *connect_params);
 
-int teth_bridge_set_aggr_params(struct teth_aggr_params *aggr_params);
+int teth_bridge_set_mbim_aggr_params(struct teth_aggr_params *aggr_params,
+		enum ipa_client_type client);
+
+void ipa_bam_reg_dump(void);
+bool ipa_emb_ul_pipes_empty(void);
 
 #else /* CONFIG_IPA */
 
@@ -673,6 +707,11 @@ static inline int a2_mux_write(enum a2_mux_logical_channel_id lcid,
 	return -EPERM;
 }
 
+static inline int a2_mux_is_ch_empty(enum a2_mux_logical_channel_id lcid)
+{
+	return -EPERM;
+}
+
 static inline int a2_mux_is_ch_low(enum a2_mux_logical_channel_id lcid)
 {
 	return -EPERM;
@@ -683,7 +722,7 @@ static inline int a2_mux_is_ch_full(enum a2_mux_logical_channel_id lcid)
 	return -EPERM;
 }
 
-static inline int a2_mux_get_tethered_client_handles(
+static inline int a2_mux_get_client_handles(
 	enum a2_mux_logical_channel_id lcid, unsigned int *clnt_cons_handle,
 	unsigned int *clnt_prod_handle)
 {
@@ -700,6 +739,19 @@ static inline int ipa_connect(const struct ipa_connect_params *in,
 }
 
 static inline int ipa_disconnect(u32 clnt_hdl)
+{
+	return -EPERM;
+}
+
+/*
+ * Resume / Suspend
+ */
+static inline int ipa_resume(u32 clnt_hdl)
+{
+	return -EPERM;
+}
+
+static inline int ipa_suspend(u32 clnt_hdl)
 {
 	return -EPERM;
 }
@@ -739,6 +791,12 @@ static inline int ipa_cfg_ep_aggr(u32 clnt_hdl,
 
 static inline int ipa_cfg_ep_route(u32 clnt_hdl,
 		const struct ipa_ep_cfg_route *ipa_ep_cfg)
+{
+	return -EPERM;
+}
+
+static inline int ipa_cfg_ep_holb(u32 clnt_hdl,
+		const struct ipa_ep_cfg_holb *ipa_ep_cfg)
 {
 	return -EPERM;
 }
@@ -917,26 +975,6 @@ static inline int ipa_set_single_ndp_per_mbim(bool enable)
 }
 
 /*
- * rmnet bridge
- */
-static inline int rmnet_bridge_init(void)
-{
-	return -EPERM;
-}
-
-static inline int rmnet_bridge_disconnect(void)
-{
-	return -EPERM;
-}
-
-static inline int rmnet_bridge_connect(u32 producer_hdl,
-			 u32 consumer_hdl,
-			 int wwan_logical_channel_id)
-{
-	return -EPERM;
-}
-
-/*
  * SW bridge (between IPA and A2)
  */
 static inline int ipa_bridge_setup(enum ipa_bridge_dir dir,
@@ -982,6 +1020,12 @@ static inline int ipa_teardown_sys_pipe(u32 clnt_hdl)
  */
 static inline int ipa_rm_create_resource(
 		struct ipa_rm_create_params *create_params)
+{
+	return -EPERM;
+}
+
+static inline int ipa_rm_delete_resource(
+		enum ipa_rm_resource_name resource_name)
 {
 	return -EPERM;
 }
@@ -1059,12 +1103,13 @@ static inline int ipa_rm_inactivity_timer_release_resource(
  * Tethering bridge (Rmnetm / MBIM)
  */
 static inline int teth_bridge_init(ipa_notify_cb *usb_notify_cb_ptr,
-				   void **private_data_ptr)
+				   void **private_data_ptr,
+				   enum ipa_client_type client)
 {
 	return -EPERM;
 }
 
-static inline int teth_bridge_disconnect(void)
+static inline int teth_bridge_disconnect(enum ipa_client_type client)
 {
 	return -EPERM;
 }
@@ -1075,10 +1120,21 @@ static inline int teth_bridge_connect(struct teth_bridge_connect_params
 	return -EPERM;
 }
 
-static inline int teth_bridge_set_aggr_params(struct teth_aggr_params
-					      *aggr_params)
+static inline int teth_bridge_set_mbim_aggr_params(
+				struct teth_aggr_params *aggr_params,
+				enum ipa_client_type client)
 {
 	return -EPERM;
+}
+
+static inline void ipa_bam_reg_dump(void)
+{
+	return;
+}
+
+static inline bool ipa_emb_ul_pipes_empty(void)
+{
+	return false;
 }
 
 #endif /* CONFIG_IPA*/

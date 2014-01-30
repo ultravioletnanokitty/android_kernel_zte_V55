@@ -36,9 +36,9 @@
 #include <mach/socinfo.h>
 #include <mach/msm_smd.h>
 #include <mach/rpm-smd.h>
-#include "rpm-notifier.h"
 #define CREATE_TRACE_POINTS
-#include "trace_rpm_smd.h"
+#include <mach/trace_rpm_smd.h>
+#include "rpm-notifier.h"
 /* Debug Definitions */
 
 enum {
@@ -60,12 +60,13 @@ struct msm_rpm_driver_data {
 	spinlock_t smd_lock_write;
 	spinlock_t smd_lock_read;
 	struct completion smd_open;
+	struct completion remote_open;
 };
 
 #define DEFAULT_BUFFER_SIZE 256
 #define DEBUG_PRINT_BUFFER_SIZE 512
 #define MAX_SLEEP_BUFFER 128
-
+#define SMD_CHANNEL_NOTIF_TIMEOUT 5000
 #define GFP_FLAG(noirq) (noirq ? GFP_ATOMIC : GFP_KERNEL)
 #define INV_RSC "resource does not exist"
 #define ERR "err\0"
@@ -1303,6 +1304,20 @@ void msm_rpm_exit_sleep(void)
 }
 EXPORT_SYMBOL(msm_rpm_exit_sleep);
 
+static int __devinit msm_rpm_smd_remote_probe(struct platform_device *pdev)
+{
+	if (pdev && pdev->id == msm_rpm_data.ch_type)
+		complete(&msm_rpm_data.remote_open);
+	return 0;
+}
+
+static struct platform_driver msm_rpm_smd_remote_driver = {
+	.probe = msm_rpm_smd_remote_probe,
+	.driver = {
+		.owner = THIS_MODULE,
+	},
+};
+
 static int __devinit msm_rpm_dev_probe(struct platform_device *pdev)
 {
 	char *key = NULL;
@@ -1323,13 +1338,21 @@ static int __devinit msm_rpm_dev_probe(struct platform_device *pdev)
 	key = "rpm-standalone";
 	standalone = of_property_read_bool(pdev->dev.of_node, key);
 
+	msm_rpm_smd_remote_driver.driver.name = msm_rpm_data.ch_name;
+	init_completion(&msm_rpm_data.remote_open);
 	init_completion(&msm_rpm_data.smd_open);
 	spin_lock_init(&msm_rpm_data.smd_lock_write);
 	spin_lock_init(&msm_rpm_data.smd_lock_read);
 	INIT_WORK(&msm_rpm_data.work, msm_rpm_smd_work);
 
-	if (smd_named_open_on_edge(msm_rpm_data.ch_name, msm_rpm_data.ch_type,
-				&msm_rpm_data.ch_info, &msm_rpm_data,
+	platform_driver_register(&msm_rpm_smd_remote_driver);
+	ret = wait_for_completion_timeout(&msm_rpm_data.remote_open,
+			msecs_to_jiffies(SMD_CHANNEL_NOTIF_TIMEOUT));
+
+	if (!ret || smd_named_open_on_edge(msm_rpm_data.ch_name,
+				msm_rpm_data.ch_type,
+				&msm_rpm_data.ch_info,
+				&msm_rpm_data,
 				msm_rpm_notify)) {
 		pr_info("Cannot open RPM channel %s %d\n", msm_rpm_data.ch_name,
 				msm_rpm_data.ch_type);
@@ -1349,7 +1372,8 @@ static int __devinit msm_rpm_dev_probe(struct platform_device *pdev)
 	smd_disable_read_intr(msm_rpm_data.ch_info);
 
 	if (!standalone) {
-		msm_rpm_smd_wq = create_singlethread_workqueue("rpm-smd");
+		msm_rpm_smd_wq = alloc_workqueue("rpm-smd",
+				WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_HIGHPRI, 1);
 		if (!msm_rpm_smd_wq)
 			return -EINVAL;
 		queue_work(msm_rpm_smd_wq, &msm_rpm_data.work);

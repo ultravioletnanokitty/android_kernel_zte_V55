@@ -41,8 +41,8 @@
 enum {
 	IDX_PRIMARY_I2S_RX = 0,
 	IDX_PRIMARY_I2S_TX = 1,
-	IDX_PCM_RX = 2,
-	IDX_PCM_TX = 3,
+	IDX_AFE_PORT_ID_PRIMARY_PCM_RX = 2,
+	IDX_AFE_PORT_ID_PRIMARY_PCM_TX = 3,
 	IDX_SECONDARY_I2S_RX = 4,
 	IDX_SECONDARY_I2S_TX = 5,
 	IDX_MI2S_RX = 6,
@@ -83,6 +83,7 @@ enum {
 	IDX_AFE_PORT_ID_PRIMARY_MI2S_TX = 41,
 	IDX_AFE_PORT_ID_SECONDARY_PCM_RX = 42,
 	IDX_AFE_PORT_ID_SECONDARY_PCM_TX = 43,
+	IDX_VOICE2_PLAYBACK_TX = 44,
 	IDX_GLOBAL_CFG,
 	AFE_MAX_PORTS
 };
@@ -147,6 +148,7 @@ int afe_get_port_index(u16 port_id);
 int afe_start_pseudo_port(u16 port_id);
 int afe_stop_pseudo_port(u16 port_id);
 uint32_t afe_req_mmap_handle(struct afe_audio_client *ac);
+int afe_unmap_cal_blocks(void);
 int afe_memory_map(u32 dma_addr_p, u32 dma_buf_sz, struct afe_audio_client *ac);
 int afe_cmd_memory_map(u32 dma_addr_p, u32 dma_buf_sz);
 int afe_cmd_memory_map_nowait(int port_id, u32 dma_addr_p, u32 dma_buf_sz);
@@ -166,7 +168,7 @@ int afe_rt_proxy_port_read(u32 buf_addr_p, u32 mem_map_handle, int bytes);
 int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 	u32 rate);
 int afe_spk_prot_feed_back_cfg(int src_port, int dst_port,
-	int l_ch, int r_ch);
+	int l_ch, int r_ch, u32 enable);
 int afe_spk_prot_get_calib_data(struct afe_spkr_prot_get_vi_calib *calib);
 int afe_port_stop_nowait(int port_id);
 int afe_apply_gain(u16 port_id, u16 gain);
@@ -197,6 +199,8 @@ int afe_port_set_mad_type(u16 port_id, enum afe_mad_type mad_type);
 enum afe_mad_type afe_port_get_mad_type(u16 port_id);
 int afe_set_config(enum afe_config_type config_type, void *config_data,
 		   int arg);
+void afe_clear_config(enum afe_config_type config);
+bool afe_has_config(enum afe_config_type config);
 
 void afe_set_aanc_info(struct aanc_data *aanc_info);
 #endif /* __Q6AFE_V2_H__ */

@@ -22,6 +22,7 @@
 
 /* Reference: HDMI 1.4a Specification section 7.1 */
 #define RETRANSMIT_MAX_NUM	5
+#define MAX_OPERAND_SIZE	15
 
 /*
  * Ref. HDMI 1.4a: Supplement-1 CEC Section 6, 7
@@ -30,7 +31,7 @@ struct hdmi_cec_msg {
 	u8 sender_id;
 	u8 recvr_id;
 	u8 opcode;
-	u8 operand[15];
+	u8 operand[MAX_OPERAND_SIZE];
 	u8 frame_size;
 	u8 retransmit;
 };
@@ -738,6 +739,10 @@ static ssize_t hdmi_wta_cec_msg(struct device *dev,
 	}
 	spin_unlock_irqrestore(&cec_ctrl->lock, flags);
 
+	if (msg->frame_size > MAX_OPERAND_SIZE) {
+		DEV_ERR("%s: msg frame too big!\n", __func__);
+		return -EINVAL;
+	}
 	rc = hdmi_cec_msg_send(cec_ctrl, msg);
 	if (rc) {
 		DEV_ERR("%s: hdmi_cec_msg_send failed\n", __func__);
@@ -785,11 +790,15 @@ int hdmi_cec_isr(void *input)
 
 	io = cec_ctrl->init_data.io;
 
-	if (!cec_ctrl->cec_enabled)
-		return 0;
-
 	cec_intr = DSS_REG_R_ND(io, HDMI_CEC_INT);
 	DEV_DBG("%s: cec interrupt status is [0x%x]\n", __func__, cec_intr);
+
+	if (!cec_ctrl->cec_enabled) {
+		DEV_ERR("%s: cec is not enabled. Just clear int and return.\n",
+			__func__);
+		DSS_REG_W(io, HDMI_CEC_INT, cec_intr);
+		return 0;
+	}
 
 	cec_status = DSS_REG_R_ND(io, HDMI_CEC_STATUS);
 	DEV_DBG("%s: cec status is [0x%x]\n", __func__, cec_status);

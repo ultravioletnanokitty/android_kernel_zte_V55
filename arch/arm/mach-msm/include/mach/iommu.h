@@ -21,6 +21,8 @@
 
 extern pgprot_t     pgprot_kernel;
 extern struct bus_type msm_iommu_sec_bus_type;
+extern struct iommu_access_ops iommu_access_ops_v0;
+extern struct iommu_access_ops iommu_access_ops_v1;
 
 /* Domain attributes */
 #define MSM_IOMMU_DOMAIN_PT_CACHEABLE	0x1
@@ -98,6 +100,7 @@ struct msm_iommu_bfb_settings {
  * @halt_enabled: Set to 1 if IOMMU halt is supported in the IOMMU, 0 otherwise.
  * @asid:         List of ASID and their usage count (index is ASID value).
  * @ctx_attach_count: Count of how many context are attached.
+ * @bus_client  : Bus client needed to vote for bus bandwidth.
  *
  * A msm_iommu_drvdata holds the global driver data about a single piece
  * of an IOMMU hardware instance.
@@ -121,22 +124,28 @@ struct msm_iommu_drvdata {
 	int halt_enabled;
 	int *asid;
 	unsigned int ctx_attach_count;
+	unsigned int bus_client;
 };
 
 /**
  * struct iommu_access_ops - Callbacks for accessing IOMMU
  * @iommu_power_on:     Turn on power to unit
  * @iommu_power_off:    Turn off power to unit
+ * @iommu_bus_vote:     Vote for bus bandwidth
  * @iommu_clk_on:       Turn on clks to unit
  * @iommu_clk_off:      Turn off clks to unit
+ * @iommu_lock_initialize: Initialize the remote lock
  * @iommu_lock_acquire: Acquire any locks needed
  * @iommu_lock_release: Release locks needed
  */
 struct iommu_access_ops {
 	int (*iommu_power_on)(struct msm_iommu_drvdata *);
 	void (*iommu_power_off)(struct msm_iommu_drvdata *);
+	int (*iommu_bus_vote)(struct msm_iommu_drvdata *drvdata,
+			      unsigned int vote);
 	int (*iommu_clk_on)(struct msm_iommu_drvdata *);
 	void (*iommu_clk_off)(struct msm_iommu_drvdata *);
+	void * (*iommu_lock_initialize)(void);
 	void (*iommu_lock_acquire)(void);
 	void (*iommu_lock_release)(void);
 };
@@ -179,6 +188,49 @@ struct msm_iommu_ctx_drvdata {
 	int attach_count;
 };
 
+enum dump_reg {
+	DUMP_REG_FIRST,
+	DUMP_REG_FAR0 = DUMP_REG_FIRST,
+	DUMP_REG_FAR1,
+	DUMP_REG_PAR0,
+	DUMP_REG_PAR1,
+	DUMP_REG_FSR,
+	DUMP_REG_FSYNR0,
+	DUMP_REG_FSYNR1,
+	DUMP_REG_TTBR0_0,
+	DUMP_REG_TTBR0_1,
+	DUMP_REG_TTBR1_0,
+	DUMP_REG_TTBR1_1,
+	DUMP_REG_SCTLR,
+	DUMP_REG_ACTLR,
+	DUMP_REG_PRRR,
+	DUMP_REG_MAIR0 = DUMP_REG_PRRR,
+	DUMP_REG_NMRR,
+	DUMP_REG_MAIR1 = DUMP_REG_NMRR,
+	MAX_DUMP_REGS,
+};
+
+struct dump_regs_tbl {
+	/*
+	 * To keep things context-bank-agnostic, we only store the CB
+	 * register offset in `key'
+	 */
+	unsigned long key;
+	const char *name;
+	int offset;
+	int must_be_present;
+};
+extern struct dump_regs_tbl dump_regs_tbl[MAX_DUMP_REGS];
+
+#define COMBINE_DUMP_REG(upper, lower) (((u64) upper << 32) | lower)
+
+struct msm_iommu_context_reg {
+	uint32_t val;
+	bool valid;
+};
+
+void print_ctx_regs(struct msm_iommu_context_reg regs[]);
+
 /*
  * Interrupt handler for the IOMMU context fault interrupt. Hooking the
  * interrupt is not supported in the API yet, but this will print an error
@@ -186,6 +238,7 @@ struct msm_iommu_ctx_drvdata {
  */
 irqreturn_t msm_iommu_fault_handler(int irq, void *dev_id);
 irqreturn_t msm_iommu_fault_handler_v2(int irq, void *dev_id);
+irqreturn_t msm_iommu_secure_fault_handler_v2(int irq, void *dev_id);
 
 enum {
 	PROC_APPS,
@@ -205,6 +258,8 @@ struct remote_iommu_petersons_spinlock {
 void *msm_iommu_lock_initialize(void);
 void msm_iommu_mutex_lock(void);
 void msm_iommu_mutex_unlock(void);
+void msm_set_iommu_access_ops(struct iommu_access_ops *ops);
+struct iommu_access_ops *msm_get_iommu_access_ops(void);
 #else
 static inline void *msm_iommu_lock_initialize(void)
 {
@@ -212,6 +267,14 @@ static inline void *msm_iommu_lock_initialize(void)
 }
 static inline void msm_iommu_mutex_lock(void) { }
 static inline void msm_iommu_mutex_unlock(void) { }
+static inline void msm_set_iommu_access_ops(struct iommu_access_ops *ops)
+{
+
+}
+static inline struct iommu_access_ops *msm_get_iommu_access_ops(void)
+{
+	return NULL;
+}
 #endif
 
 #ifdef CONFIG_MSM_IOMMU_GPU_SYNC
@@ -264,30 +327,49 @@ int msm_iommu_sec_program_iommu(int sec_id);
 
 static inline int msm_soc_version_supports_iommu_v0(void)
 {
+	static int soc_supports_v0 = -1;
 #ifdef CONFIG_OF
 	struct device_node *node;
+#endif
 
+	if (soc_supports_v0 != -1)
+		return soc_supports_v0;
+
+#ifdef CONFIG_OF
 	node = of_find_compatible_node(NULL, NULL, "qcom,msm-smmu-v1");
 	if (node) {
+		soc_supports_v0 = 0;
 		of_node_put(node);
 		return 0;
 	}
 
 	node = of_find_compatible_node(NULL, NULL, "qcom,msm-smmu-v0");
 	if (node) {
+		soc_supports_v0 = 1;
 		of_node_put(node);
 		return 1;
 	}
 #endif
 	if (cpu_is_msm8960() &&
-	    SOCINFO_VERSION_MAJOR(socinfo_get_version()) < 2)
+	    SOCINFO_VERSION_MAJOR(socinfo_get_version()) < 2) {
+		soc_supports_v0 = 0;
 		return 0;
+	}
 
 	if (cpu_is_msm8x60() &&
 	    (SOCINFO_VERSION_MAJOR(socinfo_get_version()) != 2 ||
 	    SOCINFO_VERSION_MINOR(socinfo_get_version()) < 1))	{
+		soc_supports_v0 = 0;
 		return 0;
 	}
+
+	soc_supports_v0 = 1;
 	return 1;
 }
+
+u32 msm_iommu_get_mair0(void);
+u32 msm_iommu_get_mair1(void);
+u32 msm_iommu_get_prrr(void);
+u32 msm_iommu_get_nmrr(void);
+
 #endif

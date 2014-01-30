@@ -25,6 +25,7 @@ enum transport_type {
 	USB_GADGET_XPORT_BAM2BAM_IPA,
 	USB_GADGET_XPORT_HSIC,
 	USB_GADGET_XPORT_HSUART,
+	USB_GADGET_XPORT_ETHER,
 	USB_GADGET_XPORT_NONE,
 };
 
@@ -51,6 +52,8 @@ static char *xport_to_str(enum transport_type t)
 		return "HSIC";
 	case USB_GADGET_XPORT_HSUART:
 		return "HSUART";
+	case USB_GADGET_XPORT_ETHER:
+		return "ETHER";
 	case USB_GADGET_XPORT_NONE:
 		return "NONE";
 	default:
@@ -78,6 +81,8 @@ static enum transport_type str_to_xport(const char *name)
 		return USB_GADGET_XPORT_HSIC;
 	if (!strncasecmp("HSUART", name, XPORT_STR_LEN))
 		return USB_GADGET_XPORT_HSUART;
+	if (!strncasecmp("ETHER", name, XPORT_STR_LEN))
+		return USB_GADGET_XPORT_ETHER;
 	if (!strncasecmp("", name, XPORT_STR_LEN))
 		return USB_GADGET_XPORT_NONE;
 
@@ -89,8 +94,8 @@ enum gadget_type {
 	USB_GADGET_RMNET,
 };
 
-#define NUM_RMNET_HSIC_PORTS 1
-#define NUM_DUN_HSIC_PORTS 1
+#define NUM_RMNET_HSIC_PORTS 2
+#define NUM_DUN_HSIC_PORTS 2
 #define NUM_PORTS (NUM_RMNET_HSIC_PORTS \
 	+ NUM_DUN_HSIC_PORTS)
 
@@ -102,9 +107,11 @@ enum gadget_type {
 int ghsic_ctrl_connect(void *, int);
 void ghsic_ctrl_disconnect(void *, int);
 int ghsic_ctrl_setup(unsigned int, enum gadget_type);
+void ghsic_ctrl_set_port_name(const char *, const char *);
 int ghsic_data_connect(void *, int);
 void ghsic_data_disconnect(void *, int);
 int ghsic_data_setup(unsigned int, enum gadget_type);
+void ghsic_data_set_port_name(const char *, const char *);
 
 int ghsuart_ctrl_connect(void *, int);
 void ghsuart_ctrl_disconnect(void *, int);

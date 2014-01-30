@@ -26,10 +26,13 @@
 #include <linux/msm_ion.h>
 #include <mach/msm_smd.h>
 #include <mach/ion.h>
+#include <mach/iommu_domains.h>
 #include <linux/scatterlist.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/device.h>
+#include <linux/of.h>
+#include <linux/iommu.h>
 
 #ifndef ION_ADSPRPC_HEAP_ID
 #define ION_ADSPRPC_HEAP_ID ION_AUDIO_HEAP_ID
@@ -52,6 +55,8 @@
 				up_read(&current->mm->mmap_sem);\
 		} while (0)
 
+
+#define IS_CACHE_ALIGNED(x) (((x) & ((L1_CACHE_BYTES)-1)) == 0)
 
 static inline uint32_t buf_page_start(void *buf)
 {
@@ -82,10 +87,11 @@ static inline uint32_t buf_page_size(uint32_t size)
 static inline int buf_get_pages(void *addr, int sz, int nr_pages, int access,
 				  struct smq_phy_page *pages, int nr_elems)
 {
-	struct vm_area_struct *vma;
+	struct vm_area_struct *vma, *vmaend;
 	uint32_t start = buf_page_start(addr);
+	uint32_t end = buf_page_start((void *)((uint32_t)addr + sz - 1));
 	uint32_t len = nr_pages << PAGE_SHIFT;
-	unsigned long pfn;
+	unsigned long pfn, pfnend;
 	int n = -1, err = 0;
 
 	VERIFY(err, 0 != access_ok(access ? VERIFY_WRITE : VERIFY_READ,
@@ -95,11 +101,17 @@ static inline int buf_get_pages(void *addr, int sz, int nr_pages, int access,
 	VERIFY(err, 0 != (vma = find_vma(current->mm, start)));
 	if (err)
 		goto bail;
-	VERIFY(err, ((uint32_t)addr + sz) <= vma->vm_end);
+	VERIFY(err, 0 != (vmaend = find_vma(current->mm, end)));
 	if (err)
 		goto bail;
 	n = 0;
 	VERIFY(err, 0 == follow_pfn(vma, start, &pfn));
+	if (err)
+		goto bail;
+	VERIFY(err, 0 == follow_pfn(vmaend, end, &pfnend));
+	if (err)
+		goto bail;
+	VERIFY(err, (pfn + nr_pages - 1) == pfnend);
 	if (err)
 		goto bail;
 	VERIFY(err, nr_elems > 0);
@@ -124,6 +136,13 @@ struct smq_context_list {
 	int last;
 };
 
+struct fastrpc_smmu {
+	struct iommu_group *group;
+	struct iommu_domain *domain;
+	int domain_id;
+	bool enabled;
+};
+
 struct fastrpc_apps {
 	smd_channel_t *chan;
 	struct smq_context_list clst;
@@ -132,6 +151,7 @@ struct fastrpc_apps {
 	struct cdev cdev;
 	struct class *class;
 	struct device *dev;
+	struct fastrpc_smmu smmu;
 	dev_t dev_no;
 	spinlock_t wrlock;
 	spinlock_t hlock;
@@ -172,7 +192,12 @@ static void free_mem(struct fastrpc_buf *buf)
 {
 	struct fastrpc_apps *me = &gfa;
 
-	if (buf->handle) {
+	if (!IS_ERR_OR_NULL(buf->handle)) {
+		if (me->smmu.enabled && buf->phys) {
+			ion_unmap_iommu(me->iclient, buf->handle,
+					me->smmu.domain_id, 0);
+			buf->phys = 0;
+		}
 		if (buf->virt) {
 			ion_unmap_kernel(me->iclient, buf->handle);
 			buf->virt = 0;
@@ -185,7 +210,7 @@ static void free_mem(struct fastrpc_buf *buf)
 static void free_map(struct fastrpc_mmap *map)
 {
 	struct fastrpc_apps *me = &gfa;
-	if (map->handle) {
+	if (!IS_ERR_OR_NULL(map->handle)) {
 		if (map->virt) {
 			ion_unmap_kernel(me->iclient, map->handle);
 			map->virt = 0;
@@ -197,26 +222,39 @@ static void free_map(struct fastrpc_mmap *map)
 
 static int alloc_mem(struct fastrpc_buf *buf)
 {
+	struct fastrpc_apps *me = &gfa;
 	struct ion_client *clnt = gfa.iclient;
 	struct sg_table *sg;
 	int err = 0;
+	unsigned int heap;
+	unsigned long len;
 	buf->handle = 0;
 	buf->virt = 0;
-	buf->handle = ion_alloc(clnt, buf->size, SZ_4K,
-				ION_HEAP(ION_AUDIO_HEAP_ID), 0);
+	heap = me->smmu.enabled ? ION_HEAP(ION_IOMMU_HEAP_ID) :
+		ION_HEAP(ION_ADSP_HEAP_ID) | ION_HEAP(ION_AUDIO_HEAP_ID);
+	buf->handle = ion_alloc(clnt, buf->size, SZ_4K, heap, 0);
 	VERIFY(err, 0 == IS_ERR_OR_NULL(buf->handle));
 	if (err)
 		goto bail;
 	VERIFY(err, 0 != (buf->virt = ion_map_kernel(clnt, buf->handle)));
 	if (err)
 		goto bail;
-	VERIFY(err, 0 != (sg = ion_sg_table(clnt, buf->handle)));
-	if (err)
-		goto bail;
-	VERIFY(err, 1 == sg->nents);
-	if (err)
-		goto bail;
-	buf->phys = sg_dma_address(sg->sgl);
+	if (me->smmu.enabled) {
+		len = buf->size;
+		VERIFY(err, 0 == ion_map_iommu(clnt, buf->handle,
+					me->smmu.domain_id, 0, SZ_4K, 0,
+					&buf->phys, &len, 0, 0));
+		if (err)
+			goto bail;
+	} else {
+		VERIFY(err, 0 != (sg = ion_sg_table(clnt, buf->handle)));
+		if (err)
+			goto bail;
+		VERIFY(err, 1 == sg->nents);
+		if (err)
+			goto bail;
+		buf->phys = sg_dma_address(sg->sgl);
+	}
  bail:
 	if (err && !IS_ERR_OR_NULL(buf->handle))
 		free_mem(buf);
@@ -357,21 +395,26 @@ static int get_page_list(uint32_t kernel, uint32_t sc, remote_arg_t *pra,
 static int get_args(uint32_t kernel, uint32_t sc, remote_arg_t *pra,
 			remote_arg_t *rpra, remote_arg_t *upra,
 			struct fastrpc_buf *ibuf, struct fastrpc_buf **abufs,
-			int *nbufs)
+			int *nbufs, int *fds)
 {
+	struct fastrpc_apps *me = &gfa;
 	struct smq_invoke_buf *list;
 	struct fastrpc_buf *pbuf = ibuf, *obufs = 0;
 	struct smq_phy_page *pages;
+	struct ion_handle **handles = NULL;
 	void *args;
 	int i, rlen, size, used, inh, bufs = 0, err = 0;
 	int inbufs = REMOTE_SCALARS_INBUFS(sc);
 	int outbufs = REMOTE_SCALARS_OUTBUFS(sc);
+	unsigned long iova, len;
 
 	list = smq_invoke_buf_start(rpra, sc);
 	pages = smq_phy_page_start(sc, list);
 	used = ALIGN(pbuf->used, BALIGN);
 	args = (void *)((char *)pbuf->virt + used);
 	rlen = pbuf->size - used;
+	if (fds)
+		handles = (struct ion_handle **)(fds + inbufs + outbufs);
 	for (i = 0; i < inbufs + outbufs; ++i) {
 
 		rpra[i].buf.len = pra[i].buf.len;
@@ -379,6 +422,22 @@ static int get_args(uint32_t kernel, uint32_t sc, remote_arg_t *pra,
 			continue;
 		if (list[i].num) {
 			rpra[i].buf.pv = pra[i].buf.pv;
+			continue;
+		} else if (me->smmu.enabled && fds && (fds[i] >= 0)) {
+			len = buf_page_size(pra[i].buf.len);
+			handles[i] = ion_import_dma_buf(me->iclient, fds[i]);
+			VERIFY(err, 0 == IS_ERR_OR_NULL(handles[i]));
+			if (err)
+				goto bail;
+			VERIFY(err, 0 == ion_map_iommu(me->iclient, handles[i],
+						me->smmu.domain_id, 0, SZ_4K, 0,
+						&iova, &len, 0, 0));
+			if (err)
+				goto bail;
+			rpra[i].buf.pv = pra[i].buf.pv;
+			list[i].num = 1;
+			pages[list[i].pgidx].addr = iova;
+			pages[list[i].pgidx].size = len;
 			continue;
 		}
 		if (rlen < pra[i].buf.len) {
@@ -481,6 +540,28 @@ static int put_args(uint32_t kernel, uint32_t sc, remote_arg_t *pra,
 	return err;
 }
 
+static void inv_args_pre(uint32_t sc, remote_arg_t *rpra)
+{
+	int i, inbufs, outbufs;
+	uint32_t end;
+
+	inbufs = REMOTE_SCALARS_INBUFS(sc);
+	outbufs = REMOTE_SCALARS_OUTBUFS(sc);
+	for (i = inbufs; i < inbufs + outbufs; ++i) {
+		if (!rpra[i].buf.len)
+			continue;
+		if (buf_page_start(rpra) == buf_page_start(rpra[i].buf.pv))
+			continue;
+		if (!IS_CACHE_ALIGNED((uint32_t)rpra[i].buf.pv))
+			dmac_flush_range(rpra[i].buf.pv,
+				(char *)rpra[i].buf.pv + 1);
+		end = (uint32_t)rpra[i].buf.pv + rpra[i].buf.len;
+		if (!IS_CACHE_ALIGNED(end))
+			dmac_flush_range((char *)end,
+				(char *)end + 1);
+	}
+}
+
 static void inv_args(uint32_t sc, remote_arg_t *rpra, int used)
 {
 	int i, inbufs, outbufs;
@@ -527,11 +608,9 @@ static void fastrpc_deinit(void)
 {
 	struct fastrpc_apps *me = &gfa;
 
-	if (me->chan)
-		(void)smd_close(me->chan);
+	smd_close(me->chan);
 	context_list_dtor(&me->clst);
-	if (me->iclient)
-		ion_client_destroy(me->iclient);
+	ion_client_destroy(me->iclient);
 	me->iclient = 0;
 	me->chan = 0;
 }
@@ -574,6 +653,8 @@ static int fastrpc_init(void)
 {
 	int err = 0;
 	struct fastrpc_apps *me = &gfa;
+	struct device_node *node;
+	bool enabled = 0;
 
 	if (me->chan == 0) {
 		int i;
@@ -584,25 +665,48 @@ static int fastrpc_init(void)
 			INIT_HLIST_HEAD(&me->htbl[i]);
 		VERIFY(err, 0 == context_list_ctor(&me->clst, SZ_4K));
 		if (err)
-			goto bail;
+			goto context_list_bail;
 		me->iclient = msm_ion_client_create(ION_HEAP_CARVEOUT_MASK,
 							DEVICE_NAME);
 		VERIFY(err, 0 == IS_ERR_OR_NULL(me->iclient));
 		if (err)
-			goto bail;
+			goto ion_bail;
+		node = of_find_compatible_node(NULL, NULL,
+						"qcom,msm-audio-ion");
+		if (node)
+			enabled = of_property_read_bool(node,
+						"qcom,smmu-enabled");
+		if (enabled)
+			me->smmu.group = iommu_group_find("lpass_audio");
+		if (me->smmu.group)
+			me->smmu.domain = iommu_group_get_iommudata(
+							me->smmu.group);
+		if (!IS_ERR_OR_NULL(me->smmu.domain)) {
+			me->smmu.domain_id = msm_find_domain_no(
+							me->smmu.domain);
+			if (me->smmu.domain_id >= 0)
+				me->smmu.enabled = enabled;
+		}
 		VERIFY(err, 0 == smd_named_open_on_edge(FASTRPC_SMD_GUID,
 						SMD_APPS_QDSP, &me->chan,
 						me, smd_event_handler));
 		if (err)
-			goto bail;
+			goto smd_bail;
 		VERIFY(err, 0 != wait_for_completion_timeout(&me->work,
 							RPC_TIMEOUT));
 		if (err)
-			goto bail;
+			goto completion_bail;
 	}
- bail:
-	if (err)
-		fastrpc_deinit();
+
+	return 0;
+
+completion_bail:
+	smd_close(me->chan);
+smd_bail:
+	ion_client_destroy(me->iclient);
+ion_bail:
+	context_list_dtor(&me->clst);
+context_list_bail:
 	return err;
 }
 
@@ -687,18 +791,26 @@ static void add_dev(struct fastrpc_apps *me, struct fastrpc_device *dev)
 static int fastrpc_release_current_dsp_process(void);
 
 static int fastrpc_internal_invoke(struct fastrpc_apps *me, uint32_t kernel,
-			struct fastrpc_ioctl_invoke *invoke, remote_arg_t *pra)
+			struct fastrpc_ioctl_invoke *invoke, remote_arg_t *pra,
+			int *fds)
 {
 	remote_arg_t *rpra = 0;
 	struct fastrpc_device *dev = 0;
 	struct smq_invoke_ctx *ctx = 0;
 	struct fastrpc_buf obuf, *abufs = 0, *b;
+	struct ion_handle **handles = NULL;
 	int interrupted = 0;
 	uint32_t sc;
-	int i, nbufs = 0, err = 0;
+	int i, bufs, nbufs = 0, err = 0;
 
 	sc = invoke->sc;
 	obuf.handle = 0;
+	if (me->smmu.enabled) {
+		VERIFY(err, 0 == iommu_attach_group(me->smmu.domain,
+							me->smmu.group));
+		if (err)
+			return err;
+	}
 	if (REMOTE_SCALARS_LENGTH(sc)) {
 		VERIFY(err, 0 == get_dev(me, &dev));
 		if (err)
@@ -709,12 +821,13 @@ static int fastrpc_internal_invoke(struct fastrpc_apps *me, uint32_t kernel,
 			goto bail;
 		rpra = (remote_arg_t *)obuf.virt;
 		VERIFY(err, 0 == get_args(kernel, sc, pra, rpra, invoke->pra,
-					&obuf, &abufs, &nbufs));
+					&obuf, &abufs, &nbufs, fds));
 		if (err)
 			goto bail;
 	}
 
 	context_list_alloc_ctx(&me->clst, &ctx);
+	inv_args_pre(sc, rpra);
 	VERIFY(err, 0 == fastrpc_invoke_send(me, kernel, invoke->handle, sc,
 						ctx, &obuf));
 	if (err)
@@ -738,6 +851,19 @@ static int fastrpc_internal_invoke(struct fastrpc_apps *me, uint32_t kernel,
 	}
 	context_free(ctx);
 
+	if (me->smmu.enabled) {
+		bufs = REMOTE_SCALARS_LENGTH(sc);
+		if (fds) {
+			handles = (struct ion_handle **)(fds + bufs);
+			for (i = 0; i < bufs; i++)
+				if (!IS_ERR_OR_NULL(handles[i])) {
+					ion_unmap_iommu(me->iclient, handles[i],
+							me->smmu.domain_id, 0);
+					ion_free(me->iclient, handles[i]);
+				}
+		}
+		iommu_detach_group(me->smmu.domain, me->smmu.group);
+	}
 	for (i = 0, b = abufs; i < nbufs; ++i, ++b)
 		free_mem(b);
 
@@ -764,7 +890,7 @@ static int fastrpc_create_current_dsp_process(void)
 	ioctl.handle = 1;
 	ioctl.sc = REMOTE_SCALARS_MAKE(0, 1, 0);
 	ioctl.pra = ra;
-	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra)));
+	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra, 0)));
 	return err;
 }
 
@@ -782,7 +908,7 @@ static int fastrpc_release_current_dsp_process(void)
 	ioctl.handle = 1;
 	ioctl.sc = REMOTE_SCALARS_MAKE(1, 1, 0);
 	ioctl.pra = ra;
-	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra)));
+	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra, 0)));
 	return err;
 }
 
@@ -820,7 +946,7 @@ static int fastrpc_mmap_on_dsp(struct fastrpc_apps *me,
 	ioctl.handle = 1;
 	ioctl.sc = REMOTE_SCALARS_MAKE(2, 2, 1);
 	ioctl.pra = ra;
-	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra)));
+	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra, 0)));
 	mmap->vaddrout = routargs.vaddrout;
 	if (err)
 		goto bail;
@@ -849,7 +975,7 @@ static int fastrpc_munmap_on_dsp(struct fastrpc_apps *me,
 	ioctl.handle = 1;
 	ioctl.sc = REMOTE_SCALARS_MAKE(3, 1, 0);
 	ioctl.pra = ra;
-	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra)));
+	VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 1, &ioctl, ra, 0)));
 	return err;
 }
 
@@ -1015,33 +1141,49 @@ static long fastrpc_device_ioctl(struct file *file, unsigned int ioctl_num,
 				 unsigned long ioctl_param)
 {
 	struct fastrpc_apps *me = &gfa;
-	struct fastrpc_ioctl_invoke invoke;
+	struct fastrpc_ioctl_invoke_fd invokefd;
+	struct fastrpc_ioctl_invoke *invoke = &invokefd.inv;
 	struct fastrpc_ioctl_mmap mmap;
 	struct fastrpc_ioctl_munmap munmap;
 	remote_arg_t *pra = 0;
 	void *param = (char *)ioctl_param;
 	struct file_data *fdata = (struct file_data *)file->private_data;
-	int bufs, err = 0;
+	int *fds = 0;
+	int bufs, size = 0, err = 0;
 
 	switch (ioctl_num) {
+	case FASTRPC_IOCTL_INVOKE_FD:
 	case FASTRPC_IOCTL_INVOKE:
-		VERIFY(err, 0 == copy_from_user(&invoke, param,
-						sizeof(invoke)));
+		invokefd.fds = 0;
+		size = (ioctl_num == FASTRPC_IOCTL_INVOKE) ?
+				sizeof(*invoke) : sizeof(invokefd);
+		VERIFY(err, 0 == copy_from_user(&invokefd, param, size));
 		if (err)
 			goto bail;
-		bufs = REMOTE_SCALARS_INBUFS(invoke.sc) +
-			REMOTE_SCALARS_OUTBUFS(invoke.sc);
+		bufs = REMOTE_SCALARS_INBUFS(invoke->sc) +
+			REMOTE_SCALARS_OUTBUFS(invoke->sc);
 		if (bufs) {
-			bufs = bufs * sizeof(*pra);
-			VERIFY(err, 0 != (pra = kmalloc(bufs, GFP_KERNEL)));
+			size = bufs * sizeof(*pra);
+			if (invokefd.fds)
+				size = size + bufs * sizeof(*fds) +
+					bufs * sizeof(struct ion_handle *);
+			VERIFY(err, 0 != (pra = kzalloc(size, GFP_KERNEL)));
 			if (err)
 				goto bail;
 		}
-		VERIFY(err, 0 == copy_from_user(pra, invoke.pra, bufs));
+		VERIFY(err, 0 == copy_from_user(pra, invoke->pra,
+						bufs * sizeof(*pra)));
 		if (err)
 			goto bail;
-		VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 0, &invoke,
-								pra)));
+		if (invokefd.fds) {
+			fds = (int *)(pra + bufs);
+			VERIFY(err, 0 == copy_from_user(fds, invokefd.fds,
+							bufs * sizeof(*fds)));
+		if (err)
+			goto bail;
+		}
+		VERIFY(err, 0 == (err = fastrpc_internal_invoke(me, 0, invoke,
+								pra, fds)));
 		if (err)
 			goto bail;
 		break;
@@ -1088,37 +1230,40 @@ static int __init fastrpc_device_init(void)
 	struct fastrpc_apps *me = &gfa;
 	int err = 0;
 
+	memset(me, 0, sizeof(*me));
 	VERIFY(err, 0 == fastrpc_init());
 	if (err)
-		goto bail;
+		goto fastrpc_bail;
 	VERIFY(err, 0 == alloc_chrdev_region(&me->dev_no, 0, 1, DEVICE_NAME));
 	if (err)
-		goto bail;
+		goto alloc_chrdev_bail;
 	cdev_init(&me->cdev, &fops);
 	me->cdev.owner = THIS_MODULE;
 	VERIFY(err, 0 == cdev_add(&me->cdev, MKDEV(MAJOR(me->dev_no), 0), 1));
 	if (err)
-		goto bail;
+		goto cdev_init_bail;
 	me->class = class_create(THIS_MODULE, "chardrv");
 	VERIFY(err, !IS_ERR(me->class));
 	if (err)
-		goto bail;
+		goto class_create_bail;
 	me->dev = device_create(me->class, NULL, MKDEV(MAJOR(me->dev_no), 0),
 				NULL, DEVICE_NAME);
 	VERIFY(err, !IS_ERR(me->dev));
 	if (err)
-		goto bail;
+		goto device_create_bail;
 	pr_info("'created /dev/%s c %d 0'\n", DEVICE_NAME, MAJOR(me->dev_no));
- bail:
-	if (err) {
-		if (me->dev_no)
-			unregister_chrdev_region(me->dev_no, 1);
-		if (me->class)
-			class_destroy(me->class);
-		if (me->cdev.owner)
-			cdev_del(&me->cdev);
-		fastrpc_deinit();
-	}
+
+	return 0;
+
+device_create_bail:
+	class_destroy(me->class);
+class_create_bail:
+	cdev_del(&me->cdev);
+cdev_init_bail:
+	unregister_chrdev_region(me->dev_no, 1);
+alloc_chrdev_bail:
+	fastrpc_deinit();
+fastrpc_bail:
 	return err;
 }
 

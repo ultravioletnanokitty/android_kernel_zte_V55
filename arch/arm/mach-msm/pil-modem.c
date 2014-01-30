@@ -25,6 +25,7 @@
 #include <mach/subsystem_restart.h>
 #include <mach/msm_smsm.h>
 #include <mach/ramdump.h>
+#include <mach/msm_bus_board.h>
 
 #include "modem_notifier.h"
 #include "peripheral-loader.h"
@@ -93,7 +94,7 @@ static int modem_reset(struct pil_desc *pil)
 {
 	u32 reg;
 	const struct modem_data *drv = dev_get_drvdata(pil->dev);
-	unsigned long start_addr = pil_get_entry_addr(pil);
+	phys_addr_t start_addr = pil_get_entry_addr(pil);
 
 	/* Put modem AHB0,1,2 clocks into reset */
 	writel_relaxed(BIT(0) | BIT(1), drv->cbase + MAHB0_SFAB_PORT_RESET);
@@ -489,6 +490,8 @@ static int __devinit pil_modem_driver_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_ramdump;
 	}
+
+	scm_pas_init(MSM_BUS_MASTER_SPS);
 
 	ret = devm_request_irq(&pdev->dev, drv->irq, modem_wdog_bite_irq,
 			IRQF_TRIGGER_RISING, "modem_watchdog", drv);

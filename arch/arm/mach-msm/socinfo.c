@@ -27,11 +27,20 @@
 #include <asm/mach-types.h>
 
 #include <mach/socinfo.h>
+#include <mach/msm_smem.h>
 
-#include "smd_private.h"
 #include "boot_stats.h"
 
 #define BUILD_ID_LENGTH 32
+#define SMEM_IMAGE_VERSION_BLOCKS_COUNT 32
+#define SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE 128
+#define SMEM_IMAGE_VERSION_SIZE 4096
+#define SMEM_IMAGE_VERSION_NAME_SIZE 75
+#define SMEM_IMAGE_VERSION_NAME_OFFSET 3
+#define SMEM_IMAGE_VERSION_VARIANT_SIZE 20
+#define SMEM_IMAGE_VERSION_VARIANT_OFFSET 75
+#define SMEM_IMAGE_VERSION_OEM_SIZE 32
+#define SMEM_IMAGE_VERSION_OEM_OFFSET 96
 
 enum {
 	HW_PLATFORM_UNKNOWN = 0,
@@ -68,6 +77,24 @@ const char *hw_platform[] = {
 enum {
 	ACCESSORY_CHIP_UNKNOWN = 0,
 	ACCESSORY_CHIP_CHARM = 58,
+};
+
+enum {
+	PLATFORM_SUBTYPE_QRD = 0x0,
+	PLATFORM_SUBTYPE_SKUAA = 0x1,
+	PLATFORM_SUBTYPE_SKUF = 0x2,
+	PLATFORM_SUBTYPE_SKUAB = 0x3,
+	PLATFORM_SUBTYPE_SKUG = 0x5,
+	PLATFORM_SUBTYPE_QRD_INVALID,
+};
+
+const char *qrd_hw_platform_subtype[] = {
+	[PLATFORM_SUBTYPE_QRD] = "QRD",
+	[PLATFORM_SUBTYPE_SKUAA] = "SKUAA",
+	[PLATFORM_SUBTYPE_SKUF] = "SKUF",
+	[PLATFORM_SUBTYPE_SKUAB] = "SKUAB",
+	[PLATFORM_SUBTYPE_SKUG] = "SKUG",
+	[PLATFORM_SUBTYPE_QRD_INVALID] = "INVALID",
 };
 
 enum {
@@ -279,6 +306,26 @@ static enum msm_cpu cpu_of_id[] = {
 	/* 8974 IDs */
 	[126] = MSM_CPU_8974,
 	[184] = MSM_CPU_8974,
+	[185] = MSM_CPU_8974,
+	[186] = MSM_CPU_8974,
+
+	/* 8974AA IDs */
+	[208] = MSM_CPU_8974PRO_AA,
+	[211] = MSM_CPU_8974PRO_AA,
+	[214] = MSM_CPU_8974PRO_AA,
+	[217] = MSM_CPU_8974PRO_AA,
+
+	/* 8974AB IDs */
+	[209] = MSM_CPU_8974PRO_AB,
+	[212] = MSM_CPU_8974PRO_AB,
+	[215] = MSM_CPU_8974PRO_AB,
+	[218] = MSM_CPU_8974PRO_AB,
+
+	/* 8974AC IDs */
+	[194] = MSM_CPU_8974PRO_AC,
+	[210] = MSM_CPU_8974PRO_AC,
+	[213] = MSM_CPU_8974PRO_AC,
+	[216] = MSM_CPU_8974PRO_AC,
 
 	/* 8625 IDs */
 	[127] = MSM_CPU_8625,
@@ -322,13 +369,24 @@ static enum msm_cpu cpu_of_id[] = {
 
 	/* 8226 IDs */
 	[145] = MSM_CPU_8226,
+	[158] = MSM_CPU_8226,
+	[159] = MSM_CPU_8226,
+	[198] = MSM_CPU_8226,
+	[199] = MSM_CPU_8226,
+	[200] = MSM_CPU_8226,
+	[205] = MSM_CPU_8226,
 
 	/* 8092 IDs */
 	[146] = MSM_CPU_8092,
 
 	/* 8610 IDs */
 	[147] = MSM_CPU_8610,
+	[161] = MSM_CPU_8610,
+	[162] = MSM_CPU_8610,
+	[163] = MSM_CPU_8610,
+	[164] = MSM_CPU_8610,
 	[165] = MSM_CPU_8610,
+	[166] = MSM_CPU_8610,
 
 	/* 8064AB IDs */
 	[153] = MSM_CPU_8064AB,
@@ -348,11 +406,17 @@ static enum msm_cpu cpu_of_id[] = {
 	/* 8064AA IDs */
 	[172] = MSM_CPU_8064AA,
 
-	/* zinc IDs */
-	[178] = MSM_CPU_ZINC,
+	/* 8084 IDs */
+	[178] = MSM_CPU_8084,
 
 	/* krypton IDs */
 	[187] = MSM_CPU_KRYPTON,
+
+	/* FSM9900 ID */
+	[188] = FSM_CPU_9900,
+
+	/* Samarium IDs */
+	[195] = MSM_CPU_SAMARIUM,
 
 	/* Uninitialized IDs are not known to run Linux.
 	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -360,6 +424,7 @@ static enum msm_cpu cpu_of_id[] = {
 };
 
 static enum msm_cpu cur_cpu;
+static int current_image;
 
 static struct socinfo_v1 dummy_socinfo = {
 	.format = 1,
@@ -440,6 +505,11 @@ uint32_t socinfo_get_pmic_die_revision(void)
 	return socinfo ?
 		(socinfo->v1.format >= 7 ? socinfo->v7.pmic_die_revision : 0)
 		: 0;
+}
+
+static char *socinfo_get_image_version_base_address(void)
+{
+	return smem_alloc(SMEM_IMAGE_VERSION_TABLE, SMEM_IMAGE_VERSION_SIZE);
 }
 
 static uint32_t socinfo_get_format(void)
@@ -600,6 +670,8 @@ socinfo_show_platform_subtype(struct sys_device *dev,
 			char *buf)
 {
 	uint32_t hw_subtype;
+	WARN_ONCE(1, "Deprecated, use platform_subtype_id instead\n");
+
 	if (!socinfo) {
 		pr_err("%s: No socinfo found!\n", __func__);
 		return 0;
@@ -610,13 +682,34 @@ socinfo_show_platform_subtype(struct sys_device *dev,
 	}
 
 	hw_subtype = socinfo_get_platform_subtype();
+	if (HW_PLATFORM_QRD == socinfo_get_platform_type()) {
+		if (hw_subtype >= PLATFORM_SUBTYPE_QRD_INVALID) {
+			pr_err("%s: Invalid hardware platform sub type for qrd found\n",
+				__func__);
+			hw_subtype = PLATFORM_SUBTYPE_QRD_INVALID;
+		}
+		return snprintf(buf, PAGE_SIZE, "%-.32s\n",
+					qrd_hw_platform_subtype[hw_subtype]);
+	}
 	if (hw_subtype >= PLATFORM_SUBTYPE_INVALID) {
 		pr_err("%s: Invalid hardware platform sub type found\n",
-								   __func__);
+			   __func__);
 		hw_subtype = PLATFORM_SUBTYPE_UNKNOWN;
 	}
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n",
 		hw_platform_subtype[hw_subtype]);
+}
+
+static ssize_t
+socinfo_show_platform_subtype_id(struct sys_device *dev,
+			struct sysdev_attribute *attr,
+			char *buf)
+{
+	uint32_t hw_subtype;
+
+	hw_subtype = socinfo_get_platform_subtype();
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+		hw_subtype);
 }
 
 static ssize_t
@@ -727,8 +820,29 @@ msm_get_platform_subtype(struct device *dev,
 {
 	uint32_t hw_subtype;
 	hw_subtype = socinfo_get_platform_subtype();
+	if (HW_PLATFORM_QRD == socinfo_get_platform_type()) {
+		if (hw_subtype >= PLATFORM_SUBTYPE_QRD_INVALID) {
+			pr_err("%s: Invalid hardware platform sub type for qrd found\n",
+				__func__);
+			hw_subtype = PLATFORM_SUBTYPE_QRD_INVALID;
+		}
+		return snprintf(buf, PAGE_SIZE, "%-.32s\n",
+					qrd_hw_platform_subtype[hw_subtype]);
+	}
+
 	return snprintf(buf, PAGE_SIZE, "%-.32s\n",
 		hw_platform_subtype[hw_subtype]);
+}
+
+static ssize_t
+msm_get_platform_subtype_id(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	uint32_t hw_subtype;
+	hw_subtype = socinfo_get_platform_subtype();
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+		hw_subtype);
 }
 
 static ssize_t
@@ -747,6 +861,80 @@ msm_get_pmic_die_revision(struct device *dev,
 {
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			 socinfo_get_pmic_die_revision());
+}
+
+static ssize_t
+msm_get_image_version(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	char *string_address;
+
+	string_address = socinfo_get_image_version_base_address();
+	if (string_address == NULL) {
+		pr_err("%s : Failed to get image version base address",
+				__func__);
+		return snprintf(buf, SMEM_IMAGE_VERSION_NAME_SIZE, "Unknown");
+	}
+	string_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
+	string_address += SMEM_IMAGE_VERSION_NAME_OFFSET;
+	return snprintf(buf, SMEM_IMAGE_VERSION_NAME_SIZE, "%-.75s",
+			string_address);
+}
+
+static ssize_t
+msm_store_image_type(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	int ret, digit;
+
+	ret = kstrtoint(buf, 10, &digit);
+	if (ret)
+		return ret;
+	if (0 <= digit && digit < SMEM_IMAGE_VERSION_BLOCKS_COUNT)
+		current_image = digit;
+	else
+		current_image = 0;
+	return count;
+}
+
+static ssize_t
+msm_get_image_variant(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	char *string_address;
+
+	string_address = socinfo_get_image_version_base_address();
+	if (string_address == NULL) {
+		pr_err("%s : Failed to get image version base address",
+				__func__);
+		return snprintf(buf, SMEM_IMAGE_VERSION_VARIANT_SIZE,
+		"Unknown");
+	}
+	string_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
+	string_address += SMEM_IMAGE_VERSION_VARIANT_OFFSET;
+	return snprintf(buf, SMEM_IMAGE_VERSION_VARIANT_SIZE, "%-.20s",
+			string_address);
+}
+
+static ssize_t
+msm_get_image_crm_version(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	char *string_address;
+
+	string_address = socinfo_get_image_version_base_address();
+	if (string_address == NULL) {
+		pr_err("%s : Failed to get image version base address",
+				__func__);
+		return snprintf(buf, SMEM_IMAGE_VERSION_OEM_SIZE, "Unknown");
+	}
+	string_address += current_image * SMEM_IMAGE_VERSION_SINGLE_BLOCK_SIZE;
+	string_address += SMEM_IMAGE_VERSION_OEM_OFFSET;
+	return snprintf(buf, SMEM_IMAGE_VERSION_OEM_SIZE, "%-.32s\n",
+			string_address);
 }
 
 static struct sysdev_attribute socinfo_v1_files[] = {
@@ -777,6 +965,8 @@ static struct sysdev_attribute socinfo_v5_files[] = {
 static struct sysdev_attribute socinfo_v6_files[] = {
 	_SYSDEV_ATTR(platform_subtype, 0444,
 			socinfo_show_platform_subtype, NULL),
+	_SYSDEV_ATTR(platform_subtype_id, 0444,
+			socinfo_show_platform_subtype_id, NULL),
 };
 
 static struct sysdev_attribute socinfo_v7_files[] = {
@@ -814,6 +1004,13 @@ static struct device_attribute msm_soc_attr_platform_subtype =
 	__ATTR(platform_subtype, S_IRUGO,
 			msm_get_platform_subtype, NULL);
 
+/* Platform Subtype String is being deprecated. Use Platform
+ * Subtype ID instead.
+ */
+static struct device_attribute msm_soc_attr_platform_subtype_id =
+	__ATTR(platform_subtype_id, S_IRUGO,
+			msm_get_platform_subtype_id, NULL);
+
 static struct device_attribute msm_soc_attr_pmic_model =
 	__ATTR(pmic_model, S_IRUGO,
 			msm_get_pmic_model, NULL);
@@ -821,6 +1018,18 @@ static struct device_attribute msm_soc_attr_pmic_model =
 static struct device_attribute msm_soc_attr_pmic_die_revision =
 	__ATTR(pmic_die_revision, S_IRUGO,
 			msm_get_pmic_die_revision, NULL);
+
+static struct device_attribute image_version =
+	__ATTR(image_version, S_IRUGO | S_IWUSR,
+			msm_get_image_version, msm_store_image_type);
+
+static struct device_attribute image_variant =
+	__ATTR(image_variant, S_IRUGO,
+			msm_get_image_variant, NULL);
+
+static struct device_attribute image_crm_version =
+	__ATTR(image_crm_version, S_IRUGO,
+			msm_get_image_crm_version, NULL);
 
 static struct sysdev_class soc_sysdev_class = {
 	.name = "soc",
@@ -853,13 +1062,17 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 146;
 		strlcpy(dummy_socinfo.build_id, "mpq8092 - ",
 		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_msmzinc()) {
+	} else if (early_machine_is_apq8084()) {
 		dummy_socinfo.id = 178;
-		strlcpy(dummy_socinfo.build_id, "msmzinc - ",
+		strlcpy(dummy_socinfo.build_id, "apq8084 - ",
 			sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_msmkrypton()) {
 		dummy_socinfo.id = 187;
 		strlcpy(dummy_socinfo.build_id, "msmkrypton - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msmsamarium()) {
+		dummy_socinfo.id = 195;
+		strlcpy(dummy_socinfo.build_id, "msmsamarium - ",
 			sizeof(dummy_socinfo.build_id));
 	}
 	strlcat(dummy_socinfo.build_id, "Dummy socinfo",
@@ -872,6 +1085,9 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 	uint32_t legacy_format = socinfo_get_format();
 
 	device_create_file(msm_soc_device, &msm_soc_attr_vendor);
+	device_create_file(msm_soc_device, &image_version);
+	device_create_file(msm_soc_device, &image_variant);
+	device_create_file(msm_soc_device, &image_crm_version);
 
 	switch (legacy_format) {
 	case 8:
@@ -883,6 +1099,8 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 	case 6:
 		device_create_file(msm_soc_device,
 					&msm_soc_attr_platform_subtype);
+		device_create_file(msm_soc_device,
+					&msm_soc_attr_platform_subtype_id);
 	case 5:
 		device_create_file(msm_soc_device,
 					&msm_soc_attr_accessory_chip);
