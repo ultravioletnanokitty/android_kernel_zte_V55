@@ -15,14 +15,7 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
 
-                        EDIT HISTORY 
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/09/27    chenfei           huxiaobo        lcd pclk config
-===========================================================================*/
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/err.h>
@@ -1428,11 +1421,11 @@ static struct clk_freq_tbl clk_tbl_pixel_mdp[] = {
 	F_PIXEL_MDP( 64000000, MM_GPERF, 2,   1,    3, LOW),
 	F_PIXEL_MDP( 67100000, MM_GPERF, 1, 671, 3840, LOW),
 	F_PIXEL_MDP( 69300000, MM_GPERF, 1, 231, 1280, LOW),
-	F_PIXEL_MDP( 73100000, MM_GPERF, 1, 731,3840, LOW),
+	F_PIXEL_MDP( 73100000, MM_GPERF, 1, 731, 3840, LOW),
 	F_PIXEL_MDP( 76800000, MM_GPERF, 1,   1,    5, LOW),
-	F_PIXEL_MDP( 78200000, MM_GPERF, 1,   391, 1920, LOW),
-	F_PIXEL_MDP( 80200000, MM_GPERF, 1,   401,1920, LOW),
-	F_PIXEL_MDP( 81900000, MM_GPERF, 1,   273,1280, LOW),
+	F_PIXEL_MDP( 78200000, MM_GPERF, 1, 391, 1920, LOW),
+	F_PIXEL_MDP( 80200000, MM_GPERF, 1, 401, 1920, LOW),
+	F_PIXEL_MDP( 81900000, MM_GPERF, 1, 273, 1280, LOW),
 	F_PIXEL_MDP( 85333000, MM_GPERF, 1,   2,    9, LOW),
 	F_PIXEL_MDP(106500000, MM_GPERF, 1,  71,  256, NOMINAL),
 	F_PIXEL_MDP(109714000, MM_GPERF, 1,   2,    7, NOMINAL),
@@ -1823,6 +1816,7 @@ struct clk_local soc_clk_local_tbl[] = {
 	/*
 	 * Peripheral Clocks
 	 */
+
 	CLK_GSBI_UART(GSBI1_UART,   1, CLK_HALT_CFPB_STATEA_REG, HALT, 10,
 			TEST_PER_LS(0x3E)),
 	CLK_GSBI_UART(GSBI2_UART,   2, CLK_HALT_CFPB_STATEA_REG, HALT,  6,

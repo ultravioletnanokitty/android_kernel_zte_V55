@@ -99,7 +99,7 @@ struct msm_bus_link_info {
 	unsigned long a_clk;
 	unsigned long *sel_clk;
 	unsigned long memclk;
-	long  bw;
+	long bw;
 	long a_bw;
 	long *sel_bw;
 	int tier;

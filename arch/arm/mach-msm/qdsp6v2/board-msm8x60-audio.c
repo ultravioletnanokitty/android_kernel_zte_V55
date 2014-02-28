@@ -15,16 +15,7 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
 
-                        EDIT HISTORY FOR AUDIO
-
-when                comment tag        who                  what, where, why                           
-----------      ------------     -----------      --------------------------      
-2011/03/17      wangwp0005        wangweiping      modofy enable audio pa   
-2011/04/29      wangwp0009        wangweiping	    modify dual mic power on for new board         
-2011/10/13      wangwp0024        wangweiping      modify dual mic to mono mic due to using external echo cancellation chip
-===========================================================================*/
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
@@ -316,27 +307,6 @@ static void msm_snddev_disable_qt_dmic_power(void)
 }
 
 #define PM8901_MPP_3 (2) /* PM8901 MPP starts from 0 */
-#if 0
-static int config_class_d1_gpio(int enable)
-{
-	int rc;
-
-	if (enable) {
-		rc = gpio_request(SNDDEV_GPIO_CLASS_D1_EN, "CLASSD1_EN");
-		if (rc) {
-			pr_err("%s: spkr pamp gpio %d request"
-			"failed\n", __func__, SNDDEV_GPIO_CLASS_D1_EN);
-			return rc;
-		}
-		gpio_direction_output(SNDDEV_GPIO_CLASS_D1_EN, 1);
-	} else {
-		gpio_set_value_cansleep(SNDDEV_GPIO_CLASS_D1_EN, 0);
-		gpio_free(SNDDEV_GPIO_CLASS_D1_EN);
-	}
-	return 0;
-}
-#endif
-
 #define SNDDEV_ENB_EN_GPIO20  (173+19)
 static void config_class_enb_en_gpio20(int enable)
 {
@@ -357,13 +327,11 @@ static void config_class_enb_en_gpio20(int enable)
 	}
 }
 
-
 static bool dock_audio_insert = 0;
 static bool speaker_on = 0;
 static int config_class_d0_gpio(int enable)
 {
 	int rc;
-	
 	if (enable) {
 		rc = pm8901_mpp_config_digital_out(PM8901_MPP_3,
 			PM8901_MPP_DIG_LEVEL_MSMIO, 1);
@@ -395,16 +363,14 @@ static int config_class_d0_gpio(int enable)
 	return 0;
 }
 
-
 int dock_audio_insert_set(bool insert)
 {
 	printk("wangweiping test dock=====  insert = %d\n", insert);
-      dock_audio_insert = insert;
+	dock_audio_insert = insert;
 	if (insert && speaker_on)
 		config_class_d0_gpio(0);
 	else if (!insert && speaker_on)
 		config_class_d0_gpio(1);
-	
 	return 0;
 }
 
@@ -426,16 +392,7 @@ static int msm_snddev_poweramp_on(void)
 		goto config_gpio_fail;
 	}
 	config_class_enb_en_gpio20(1);
-              
-#if 0
-	if (!machine_is_msm8x60_qt()) {
-		rc = config_class_d1_gpio(1);
-		if (rc) {
-			pr_err("%s: d1 gpio configuration failed\n", __func__);
-			config_class_d0_gpio(0);
-		}
-	}
-#endif
+
 config_gpio_fail:
 	return rc;
 }
@@ -444,17 +401,10 @@ static void msm_snddev_poweramp_off(void)
 {
 	if (atomic_dec_return(&pamp_ref_cnt) == 0) {
 		pr_debug("%s: disable stereo spkr amp\n", __func__);
-
-
 		if (!dock_audio_insert)
 			config_class_d0_gpio(0);
-
 		config_class_enb_en_gpio20(0);
-             speaker_on = 0;
-#if 0
-		if (!machine_is_msm8x60_qt())
-			config_class_d1_gpio(0);
-#endif
+		speaker_on = 0;
 		msleep(30);
 	}
 }
@@ -548,88 +498,26 @@ done:
 	snddev_reg_l10 = NULL;
 }
 
-#if 0
 static int msm_snddev_enable_amic_power(void)
 {
-	int ret = 0;
 #ifdef CONFIG_PMIC8058_OTHC
-
-	if (machine_is_msm8x60_fluid()) {
-
-		ret = pm8058_micbias_enable(OTHC_MICBIAS_0,
-				OTHC_SIGNAL_ALWAYS_ON);
-		if (ret)
-			pr_err("%s: Enabling amic power failed\n", __func__);
-
-		ret = gpio_request(SNDDEV_GPIO_MIC2_ANCR_SEL, "MIC2_ANCR_SEL");
-		if (ret) {
-			pr_err("%s: spkr pamp gpio %d request failed\n",
-				__func__, SNDDEV_GPIO_MIC2_ANCR_SEL);
-			return ret;
-		}
-		gpio_direction_output(SNDDEV_GPIO_MIC2_ANCR_SEL, 0);
-
-		ret = gpio_request(SNDDEV_GPIO_MIC1_ANCL_SEL, "MIC1_ANCL_SEL");
-		if (ret) {
-			pr_err("%s: mic1 ancl gpio %d request failed\n",
-				__func__, SNDDEV_GPIO_MIC1_ANCL_SEL);
-			gpio_free(SNDDEV_GPIO_MIC2_ANCR_SEL);
-			return ret;
-		}
-		gpio_direction_output(SNDDEV_GPIO_MIC1_ANCL_SEL, 0);
-
-	} else {
-		ret = pm8058_micbias_enable(OTHC_MICBIAS_2,
-				OTHC_SIGNAL_ALWAYS_ON);
-		if (ret)
-			pr_err("%s: Enabling amic power failed\n", __func__);
-	}
-#endif
+	int ret;
+	ret = pm8058_micbias_enable(OTHC_MICBIAS_0,
+			OTHC_SIGNAL_ALWAYS_ON);
+	if (ret)
+		pr_err("%s: Enabling amic power failed\n", __func__);
 	return ret;
+#endif
 }
 
 static void msm_snddev_disable_amic_power(void)
 {
 #ifdef CONFIG_PMIC8058_OTHC
 	int ret;
-	if (machine_is_msm8x60_fluid()) {
-		ret = pm8058_micbias_enable(OTHC_MICBIAS_0,
-				OTHC_SIGNAL_OFF);
-		gpio_free(SNDDEV_GPIO_MIC1_ANCL_SEL);
-		gpio_free(SNDDEV_GPIO_MIC2_ANCR_SEL);
-	} else
-		ret = pm8058_micbias_enable(OTHC_MICBIAS_2, OTHC_SIGNAL_OFF);
-
+	ret = pm8058_micbias_enable(OTHC_MICBIAS_0,
+			OTHC_SIGNAL_OFF);
 	if (ret)
 		pr_err("%s: Disabling amic power failed\n", __func__);
-#endif
-}
-#endif
-
-static int msm_snddev_enable_amic_power(void)
-{
-#ifdef CONFIG_PMIC8058_OTHC
-
-        int ret;
-        ret = pm8058_micbias_enable(OTHC_MICBIAS_0,
-				OTHC_SIGNAL_ALWAYS_ON);
-        if (ret)
-                pr_err("%s: Enabling amic power failed\n", __func__);
-        return ret;
-#endif
-	
-}
-
-static void msm_snddev_disable_amic_power(void)
-{
-#ifdef CONFIG_PMIC8058_OTHC
-
-        int ret;
-        ret = pm8058_micbias_enable(OTHC_MICBIAS_0,
-                                                        OTHC_SIGNAL_OFF);
-        if (ret)
-                pr_err("%s: Disabling amic power failed\n", __func__);
-
 #endif
 }
 
@@ -753,8 +641,6 @@ static struct platform_device msm_iearpiece_device = {
 
 static struct adie_codec_action_unit imic_48KHz_osr256_actions[] =
 	AMIC_PRI_MONO_OSR_256;
-	//AMIC_DUAL_OSR_256;//AMIC_DUAL_8000_OSR_256; 
-
 
 static struct adie_codec_hwsetting_entry imic_settings[] = {
 	{
@@ -924,18 +810,7 @@ static struct adie_codec_dev_profile idmic_mono_profile = {
 	.settings = idmic_mono_settings,
 	.setting_sz = ARRAY_SIZE(idmic_mono_settings),
 };
-#if 0
-static struct snddev_icodec_data snddev_ispkr_mic_data = {
-	.capability = (SNDDEV_CAP_TX | SNDDEV_CAP_VOICE),
-	.name = "speaker_mono_tx",
-	.copp_id = PRIMARY_I2S_TX,
-	.profile = &idmic_mono_profile,
-	.channel_mode = 1,
-	.default_sample_rate = 48000,
-	.pamp_on = msm_snddev_enable_dmic_power,
-	.pamp_off = msm_snddev_disable_dmic_power,
-};
-#else
+
 static struct snddev_icodec_data snddev_ispkr_mic_data = {
 	.capability = (SNDDEV_CAP_TX | SNDDEV_CAP_VOICE),
 	.name = "speaker_mono_tx",
@@ -946,7 +821,7 @@ static struct snddev_icodec_data snddev_ispkr_mic_data = {
 	.pamp_on = msm_snddev_enable_amic_power,
 	.pamp_off = msm_snddev_disable_amic_power,
 };
-#endif
+
 static struct platform_device msm_ispkr_mic_device = {
 	.name = "snddev_icodec",
 	.dev = { .platform_data = &snddev_ispkr_mic_data },
@@ -983,24 +858,6 @@ static struct platform_device msm_iearpiece_ffa_device = {
 	.name = "snddev_icodec",
 	.dev = { .platform_data = &snddev_iearpiece_ffa_data },
 };
-
-#if 0
-static struct snddev_icodec_data snddev_imic_ffa_data = {
-	.capability = (SNDDEV_CAP_TX | SNDDEV_CAP_VOICE),
-	.name = "handset_tx",
-	.copp_id = PRIMARY_I2S_TX,
-	.profile = &idmic_mono_profile,
-	.channel_mode = 1,
-	.default_sample_rate = 48000,
-	.pamp_on = msm_snddev_enable_dmic_power,
-	.pamp_off = msm_snddev_disable_dmic_power,
-};
-
-static struct platform_device msm_imic_ffa_device = {
-	.name = "snddev_icodec",
-	.dev = { .platform_data = &snddev_imic_ffa_data },
-};
-#endif
 
 static struct snddev_icodec_data snddev_qt_dual_dmic_d0_data = {
 	.capability = (SNDDEV_CAP_TX | SNDDEV_CAP_VOICE),
@@ -2530,7 +2387,6 @@ static const struct file_operations snddev_hsed_config_debug_fops = {
 
 static struct platform_device *snd_devices_ffa[] __initdata = {
 	&msm_iearpiece_ffa_device,
-	//&msm_imic_ffa_device,
 	&msm_imic_device,
 	&msm_ispkr_stereo_device,
 	&msm_snddev_hdmi_stereo_rx_device,

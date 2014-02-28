@@ -152,12 +152,14 @@ void invalidate_caches(unsigned long vstart,
 
 	flush_axi_bus_buffer();
 }
+
 unsigned long allocate_contiguous_ebi_nomap(unsigned long size,unsigned long align)
 {
   return _allocate_contiguous_memory_nomap(size, MEMTYPE_EBI0,
     align, __builtin_return_address(0));
 }
 EXPORT_SYMBOL(allocate_contiguous_ebi_nomap);
+
 void *alloc_bootmem_aligned(unsigned long size, unsigned long alignment)
 {
 	void *unused_addr = NULL;

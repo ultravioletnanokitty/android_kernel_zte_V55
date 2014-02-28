@@ -152,7 +152,6 @@ endif
 
 obj-$(CONFIG_MACH_MSM8X60_RUMI3) += board-msm8x60.o
 obj-$(CONFIG_MACH_MSM8X60_SIM) += board-msm8x60.o
-#obj-$(CONFIG_MACH_MSM8X60_SURF) += board-msm8x60.o
 obj-$(CONFIG_MACH_MSM8X60_V11A) += board-msm8x60_v11a.o
 obj-$(CONFIG_MACH_MSM8X60_V71A) += board-msm8x60_v71a.o
 obj-$(CONFIG_MACH_MSM8X60_V55) += board-msm8x60_v55.o

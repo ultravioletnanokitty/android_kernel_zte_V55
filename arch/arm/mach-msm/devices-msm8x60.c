@@ -15,14 +15,6 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
-
-                        EDIT HISTORY 
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/03/08    wangweiping0001        wangweiping     add atmel muti-touchscreen
-===========================================================================*/
 
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
@@ -389,6 +381,7 @@ static struct resource gsbi1_qup_i2c_resources[] = {
 		.flags	= IORESOURCE_IRQ,
 	},
 };
+
 static struct resource gsbi3_qup_i2c_resources[] = {
 	{
 		.name	= "qup_phys_addr",
@@ -2132,9 +2125,8 @@ struct clk_lookup msm_clocks_8x60[] = {
 	CLK_8X60("csi_clk",		CSI1_CLK,	  "msm_camera_ov9726.0",
 			OFF),
 #ifdef CONFIG_CAMERA_MT9D115_ZTE
-	CLK_8X60("csi_clk",		CSI1_CLK,	  "msm_camera_mt9d115.0", OFF),		//added by liyibo 2011-03-31	
-#endif  
-
+	CLK_8X60("csi_clk",		CSI1_CLK,	  "msm_camera_mt9d115.0", OFF),
+#endif
 	CLK_8X60("csi_src_clk",		CSI_SRC_CLK,		NULL, OFF),
 	CLK_8X60("dsi_byte_div_clk",	DSI_BYTE_CLK,		NULL, OFF),
 	CLK_8X60("dsi_esc_clk",		DSI_ESC_CLK,		NULL, OFF),
@@ -2180,11 +2172,9 @@ struct clk_lookup msm_clocks_8x60[] = {
 			OFF),
 	CLK_8X60("csi_pclk",		CSI1_P_CLK,	  "msm_camera_ov9726.0",
 			OFF),
-			
-#ifdef CONFIG_CAMERA_MT9D115_ZTE	
-	CLK_8X60("csi_pclk",		CSI1_P_CLK,	  "msm_camera_mt9d115.0", OFF),	
+#ifdef CONFIG_CAMERA_MT9D115_ZTE
+	CLK_8X60("csi_pclk",		CSI1_P_CLK,	  "msm_camera_mt9d115.0", OFF),
 #endif
-
 	CLK_8X60("dsi_m_pclk",		DSI_M_P_CLK,		NULL, OFF),
 	CLK_8X60("dsi_s_pclk",		DSI_S_P_CLK,		NULL, OFF),
 	CLK_8X60("gfx2d0_pclk",		GFX2D0_P_CLK,		NULL, OFF),

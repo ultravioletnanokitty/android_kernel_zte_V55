@@ -122,7 +122,6 @@
 
 #define THRESHOLD_DISABLE_VAL  		(0xFFFFFFFF)
 
-
 /** Mailbox polling time for packet channels */
 #define DEFAULT_POLL_DELAY_MSEC		10
 /** Mailbox polling time for streaming channels */
@@ -171,7 +170,6 @@ enum sdio_al_device_state {
 };
 
 struct sdio_al_debug {
-
 	u8 debug_lpm_on;
 	u8 debug_data_on;
 	struct dentry *sdio_al_debug_root;
@@ -525,22 +523,21 @@ static int sdio_al_debugfs_init(void)
 					&debug_info_ops);
 
 	if ((!sdio_al->debug.sdio_al_debug_data_on) &&
-	    (!sdio_al->debug.sdio_al_debug_lpm_on) &&
-	    (!sdio_al->debug.sdio_al_debug_info)
-	    ) {
-		debugfs_remove(sdio_al->debug.sdio_al_debug_root);
-		sdio_al->debug.sdio_al_debug_root = NULL;
-		return -ENOENT;
-	}
+		(!sdio_al->debug.sdio_al_debug_lpm_on) &&
+		(!sdio_al->debug.sdio_al_debug_info)) {
+			debugfs_remove(sdio_al->debug.sdio_al_debug_root);
+			sdio_al->debug.sdio_al_debug_root = NULL;
+			return -ENOENT;
+		}
 	return 0;
 }
 
 static void sdio_al_debugfs_cleanup(void)
 {
-       debugfs_remove(sdio_al->debug.sdio_al_debug_lpm_on);
-       debugfs_remove(sdio_al->debug.sdio_al_debug_data_on);
+	debugfs_remove(sdio_al->debug.sdio_al_debug_lpm_on);
+	debugfs_remove(sdio_al->debug.sdio_al_debug_data_on);
 	debugfs_remove(sdio_al->debug.sdio_al_debug_info);
-       debugfs_remove(sdio_al->debug.sdio_al_debug_root);
+	debugfs_remove(sdio_al->debug.sdio_al_debug_root);
 }
 #endif
 
@@ -675,7 +672,7 @@ static int write_lpm_info(struct sdio_al_device *sdio_al_dev)
 
 	if (sdio_al_dev->lpm_chan == INVALID_SDIO_CHAN) {
 		pr_err(MODULE_NAME ":Invalid lpm_chan for card %d\n",
-				   sdio_al_dev->card->host->index);
+				sdio_al_dev->card->host->index);
 		return -EINVAL;
 	}
 
@@ -687,7 +684,7 @@ static int write_lpm_info(struct sdio_al_device *sdio_al_dev)
 				&sdio_al_dev->is_ok_to_sleep, sizeof(u32));
 	if (ret) {
 		pr_err(MODULE_NAME ":failed to write lpm info for card %d\n",
-				   sdio_al_dev->card->host->index);
+				sdio_al_dev->card->host->index);
 		return ret;
 	}
 

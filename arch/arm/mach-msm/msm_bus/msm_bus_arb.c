@@ -303,7 +303,9 @@ static int update_path(int curr, int pnode, unsigned req_clk, unsigned req_bw,
 	SELECT_BW_CLK(active_ctx, info->link_info);
 	SELECT_BW_CLK(active_ctx, info->pnode[index]);
 	*info->link_info.sel_bw += add_bw;
+
 	*info->pnode[index].sel_bw += add_bw;
+
 	info->link_info.tier = info->node_info->tier;
 	master_tier = info->node_info->tier;
 
@@ -488,6 +490,7 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 
 	curr = client->curr;
 	pdata = client->pdata;
+
 	MSM_BUS_DBG("cl: %u index: %d curr: %d"
 			" num_paths: %d\n", cl, index, client->curr,
 			client->pdata->usecase->num_paths);
@@ -529,8 +532,7 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 	client->curr = index;
 	context = ACTIVE_CTX;
 	msm_bus_dbg_client_data(client->pdata, index, cl);
-	bus_for_each_dev(&msm_bus_type, NULL, (void *)context,
-		msm_bus_commit_fn);
+	bus_for_each_dev(&msm_bus_type, NULL, (void *)context, msm_bus_commit_fn);
 
 err:
 	mutex_unlock(&msm_bus_lock);

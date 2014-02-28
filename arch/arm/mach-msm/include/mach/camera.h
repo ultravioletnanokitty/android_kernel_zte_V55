@@ -31,7 +31,6 @@
 
 #define CONFIG_MSM_CAMERA_DEBUG
 #ifdef CONFIG_MSM_CAMERA_DEBUG
-//#define CDBG(fmt, args...) printk(KERN_DEBUG "msm_camera: " fmt, ##args)
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 #else
 #define CDBG(fmt, args...) do { } while (0)
@@ -63,7 +62,7 @@ enum msm_queue {
 	MSM_CAM_Q_VFE_EVT,  /* adsp event */
 	MSM_CAM_Q_VFE_MSG,  /* adsp message */
 	MSM_CAM_Q_V4L2_REQ, /* v4l2 request */
-	MSM_CAM_Q_VPE_MSG,  /* adsp message */
+	MSM_CAM_Q_VPE_MSG,  /* vpe message */
 };
 
 enum vfe_resp_msg {

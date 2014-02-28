@@ -2836,13 +2836,10 @@ static u32 free_acdb_cache_node(union auddev_evt_data *evt)
 		acdb_cache_tx[session_id].
 			node_status = ACDB_VALUES_NOT_FILLED;
 	} else {
-//		if (--(acdb_cache_rx[evt->audcal_info.dev_id].stream_id) <= 0) {
 			MM_DBG("freeing rx cache node %d\n",
 						evt->audcal_info.dev_id);
 			acdb_cache_rx[evt->audcal_info.dev_id].
 				node_status = ACDB_VALUES_NOT_FILLED;
-//			acdb_cache_rx[evt->audcal_info.dev_id].stream_id = 0;
-//		}
 	}
 	return 0;
 }

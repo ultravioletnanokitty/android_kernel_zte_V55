@@ -26,15 +26,6 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-/*===========================================================================
-
-                        EDIT HISTORY 
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/03/08    wangweiping0001        wangweiping     add atmel muti-touchscreen
-===========================================================================*/
-
 #ifndef __ARCH_ARM_MACH_MSM_DEVICES_MSM8X60_H
 #define __ARCH_ARM_MACH_MSM_DEVICES_MSM8X60_H
 
@@ -47,14 +38,9 @@ when              comment tag        who                  what, where, why
 #define MSM_SSBI1_I2C_BUS_ID     6
 #define MSM_SSBI2_I2C_BUS_ID     7
 #define MSM_SSBI3_I2C_BUS_ID     8
-#define MSM_GSBI1_QUP_I2C_BUS_ID 9   /** ZTE_MODIFY wangweiping, added for atmel muti-touchscreen, wangweiping0001 */
+#define MSM_GSBI1_QUP_I2C_BUS_ID 9
 
 #ifdef CONFIG_SPI_QUP
-/** ZTE_MODIFY wangweiping, added for atmel muti-touchscreen, wangweiping0001 */
-#if 0
-extern struct platform_device msm_gsbi1_qup_spi_device;
-#endif
-/** ZTE_MODIFY end */
 extern struct platform_device msm_gsbi10_qup_spi_device;
 #endif
 

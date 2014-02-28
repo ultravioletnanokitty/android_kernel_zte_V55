@@ -62,14 +62,13 @@ static void sdio_tty_read(struct work_struct *work)
 	sdio_tty_drv = container_of(work, struct sdio_tty, work_read);
 
 	if (!sdio_tty_drv) {
-		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty",
-		       __func__);
+		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty", __func__);
 		return ;
 	}
 
 	if (sdio_tty_drv->sdio_tty_state != TTY_OPENED) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: sdio_tty_state = %d",
-		       __func__, sdio_tty_drv->sdio_tty_state);
+			__func__, sdio_tty_drv->sdio_tty_state);
 		return;
 	}
 
@@ -78,14 +77,12 @@ static void sdio_tty_read(struct work_struct *work)
 		return;
 	}
 
-	/* Read the data from teh SDIO channel as long as there is available
+	/* Read the data from the SDIO channel as long as there is available
 	   data */
 	while (1) {
 		if (test_bit(TTY_THROTTLED, &sdio_tty_drv->tty_str->flags)) {
-			DEBUG_MSG(sdio_tty_drv,
-				  SDIO_TTY_MODULE_NAME ": %s: TTY_THROTTLED bit"
-						       " is set, exit",
-				  __func__);
+			DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME 
+				": %s: TTY_THROTTLED bit is set, exit", __func__);
 			return;
 		}
 
@@ -93,20 +90,19 @@ static void sdio_tty_read(struct work_struct *work)
 		read_avail = sdio_read_avail(sdio_tty_drv->ch);
 
 		DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
-					     ": %s: read_avail is %d", __func__,
-					     read_avail);
+				": %s: read_avail is %d", __func__,
+				read_avail);
 
 		if (read_avail == 0) {
-			DEBUG_MSG(sdio_tty_drv,
-				  SDIO_TTY_MODULE_NAME ": %s: read_avail is 0",
-				  __func__);
+			DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+					": %s: read_avail is 0", __func__);
 			return;
 		}
 
 		if (read_avail > SDIO_TTY_MAX_PACKET_SIZE) {
 			pr_err(SDIO_TTY_MODULE_NAME ": %s: read_avail(%d) is "
-				"bigger than SDIO_TTY_MAX_PACKET_SIZE(%d)",
-			       __func__, read_avail, SDIO_TTY_MAX_PACKET_SIZE);
+					"bigger than SDIO_TTY_MAX_PACKET_SIZE(%d)",
+					__func__, read_avail, SDIO_TTY_MAX_PACKET_SIZE);
 			return;
 		}
 
@@ -132,15 +128,14 @@ static void sdio_tty_read(struct work_struct *work)
 
 		if (total_push != read_avail) {
 			pr_err(SDIO_TTY_MODULE_NAME ": %s: failed, total_push"
-						    "(%d) != read_avail(%d)\n",
-			       __func__, total_push, read_avail);
+					"(%d) != read_avail(%d)\n",
+					__func__, total_push, read_avail);
 		}
 
 		tty_flip_buffer_push(sdio_tty_drv->tty_str);
 
-		DEBUG_MSG(sdio_tty_drv,
-			  SDIO_TTY_MODULE_NAME ": %s: End of read %d bytes",
-				__func__, read_avail);
+		DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+				": %s: End of read %d bytes", __func__, read_avail);
 	}
 }
 
@@ -159,27 +154,25 @@ static int sdio_tty_write_room(struct tty_struct *tty)
 	struct sdio_tty *sdio_tty_drv = NULL;
 
 	if (!tty) {
-		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty",
-		       __func__);
+		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty", __func__);
 		return -ENODEV;
 	}
 	sdio_tty_drv = tty->driver_data;
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 		return -ENODEV;
 	}
 
 	if (sdio_tty_drv->sdio_tty_state != TTY_OPENED) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: sdio_tty_state = %d",
-		       __func__, sdio_tty_drv->sdio_tty_state);
+			__func__, sdio_tty_drv->sdio_tty_state);
 		return -EPERM;
 	}
 
 	write_avail = sdio_write_avail(sdio_tty_drv->ch);
-	DEBUG_MSG(sdio_tty_drv,
-		  SDIO_TTY_MODULE_NAME ": %s: write_avail=%d",
-		 __func__, write_avail);
+	DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+		": %s: write_avail=%d", __func__, write_avail);
 
 	return write_avail;
 }
@@ -205,48 +198,43 @@ static int sdio_tty_write_callback(struct tty_struct *tty,
 	struct sdio_tty *sdio_tty_drv = NULL;
 
 	if (!tty) {
-		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty",
-		       __func__);
+		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty", __func__);
 		return -ENODEV;
 	}
 	sdio_tty_drv = tty->driver_data;
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 		return -ENODEV;
 	}
 
 	if (sdio_tty_drv->sdio_tty_state != TTY_OPENED) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: sdio_tty_state = %d",
-		       __func__, sdio_tty_drv->sdio_tty_state);
+			__func__, sdio_tty_drv->sdio_tty_state);
 		return -EPERM;
 	}
 
-	DEBUG_MSG(sdio_tty_drv,
-		  SDIO_TTY_MODULE_NAME ": %s: WRITING CALLBACK CALLED WITH "
-				       "%d bytes\n",
+	DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+		": %s: WRITING CALLBACK CALLED WITH %d bytes\n",
 		 __func__, count);
 	write_avail = sdio_write_avail(sdio_tty_drv->ch);
 	if (write_avail == 0) {
-		DEBUG_MSG(sdio_tty_drv,
-			  SDIO_TTY_MODULE_NAME ": %s: write_avail is 0\n",
-			 __func__);
+		DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+			": %s: write_avail is 0\n",  __func__);
 		return 0;
 	}
 	if (write_avail > SDIO_TTY_MAX_PACKET_SIZE) {
-		DEBUG_MSG(sdio_tty_drv,
-			  SDIO_TTY_MODULE_NAME ": %s: write_avail(%d) is "
-			  "bigger than max packet size,(%d), setting to "
-			  "max_packet_size\n",
-			  __func__, write_avail, SDIO_TTY_MAX_PACKET_SIZE);
+		DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+			": %s: write_avail(%d) is bigger than max packet size,"
+			"(%d), setting to max_packet_size\n",
+			__func__, write_avail, SDIO_TTY_MAX_PACKET_SIZE);
 		write_avail = SDIO_TTY_MAX_PACKET_SIZE;
 	}
 	if (write_avail < count) {
-		DEBUG_MSG(sdio_tty_drv,
-			  SDIO_TTY_MODULE_NAME ": %s: write_avail(%d) is "
-					       "smaller than "
-				    "required(%d), writing only %d bytes\n",
-			 __func__, write_avail, count, write_avail);
+		DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+			": %s: write_avail(%d) is smaller than "
+			"required(%d), writing only %d bytes\n",
+			__func__, write_avail, count, write_avail);
 		len = write_avail;
 	}
 	ret = sdio_write(sdio_tty_drv->ch, buf, len);
@@ -256,9 +244,9 @@ static int sdio_tty_write_callback(struct tty_struct *tty,
 		return 0;
 	}
 
-	DEBUG_MSG(sdio_tty_drv,
-		  SDIO_TTY_MODULE_NAME ": %s: End of function, len=%d bytes\n",
-		 __func__, len);
+	DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+		": %s: End of function, len=%d bytes\n",
+		__func__, len);
 
 	return len;
 }
@@ -269,18 +257,17 @@ static void sdio_tty_notify(void *priv, unsigned event)
 
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 	}
 
 	if (sdio_tty_drv->sdio_tty_state != TTY_OPENED) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: sdio_tty_state = %d",
-		       __func__, sdio_tty_drv->sdio_tty_state);
+			__func__, sdio_tty_drv->sdio_tty_state);
 		return;
 	}
 
-	DEBUG_MSG(sdio_tty_drv,
-		  SDIO_TTY_MODULE_NAME ": %s: event %d received\n", __func__,
-		  event);
+	DEBUG_MSG(sdio_tty_drv, SDIO_TTY_MODULE_NAME
+		": %s: event %d received\n", __func__, event);
 
 	if (event == SDIO_EVENT_DATA_READ_AVAIL)
 		queue_work(sdio_tty_drv->workq, &sdio_tty_drv->work_read);
@@ -301,14 +288,13 @@ static int sdio_tty_open(struct tty_struct *tty, struct file *file)
 	struct sdio_tty *sdio_tty_drv = NULL;
 
 	if (!tty) {
-		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty",
-		       __func__);
+		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty", __func__);
 		return -ENODEV;
 	}
 	sdio_tty_drv = sdio_tty;
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 		return -ENODEV;
 	}
 
@@ -322,20 +308,20 @@ static int sdio_tty_open(struct tty_struct *tty, struct file *file)
 	sdio_tty_drv->read_buf = kzalloc(SDIO_TTY_MAX_PACKET_SIZE, GFP_KERNEL);
 	if (sdio_tty_drv->read_buf == NULL) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: failed to allocate read_buf",
-		       __func__);
+			__func__);
 		return -ENOMEM;
 	}
 
 	sdio_tty_drv->workq = create_singlethread_workqueue("sdio_tty_read");
 	if (!sdio_tty_drv->workq) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: failed to create workq",
-		       __func__);
+			__func__);
 		return -ENOMEM;
 	}
 
 	if (sdio_tty_drv->sdio_tty_state == TTY_OPENED) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: tty is already open",
-		       __func__);
+			__func__);
 		return -EBUSY;
 	}
 
@@ -344,7 +330,7 @@ static int sdio_tty_open(struct tty_struct *tty, struct file *file)
 				sdio_tty_drv, sdio_tty_notify);
 		if (ret < 0) {
 			pr_err(SDIO_TTY_MODULE_NAME ": %s: sdio_open err=%d\n",
-			       __func__, ret);
+				__func__, ret);
 			destroy_workqueue(sdio_tty_drv->workq);
 			return ret;
 		}
@@ -385,20 +371,18 @@ static void sdio_tty_close(struct tty_struct *tty, struct file *file)
 	struct sdio_tty *sdio_tty_drv = NULL;
 
 	if (!tty) {
-		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty",
-		       __func__);
+		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty", __func__);
 		return;
 	}
 	sdio_tty_drv = tty->driver_data;
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 		return;
 	}
 	if (sdio_tty_drv->sdio_tty_state != TTY_OPENED) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: trying to close a "
-					    "TTY device that was not opened\n",
-		       __func__);
+			"TTY device that was not opened\n", __func__);
 		return;
 	}
 
@@ -419,20 +403,19 @@ static void sdio_tty_unthrottle(struct tty_struct *tty)
 	struct sdio_tty *sdio_tty_drv = NULL;
 
 	if (!tty) {
-		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty",
-		       __func__);
+		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL tty", __func__);
 		return;
 	}
 	sdio_tty_drv = tty->driver_data;
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 		return;
 	}
 
 	if (sdio_tty_drv->sdio_tty_state != TTY_OPENED) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: sdio_tty_state = %d",
-		       __func__, sdio_tty_drv->sdio_tty_state);
+			__func__, sdio_tty_drv->sdio_tty_state);
 		return;
 	}
 
@@ -459,7 +442,7 @@ void *sdio_tty_init_tty(char *tty_name, char *sdio_ch_name)
 	sdio_tty_drv = kzalloc(sizeof(struct sdio_tty), GFP_KERNEL);
 	if (sdio_tty_drv == NULL) {
 		pr_err(SDIO_TTY_MODULE_NAME "%s: failed to allocate sdio_tty",
-		       __func__);
+			__func__);
 		return NULL;
 	}
 
@@ -472,7 +455,7 @@ void *sdio_tty_init_tty(char *tty_name, char *sdio_ch_name)
 
 	if (!sdio_tty_drv->tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s - tty_drv is NULL",
-				   __func__);
+			__func__);
 		kfree(sdio_tty_drv);
 		return NULL;
 	}
@@ -500,7 +483,7 @@ void *sdio_tty_init_tty(char *tty_name, char *sdio_ch_name)
 	if (ret) {
 		put_tty_driver(sdio_tty_drv->tty_drv);
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: tty_register_driver() "
-					    "failed\n", __func__);
+			"failed\n", __func__);
 
 		sdio_tty_drv->tty_drv = NULL;
 		kfree(sdio_tty_drv);
@@ -529,7 +512,7 @@ int sdio_tty_uninit_tty(void *sdio_tty_handle)
 
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 		return -ENODEV;
 	}
 
@@ -539,7 +522,7 @@ int sdio_tty_uninit_tty(void *sdio_tty_handle)
 		ret = tty_unregister_driver(sdio_tty_drv->tty_drv);
 		if (ret) {
 			pr_err(SDIO_TTY_MODULE_NAME ": %s: "
-			    "tty_unregister_driver() failed\n", __func__);
+				"tty_unregister_driver() failed\n", __func__);
 		}
 		put_tty_driver(sdio_tty_drv->tty_drv);
 		sdio_tty_drv->sdio_tty_state = TTY_INITIAL;
@@ -561,11 +544,11 @@ void sdio_tty_enable_debug_msg(void *sdio_tty_handle, int enable)
 
 	if (!sdio_tty_drv) {
 		pr_err(SDIO_TTY_MODULE_NAME ": %s: NULL sdio_tty_drv",
-		       __func__);
+			__func__);
 		return;
 	}
 	pr_info(SDIO_TTY_MODULE_NAME ": %s: setting debug_msg_on to %d",
-		       __func__, enable);
+		__func__, enable);
 	sdio_tty_drv->debug_msg_on = enable;
 }
 EXPORT_SYMBOL(sdio_tty_enable_debug_msg);

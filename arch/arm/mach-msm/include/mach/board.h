@@ -14,16 +14,7 @@
  * GNU General Public License for more details.
  *
  */
-/*===========================================================================
 
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-
-2011/04/11    gouyajun0002  	gouyajun 			modify HDMI power circuit code
-2011/07/15		chenfei0001			chenfei				for customize pwm frequency
-===========================================================================*/
 #ifndef __ASM_ARCH_MSM_BOARD_H
 #define __ASM_ARCH_MSM_BOARD_H
 
@@ -320,8 +311,8 @@ struct msm_hdmi_platform_data {
 	int (*cec_power)(int on);
 	int (*init_irq)(void);
 	bool (*check_hdcp_hw_support)(void);
-	int (*enable_level_shift)(int on);//gouyajun0002
-	int (*enable_dc_dc)(int on);//gouyajun0002
+	int (*enable_level_shift)(int on);
+	int (*enable_dc_dc)(int on);
 };
 
 struct msm_i2c_platform_data {

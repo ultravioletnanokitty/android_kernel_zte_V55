@@ -300,13 +300,8 @@ static int __init init_watchdog(void)
 	delay_time = msecs_to_jiffies(PET_DELAY);
 
 	/* 32768 ticks = 1 second */
-#if 0
-	__raw_writel(32768*4, WDT0_BARK_TIME);
-	__raw_writel(32768*5, WDT0_BITE_TIME);
-#else
 	__raw_writel(32768*14, WDT0_BARK_TIME);
 	__raw_writel(32768*15, WDT0_BITE_TIME);
-#endif
 
 	ret = register_pm_notifier(&msm_watchdog_power_notifier);
 	if (ret) {

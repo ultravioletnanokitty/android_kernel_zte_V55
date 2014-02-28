@@ -15,17 +15,7 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
 
-                        EDIT HISTORY
-
-when           comment tag      who             what, where, why
-----------     -----------      -----------     --------------------------     
-2011/7/19      yuanbo0002       yuanbo          for not to enter dload mode when exception happenning
-2011/7/19      yuanbo0012       yuanbo          adding download restart mode
-2011/08/04    liyuan0010        liyuan             add FTM modem function
-2011/08/15     liuzhongzhi		liuzhongzhi		add normal poweroff flag in the restart reason memory
-===========================================================================*/
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
@@ -82,9 +72,7 @@ module_param_call(download_mode, dload_set, param_get_int,
 static int panic_prep_restart(struct notifier_block *this,
 			      unsigned long event, void *ptr)
 {
-
 	in_panic = 1;
-
 	return NOTIFY_DONE;
 }
 
@@ -95,30 +83,25 @@ static struct notifier_block panic_blk = {
 static void set_dload_mode(int on)
 {
 	if (dload_mode_addr) {
-		if (on == 1)
-        {
+		if (on == 1) {
 #ifdef CONFIG_MSM_PANIC_NOT_DLOAD_ZTE
-		    writel(0xE57C3A4B, dload_mode_addr);
-		    writel(0xC12B49CD,                  
-		           dload_mode_addr + sizeof(unsigned int));
+			writel(0xE57C3A4B, dload_mode_addr);
+			writel(0xC12B49CD,
+					dload_mode_addr + sizeof(unsigned int));
 #else
-           writel(0xE47B337D, dload_mode_addr);
-		    writel(0xCE14091A,                  
-		           dload_mode_addr + sizeof(unsigned int));
+			writel(0xE47B337D, dload_mode_addr);
+			writel(0xCE14091A,
+					dload_mode_addr + sizeof(unsigned int));
 #endif
-        }
-        else if (on == 2)
-        {
-		    writel(0xE98A5A5A, dload_mode_addr);
-		    writel(0xC833BE9A,
-		           dload_mode_addr + sizeof(unsigned int));
-        }
-        else
-        {
-		    writel(0, dload_mode_addr);
-		    writel(0,
-		           dload_mode_addr + sizeof(unsigned int));
-        }
+		} else if (on == 2) {
+			writel(0xE98A5A5A, dload_mode_addr);
+			writel(0xC833BE9A,
+					dload_mode_addr + sizeof(unsigned int));
+		} else {
+			writel(0, dload_mode_addr);
+			writel(0,
+					dload_mode_addr + sizeof(unsigned int));
+		}
 		mb();
 	}
 }
@@ -161,9 +144,7 @@ static void __msm_power_off(int lower_pshold)
 #endif
 	pm8058_reset_pwr_off(0);
 	pm8901_reset_pwr_off(0);
-
-   
-	if (lower_pshold)    
+	if (lower_pshold)
 		writel(0, PSHOLD_CTL_SU);
 
 	mdelay(10000);
@@ -226,11 +207,6 @@ void arch_reset(char mode, const char *cmd)
 		set_dload_mode(1);
 	else if (restart_mode == RESTART_DLOAD_EX)
 		set_dload_mode(2);
-
-#if 0
-  	if (!download_mode)
-		set_dload_mode(0);
- #endif
 #endif
 
 	printk(KERN_NOTICE "Going down for restart now\n");
@@ -238,15 +214,14 @@ void arch_reset(char mode, const char *cmd)
 	pm8058_reset_pwr_off(1);
 
 	if (cmd != NULL) {
-        if (!strncmp(cmd, "1z2T3e", 6)) {
-            set_dload_mode(1);
-        }
-
+		if (!strncmp(cmd, "1z2T3e", 6)) {
+			set_dload_mode(1);
+		}
 		if (!strncmp(cmd, "bootloader", 10)) {
 			writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
 			writel(0x77665502, restart_reason);
-		}else if(!strncmp(cmd, "ftmmode", 7)) {       
+		} else if (!strncmp(cmd, "ftmmode", 7)) {
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			strict_strtoul(cmd + 4, 16, &code);

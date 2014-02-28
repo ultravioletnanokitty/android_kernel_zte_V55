@@ -1,4 +1,3 @@
-
 /* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,7 +32,6 @@
 
 #define RESTART_NORMAL 0x0
 #define RESTART_DLOAD  0x1
-/** ZTE_MODIFY added by zhaoguotao 20111219,resolve the 'image' problem when switching to download mode */
 #ifndef RESTART_DLOAD_EX
 #define RESTART_DLOAD_EX  0x2
 #endif

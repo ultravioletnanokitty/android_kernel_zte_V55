@@ -209,7 +209,7 @@ int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 			uint32_t rate, uint32_t channels);
 
 int q6asm_enable_sbrps(struct audio_client *ac,
-			uint32_t sbr_ps);
+	uint32_t sbr_ps);
 
 int q6asm_enc_cfg_blk_qcelp(struct audio_client *ac, uint32_t frames_per_buf,
 		uint16_t min_rate, uint16_t max_rate,

@@ -276,10 +276,10 @@ void msm_dmov_stop_cmd(unsigned id, struct msm_dmov_cmd *cmd, int graceful)
 }
 EXPORT_SYMBOL(msm_dmov_stop_cmd);
 
-#define	CRCI_UNUSED   0
-#define	CRCI_CONFLICT 1
-#define	CRCI_MUX_OFF  2
-#define	CRCI_MUX_ON   3
+#define CRCI_UNUSED 0
+#define CRCI_CONFLICT 1
+#define CRCI_MUX_OFF 2
+#define CRCI_MUX_ON 3
 
 #ifdef CONFIG_MSM_ADM3
 static int crci_mask_compare(unsigned int x, unsigned int y)
@@ -315,7 +315,7 @@ static int check_crci_conflict(struct msm_dmov_cmd *cmd, int adm)
 }
 
 #define CRCI_MUXSEL(n) (((n) >> 4) & 1)
-#define CRCI_NUM(n)    ((n) & 0xF)
+#define CRCI_NUM(n) ((n) & 0xF)
 
 unsigned int msm_dmov_build_crci_mask(int n, ...)
 {
@@ -431,8 +431,7 @@ void msm_dmov_enqueue_cmd_ext(unsigned id, struct msm_dmov_cmd *cmd)
 			dmov_conf[adm].clk_ctl = CLK_TO_BE_DIS;
 			mod_timer(&dmov_conf[adm].timer, jiffies + HZ);
 		}
-		if (list_empty(&dmov_conf[adm].active_commands[ch])
-		    && !conflict)
+		if (list_empty(&dmov_conf[adm].active_commands[ch]) && !conflict)
 			PRINT_ERROR("msm_dmov_enqueue_cmd_ext(%d), stalled, "
 				"status %x\n", id, status);
 		PRINT_IO("msm_dmov_enqueue_cmd(%d), enqueue command, status "

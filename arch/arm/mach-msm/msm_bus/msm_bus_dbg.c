@@ -9,11 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 #include <linux/kernel.h>
 #include <linux/seq_file.h>
@@ -551,6 +546,7 @@ static int msm_bus_dbg_fill_fab_buffer(const char *fabname,
 	ts = ktime_get();
 	i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "\n%d.%d\n",
 		ts.tv.sec, ts.tv.nsec);
+
 	i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "BWSum:\n");
 	for (c = 0; c < nslaves; c++)
 		i += scnprintf(buf + i, MAX_BUFF_SIZE - i, "0x%x\t",

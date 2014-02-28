@@ -26,18 +26,6 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-/*===========================================================================
-
-                        EDIT HISTORY FOR AUDIO
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/04/21    wangwp0008        wangweiping      modify for add tx path mic gain and route select during voice call and record
-2011/08/19    zhangxb0004        zhangxiaobo      modify for fixing max volume cause device reset when audio playback with headset EC614000932608
-2011/09/14    wangwp0020        wangweiping      modify for headphone sound pressure test,and there are large headphone volume
-2011/10/13    wangwp0024        wangweiping      modify dual mic to mono mic due to using external echo cancellation chip
-2012/06/20    wangwp0027        wangweiping      modify for the volume is too larger from headset when picture using camera with headset
-===========================================================================*/
 #ifndef __MACH_QDSP6V2_TIMPANI_PROFILE_H
 #define __MACH_QDSP6V2_TIMPANI_PROFILE_H
 
@@ -45,7 +33,6 @@ when              comment tag        who                  what, where, why
  * TX Device Profiles
  */
 
-/** ZTE_MODIFY wangweiping modify for add tx path mic gain,0x0D:0xD0->0xB0,24dB->4.5dB, 0x86/0x87:0x00->0x06,0dB->6dB, wangweiping0024 **/
 /* Analog MIC */
 /* AMIC Primary mono */
 #define AMIC_PRI_MONO_OSR_256 \
@@ -85,7 +72,7 @@ when              comment tag        who                  what, where, why
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0xAB, 0x09, 0x09)}, \
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_DIGITAL_OFF} }
 
-/** ZTE_MODIFY wangwp0024 end **/
+
 
 /* AMIC Secondary mono */
 #define AMIC_SEC_MONO_OSR_256 \
@@ -125,8 +112,6 @@ when              comment tag        who                  what, where, why
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0xAC, 0x09, 0x09)}, \
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_DIGITAL_OFF} }
 
-/** ZTE_MODIFY wangweiping modify for add tx path mic gain and route select during voice call and record, wangweiping0008 */
-/** ZTE_MODIFY wangweiping modify for add tx path mic gain,0x0D:0xD0->0xB0,0X0E:0xC1->0xA1 24dB->4.5dB, wangweiping0023 */
 /* AMIC dual */
 #define AMIC_DUAL_OSR_256 \
 	{{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_FLASH_IMAGE},  \
@@ -169,8 +154,6 @@ when              comment tag        who                  what, where, why
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0xAC, 0x09, 0x09)}, \
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_DIGITAL_OFF} }
 
-/** ZTE_MODIFY wangwp0023 end*/
-/** ZTE_MODIFY wangwp0008 end*/
 
 /*
  * Digital MIC
@@ -715,8 +698,7 @@ when              comment tag        who                  what, where, why
  */
 
 /* RX HPH CLASS AB CAPLESS */
-/* ZTE_MODIFY zhangxb0004 for fixing EC614000932608 register 0xe2 0xe3:0x04->0x1d gain:-4.5db->-42db */
-/* ZTE_MODIFY wangwp0020 for headphone sound pressure test, register 0xe2 0xe3:0x1D->0x34 gain:-9db->-18db */
+
 #define HEADSET_AB_CPLS_48000_OSR_256 \
 	{{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_FLASH_IMAGE},  \
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0x80, 0x02, 0x02)}, \
@@ -758,8 +740,7 @@ when              comment tag        who                  what, where, why
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0x31, 0xFF, 0x00)}, \
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_ANALOG_OFF}, \
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_DIGITAL_OFF} }
-/* ZTE_MODIFY wangwp0020 end*/
-/* ZTE_MODIFY zhangxb0004 end*/
+
 #define HPH_PRI_AB_CPLS_MONO \
 	{{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_FLASH_IMAGE},  \
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0x80, 0x02, 0x02)}, \
@@ -1645,7 +1626,6 @@ when              comment tag        who                  what, where, why
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_ANALOG_OFF}, \
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_DIGITAL_OFF} }
 
-/* ZTE_MODIFY wangwp0027 for the volume is too larger from headset when picture using camera, register 0xe2 0xe3:0x04->0x34 gain:0db->-18db */
 #define SPEAKER_HPH_AB_CPL_PRI_STEREO_48000_OSR_256 \
 	{{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_FLASH_IMAGE},  \
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0x80, 0x02, 0x02)}, \
@@ -1707,7 +1687,6 @@ when              comment tag        who                  what, where, why
 	{ADIE_CODEC_ACTION_ENTRY, ADIE_CODEC_PACK_ENTRY(0x3A, 0x24, 0x00)}, \
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_ANALOG_OFF},	\
 	{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_DIGITAL_OFF} }
-/* ZTE_MODIFY wangwp0027 end*/
 
 #define LINEOUT_PRI_DIFF \
 	{{ADIE_CODEC_ACTION_STAGE_REACHED, ADIE_CODEC_FLASH_IMAGE},  \

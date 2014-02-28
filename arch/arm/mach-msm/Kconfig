@@ -399,21 +399,21 @@ config MACH_MSM8X60_V11A
 	default n
 	bool "MSM8x60 V11A"
 	help
-	  Support for the Qualcomm MSM8x60 SURF eval board.
+	  Support for the ZTE V11A (msm8x60) board.
 
 config MACH_MSM8X60_V71A
 	depends on ARCH_MSM8X60
 	default n
 	bool "MSM8x60 V71A"
 	help
-	  Support for the Qualcomm MSM8x60 SURF eval board.
+	  Support for the ZTE V71A (msm8x60) board.
 
 config MACH_MSM8X60_V55
 	depends on ARCH_MSM8X60
 	default n
 	bool "MSM8x60 V55"
 	help
-	  Support for the Qualcomm MSM8x60 SURF eval board.
+	  Support for the ZTE V55 (msm8x60) board.
 
 config MACH_MSM8X60_FFA
 	depends on ARCH_MSM8X60
@@ -1520,13 +1520,11 @@ config MSM_SCHED_FAST_CPU_ONLINE
 	  Bypass scheduler domain reconstruction when onlining the second
 	  CPU on 8X60 to speed up operation.
 
-#** ZTE_MODIFY niugang 20111028, add macro definition to control msm will reset directly when kenel panic happened *#	  
 config MSM_PANIC_NOT_DLOAD_ZTE
     bool "Download after kernel panic"
 	depends on ARCH_MSM8X60
 	default n
 	help
-	  MSM8X60 will directly restart when kernel panic happened.
-#** ZTE_MODIFY end *#
-	  
+	  MSM8X60 boards will directly restart upon kernel panic.
+
 endif

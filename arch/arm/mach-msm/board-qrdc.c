@@ -175,7 +175,7 @@ static struct regulator_consumer_supply saw_s1_supply =
 static struct regulator_init_data saw_s0_init_data = {
 		.constraints = {
 			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
-			.min_uV = 840000,
+			.min_uV = 800000,
 			.max_uV = 1250000,
 		},
 		.num_consumer_supplies = 1,
@@ -185,7 +185,7 @@ static struct regulator_init_data saw_s0_init_data = {
 static struct regulator_init_data saw_s1_init_data = {
 		.constraints = {
 			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
-			.min_uV = 840000,
+			.min_uV = 800000,
 			.max_uV = 1250000,
 		},
 		.num_consumer_supplies = 1,
@@ -4138,6 +4138,7 @@ static struct msm_panel_common_pdata mdp_pdata = {
 #ifdef CONFIG_MSM_BUS_SCALING
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
+	.mdp_rev = MDP_REV_41,
 };
 
 static void __init msm_fb_add_devices(void)

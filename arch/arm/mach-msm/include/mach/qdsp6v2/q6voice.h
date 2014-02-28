@@ -656,7 +656,6 @@ typedef void (*dl_cb_fn)(uint8_t *voc_pkt,
 			 uint32_t *pkt_len,
 			 void *private_data);
 
-
 struct mvs_driver_info {
 	uint32_t media_type;
 	uint32_t rate;
@@ -679,26 +678,50 @@ struct incall_music_info {
 
 struct voice_data {
 	int voc_state;/*INIT, CHANGE, RELEASE, RUN */
-	uint32_t voc_path;
-	uint32_t adsp_version;
 
 	wait_queue_head_t mvm_wait;
 	wait_queue_head_t cvs_wait;
 	wait_queue_head_t cvp_wait;
 
-	uint32_t device_events;
-
 	/* cache the values related to Rx and Tx */
 	struct device_data dev_rx;
 	struct device_data dev_tx;
 
-	/* these default values are for all devices */
+	/* call status */
+	int v_call_status; /* Start or End */
+
+	u32 mvm_state;
+	u32 cvs_state;
+	u32 cvp_state;
+
+	/* Handle to MVM */
+	u16 mvm_handle;
+	/* Handle to CVS */
+	u16 cvs_handle;
+	/* Handle to CVP */
+	u16 cvp_handle;
+
+	/* Handle to MVM in the Q6 */
+	u16 mvm_q6_handle;
+	/* Handle to CVS in the Q6 */
+	u16 cvs_q6_handle;
+	/* Handle to CVP in the Q6 */
+	u16 cvp_q6_handle;
+
+	struct mutex lock;
+
+	struct incall_rec_info rec_info;
+
+	struct incall_music_info music_info;
+
+	uint32_t voc_path;
+	uint32_t adsp_version;
+	uint32_t device_events;
+
+	/* These default values are for all devices */
 	uint32_t default_mute_val;
 	uint32_t default_vol_val;
 	uint32_t default_sample_val;
-
-	/* call status */
-	int v_call_status; /* Start or End */
 
 	/* APR to MVM in the modem */
 	void *apr_mvm;
@@ -714,31 +737,7 @@ struct voice_data {
 	/* APR to CVP in the Q6 */
 	void *apr_q6_cvp;
 
-	u32 mvm_state;
-	u32 cvs_state;
-	u32 cvp_state;
-
-	/* Handle to MVM in the modem */
-	u16 mvm_handle;
-	/* Handle to CVS in the modem */
-	u16 cvs_handle;
-	/* Handle to CVP in the modem */
-	u16 cvp_handle;
-
-	/* Handle to MVM in the Q6 */
-	u16 mvm_q6_handle;
-	/* Handle to CVS in the Q6 */
-	u16 cvs_q6_handle;
-	/* Handle to CVP in the Q6 */
-	u16 cvp_q6_handle;
-
-	struct mutex lock;
-
 	struct mvs_driver_info mvs_info;
-
-	struct incall_rec_info rec_info;
-
-	struct incall_music_info music_info;
 };
 
 int voice_set_voc_path_full(uint32_t set);

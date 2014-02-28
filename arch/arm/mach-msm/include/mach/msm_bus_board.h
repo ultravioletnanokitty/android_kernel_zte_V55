@@ -105,7 +105,7 @@ int msm_bus_board_get_iid(int id);
 #define MSM_BUS_GET_BW(val) ((val) & 0x7FFF)
 
 #define MSM_BUS_GET_BW_INFO(val, type, bw) \
-  do {	\
+ do {	\
 	(type) = MSM_BUS_GET_BW_TYPE(val); \
 	(bw) = MSM_BUS_GET_BW(val);	\
 	} while (0)
@@ -136,13 +136,10 @@ int msm_bus_board_get_iid(int id);
 #define FAB_MAX_BW_BYTES(width, clk) ((uint32_t)(width) * (uint32_t)(clk))
 #define FAB_BW_128K(bw) ((uint16_t)((bw) >> 17))
 #define BW_TO_CLK_FREQ_HZ(width, bw) ((unsigned long)\
-		DIV_ROUND_UP((bw), (width)))
-/* 8 bytes per clock @ 133 MHz */
-#define SYSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 133000000)
-/* 16 bytes per clock @ 166 MHz */
-#define MMFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(16, 166000000)
-/* 8 bytes per clock @ 266 MHz */
-#define APPSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 266000000)
+	DIV_ROUND_UP((bw), (width)))
+#define SYSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 133000000) /* 8 bytes per clock @ 133 MHz */
+#define MMFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(16, 166000000) /* 16 bytes per clock @ 166 MHz */
+#define APPSFAB_MAX_BW_BYTES FAB_MAX_BW_BYTES(8, 266000000) /* 8 bytes per clock @ 266 MHz */
 
 /*
  * The following macros are used to format the data for port halt
@@ -262,11 +259,6 @@ enum msm_bus_fabric_slave_type {
 
 	MSM_BUS_SLAVE_SMI,
 	MSM_BUS_MMSS_SLAVE_FAB_APPS,
-	/*
-	 * APPS_1: This port is added for V2, and is absent on V1.
-	 * This port is not connected on V2, but is needed in
-	 * the topology.
-	 * */
 	MSM_BUS_MMSS_SLAVE_FAB_APPS_1,
 	MSM_BUS_SLAVE_MM_IMEM,
 
@@ -319,6 +311,7 @@ enum msm_bus_fabric_slave_type {
 	MSM_BUS_SLAVE_MSM_DIMEM,
 	MSM_BUS_SLAVE_MSM_TCSR,
 	MSM_BUS_SLAVE_MSM_PRNG,
+
 	MSM_BUS_SYSTEM_FPB_SLAVE_SYSTEM =
 		MSM_BUS_SYSTEM_SLAVE_SYSTEM_FPB,
 	MSM_BUS_CPSS_FPB_SLAVE_SYSTEM =

@@ -272,9 +272,10 @@ static ssize_t store_mfreq(struct sysdev_class *class,
 static SYSDEV_CLASS_ATTR(mfreq, 0200, NULL, store_mfreq);
 
 static struct freq_attr *msm_cpufreq_attr[] = {
-    &cpufreq_freq_attr_scaling_available_freqs,
-    NULL,
+	&cpufreq_freq_attr_scaling_available_freqs,
+	NULL,
 };
+
 static struct cpufreq_driver msm_cpufreq_driver = {
 	/* lps calculations are handled here. */
 	.flags		= CPUFREQ_STICKY | CPUFREQ_CONST_LOOPS,

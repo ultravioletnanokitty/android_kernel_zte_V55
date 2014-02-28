@@ -14,21 +14,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
  * 02110-1301, USA.
  */
-/*===========================================================================
-
-                        EDIT HISTORY 
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/06/29    liuzhongzhi0009    liuzhongzhi     added for support max8903 charger IC   
-2011/07/12    longchunyan0001    longchunyan     add gpio 41 for wifi add gpio 71 for bt        
-2011/06/13    zhaoy0012         zhaoyang        modify attiny44a driver to support dual device
-2011/06/17    zhaoy0016         zhaoyang        add macro of the mpu3050 gyro data structure
-2011/03/08    wangweiping0001    wangweiping     add atmel muti-touchscreen
-2011/08/04    yuehongliang0001    yuehongliang    modified gpio for touchscreen according to hardware schematic
-2011/08/11    zhaoy0028    zhaoyang     modify the V68 project capacitive proximity sensor enable pin
-===========================================================================*/
-
 #include <linux/module.h>
 #include <mach/irqs.h>
 #include <asm/mach-types.h>
@@ -314,14 +299,7 @@ static struct gpiomux_setting lcdc_suspend_cfg = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
 };
-#if 0 //zhangxb0003
-static struct gpiomux_setting mdp_vsync_suspend_cfg = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-#endif
-/* end zhangxb0003 */
+
 static struct gpiomux_setting hdmi_suspend_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
@@ -357,25 +335,7 @@ static struct gpiomux_setting mdm2ap_sync_suspend_cfg = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
-#if 0
-static struct gpiomux_setting tm_active = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_UP,
-};
 
-static struct gpiomux_setting tm_suspended = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting tma_active = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-#endif
 static struct gpiomux_setting max_touch_active = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_6MA,
@@ -417,15 +377,7 @@ static struct gpiomux_setting ts_suspended = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
 };
-/* zhangxb0003 */
-#if 0
-static struct gpiomux_setting mdp_vsync_active_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-#endif
-/* end zhangxb0003 */
+
 static struct gpiomux_setting hdmi_active_1_cfg = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_2MA,
@@ -449,13 +401,6 @@ static struct gpiomux_setting pmic_suspended_cfg = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
-#if 0
-static struct gpiomux_setting cam_active_1_cfg = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-#endif
 
 static struct gpiomux_setting cam_active_2_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
@@ -486,6 +431,7 @@ static struct gpiomux_setting wb_active_cfg = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
+
 static struct gpiomux_setting wb_suspend_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
@@ -549,6 +495,7 @@ static struct gpiomux_setting chg_gpio_cfg = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 #endif
+
 #ifdef CONFIG_GYRO_MPU3050_ZTE
 static struct gpiomux_setting gsbi12_f2 = {
 	.func = GPIOMUX_FUNC_2,
@@ -584,15 +531,6 @@ static struct msm_gpiomux_config msm8x60_gsbi_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &gsbi1,
 		},
 	},
-#if 0
-    {
-        .gpio      = 34,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &gsbi1,
-        },
-    },
-#endif
-            
 	{
 		.gpio      = 35,
 		.settings = {
@@ -654,50 +592,42 @@ static struct msm_gpiomux_config msm8x60_gsbi_configs[] __initdata = {
 		},
 	},
 #ifdef CONFIG_CAP_PROX_ATTINY44A_ZTE
-    {
-        .gpio      = 83,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &attiny44a_pm_cfg,
-        },
-    },
-    {
-        .gpio      = 126,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &attiny44a_pm_cfg,
-        },
-    },
-    {
-        .gpio      = 127,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &attiny44a_pm_cfg,
-        },
-    },
+	{
+		.gpio      = 83,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &attiny44a_pm_cfg,
+		},
+	},
+	{
+		.gpio      = 126,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &attiny44a_pm_cfg,
+		},
+	},
+	{
+		.gpio      = 127,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &attiny44a_pm_cfg,
+		},
+	},
 #endif    
 #ifdef CONFIG_GYRO_MPU3050_ZTE
-    {
-        .gpio      = 115,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &gsbi12_f2,
-        },
-    },
-    {
-        .gpio      = 116,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &gsbi12_f2,
-        },
-    },
-#endif    
-};
-
-static struct msm_gpiomux_config msm8x60_fluid_gsbi_configs[] __initdata = {
-#if 0
 	{
-		.gpio      = 70,
+		.gpio      = 115,
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gsbi10,
+			[GPIOMUX_SUSPENDED] = &gsbi12_f2,
+		},
+	},
+	{
+		.gpio      = 116,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi12_f2,
 		},
 	},
 #endif
+};
+
+static struct msm_gpiomux_config msm8x60_fluid_gsbi_configs[] __initdata = {
 	{
 		.gpio      = 72,
 		.settings = {
@@ -743,21 +673,6 @@ static struct msm_gpiomux_config msm8x60_ebi2_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &ebi2_a_d,
 		},
 	},
-#if 0
-    {
-        .gpio      = 126,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &ebi2_a_d,
-        },
-    },
-    {
-        .gpio      = 127,
-        .settings = {
-            [GPIOMUX_SUSPENDED] = &ebi2_a_d,
-        },
-    },
-#endif
-
 	{
 		.gpio      = 128,
 		.settings = {
@@ -956,20 +871,6 @@ static struct msm_gpiomux_config msm8x60_uart_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &uart1dm_suspended,
 		},
 	},
-#if 0
-	{
-		.gpio      = 115,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &console_uart,
-		},
-	},
-	{
-		.gpio      = 116,
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &console_uart,
-		},
-	},
-#endif
 #if !defined(CONFIG_USB_PEHCI_HCD) && !defined(CONFIG_USB_PEHCI_HCD_MODULE)
 	/* USB ISP1763 may also use 117 GPIO */
 	{
@@ -1072,15 +973,6 @@ static struct msm_gpiomux_config msm8x60_ts_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &ts_suspended,
 		},
 	},
-	#if 0
-	{
-		.gpio = 39,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &ts_active,
-			[GPIOMUX_SUSPENDED] = &ts_suspended,
-		},
-	},
-	#endif
 	{
 		.gpio = 70,
 		.settings = {
@@ -1090,27 +982,7 @@ static struct msm_gpiomux_config msm8x60_ts_configs[] __initdata = {
 	},
 #endif
 };
-#if 0
-static struct msm_gpiomux_config msm8x60_tmg200_configs[] __initdata = {
-	{
-		.gpio = 61,
-		.settings = {
-			[GPIOMUX_ACTIVE] = &tm_active,
-			[GPIOMUX_SUSPENDED] = &tm_suspended,
-		},
-	},
-};
 
-static struct msm_gpiomux_config msm8x60_tma300_configs[] __initdata = {
-	{
-		.gpio = 61,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &tma_active,
-			[GPIOMUX_SUSPENDED] = &tm_suspended,
-		},
-	},
-};
-#endif
 static struct msm_gpiomux_config msm8x60_aux_pcm_configs[] __initdata = {
 	{
 		.gpio = 111,
@@ -1466,16 +1338,6 @@ static struct msm_gpiomux_config msm8x60_mi2s_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &mi2s_suspend_cfg,
 		},
 	},
-	#if 0
-	/* MI2S MCLK */
-	{
-		.gpio = 103,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &mi2s_active_cfg,
-			[GPIOMUX_SUSPENDED] = &mi2s_suspend_cfg,
-		},
-	},
-	#endif
 	/* MI2S SD3 */
 	{
 		.gpio = 107,
@@ -1712,19 +1574,7 @@ static struct msm_gpiomux_config msm8x60_lcdc_configs[] __initdata = {
 		},
 	},
 };
-/* zhangxb0003 */
-#if 0
-static struct msm_gpiomux_config msm8x60_mdp_vsync_configs[] __initdata = {
-	{
-		.gpio = 28,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &mdp_vsync_active_cfg,
-			[GPIOMUX_SUSPENDED] = &mdp_vsync_suspend_cfg,
-		},
-	},
-};
-#endif
-/* end zhangxb0003 */
+
 static struct msm_gpiomux_config msm8x60_hdmi_configs[] __initdata = {
 	{
 		.gpio = 169,
@@ -1787,7 +1637,7 @@ static struct msm_gpiomux_config msm8x60_common_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &mdm2ap_status_suspend_cfg,
 		},
 	},
-        /* BCM4330 WIFI */ 
+	/* BCM4330 WIFI */
 	{
 		.gpio = 41,
 		.settings = {
@@ -1795,7 +1645,7 @@ static struct msm_gpiomux_config msm8x60_common_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &wb_suspend_cfg,
 		},
 	},
-        /* BCM4330 BT */
+	/* BCM4330 BT */
 	{
 		.gpio = 71,
 		.settings = {
@@ -1806,24 +1656,6 @@ static struct msm_gpiomux_config msm8x60_common_configs[] __initdata = {
 };
 
 static struct msm_gpiomux_config msm8x60_cam_configs[] __initdata = {
-#if 0
-	{
-		.gpio = 29,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_active_2_cfg,
-			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
-		},
-	},
-#endif
-	#if 0
-	{
-		.gpio = 30,
-		.settings = {
-			[GPIOMUX_ACTIVE]    = &cam_active_1_cfg,
-			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
-		},
-	},
-	#endif
 	{
 		.gpio = 31,
 		.settings = {
@@ -1873,7 +1705,7 @@ static struct msm_gpiomux_config msm8x60_cam_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
 		},
 	},
-	#ifdef CONFIG_CAMERA_MT9D115_ZTE
+#ifdef CONFIG_CAMERA_MT9D115_ZTE
 	{
 		.gpio = 104,
 		.settings = {
@@ -1888,7 +1720,7 @@ static struct msm_gpiomux_config msm8x60_cam_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
 		},
 	},
-	#endif
+#endif
 };
 static struct msm_gpiomux_config msm_qt_cam_configs[] __initdata = {
 	{
@@ -2008,7 +1840,7 @@ static struct msm_gpiomux_config msm8x60_chg_configs[] __initdata = {
 	{
 		.gpio = 102,
 		.settings = {
-		    [GPIOMUX_ACTIVE] = &chg_gpio_cfg,
+			[GPIOMUX_ACTIVE] = &chg_gpio_cfg,
 			[GPIOMUX_SUSPENDED] = &chg_gpio_cfg,
 		}
 	},
@@ -2053,14 +1885,10 @@ msm8x60_surf_ffa_gpiomux_cfgs[] __initdata = {
 	{msm8x60_snd_configs, ARRAY_SIZE(msm8x60_snd_configs)},
 	{msm8x60_mi2s_configs, ARRAY_SIZE(msm8x60_mi2s_configs)},
 	{msm8x60_lcdc_configs, ARRAY_SIZE(msm8x60_lcdc_configs)},
-	//{msm8x60_mdp_vsync_configs, ARRAY_SIZE(msm8x60_mdp_vsync_configs)},//gouayjun deleted for on system on logo always on panel
 	{msm8x60_hdmi_configs, ARRAY_SIZE(msm8x60_hdmi_configs)},
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{msm8x60_common_configs, ARRAY_SIZE(msm8x60_common_configs)},
 	{msm8x60_cam_configs, ARRAY_SIZE(msm8x60_cam_configs)},
-	#if 0
-	{msm8x60_tmg200_configs, ARRAY_SIZE(msm8x60_tmg200_configs)},
-	#endif
 #ifdef CONFIG_MAX8903_CHARGER
     {msm8x60_chg_configs, ARRAY_SIZE(msm8x60_chg_configs)},
 #endif
@@ -2079,15 +1907,10 @@ msm8x60_fluid_gpiomux_cfgs[] __initdata = {
 	{msm8x60_snd_configs, ARRAY_SIZE(msm8x60_snd_configs)},
 	{msm8x60_mi2s_configs, ARRAY_SIZE(msm8x60_mi2s_configs)},
 	{msm8x60_lcdc_configs, ARRAY_SIZE(msm8x60_lcdc_configs)},
-	//{msm8x60_mdp_vsync_configs, ARRAY_SIZE(msm8x60_mdp_vsync_configs)},//gouayjun deleted for on system on logo always on panel 
-
 	{msm8x60_hdmi_configs, ARRAY_SIZE(msm8x60_hdmi_configs)},
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{msm8x60_common_configs, ARRAY_SIZE(msm8x60_common_configs)},
 	{msm8x60_cam_configs, ARRAY_SIZE(msm8x60_cam_configs)},
-#if 0
-	{msm8x60_tma300_configs, ARRAY_SIZE(msm8x60_tma300_configs)},
-#endif
 	{NULL, 0},
 };
 
@@ -2102,7 +1925,6 @@ msm8x60_qrdc_gpiomux_cfgs[] __initdata = {
 	{msm8x60_snd_configs, ARRAY_SIZE(msm8x60_snd_configs)},
 	{msm8x60_mi2s_configs, ARRAY_SIZE(msm8x60_mi2s_configs)},
 	{msm8x60_lcdc_configs, ARRAY_SIZE(msm8x60_lcdc_configs)},
-	//{msm8x60_mdp_vsync_configs, ARRAY_SIZE(msm8x60_mdp_vsync_configs)},//gouayjun deleted for on system on logo always on panel
 	{msm8x60_hdmi_configs, ARRAY_SIZE(msm8x60_hdmi_configs)},
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{msm8x60_common_configs, ARRAY_SIZE(msm8x60_common_configs)},
@@ -2125,14 +1947,10 @@ msm8x60_charm_gpiomux_cfgs[] __initdata = {
 	{msm8x60_snd_configs, ARRAY_SIZE(msm8x60_snd_configs)},
 	{msm8x60_mi2s_configs, ARRAY_SIZE(msm8x60_mi2s_configs)},
 	{msm8x60_lcdc_configs, ARRAY_SIZE(msm8x60_lcdc_configs)},
-	//{msm8x60_mdp_vsync_configs, ARRAY_SIZE(msm8x60_mdp_vsync_configs)},//gouayjun deleted for on system on logo always on panel
 	{msm8x60_hdmi_configs, ARRAY_SIZE(msm8x60_hdmi_configs)},
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{msm8x60_common_configs, ARRAY_SIZE(msm8x60_common_configs)},
 	{msm8x60_cam_configs, ARRAY_SIZE(msm8x60_cam_configs)},
-	#if 0
-	{msm8x60_tmg200_configs, ARRAY_SIZE(msm8x60_tmg200_configs)},
-	#endif
 	{msm8x60_charm_sdc_configs, ARRAY_SIZE(msm8x60_charm_sdc_configs)},
 	{msm8x60_charm_configs, ARRAY_SIZE(msm8x60_charm_configs)},
 #ifdef CONFIG_MAX8903_CHARGER
@@ -2154,7 +1972,6 @@ msm8x60_qt_gpiomux_cfgs[] __initdata = {
 	{msm8x60_sdc_configs, ARRAY_SIZE(msm8x60_sdc_configs)},
 	{msm8x60_snd_configs, ARRAY_SIZE(msm8x60_snd_configs)},
 	{msm8x60_mi2s_configs, ARRAY_SIZE(msm8x60_mi2s_configs)},
-	//{msm8x60_mdp_vsync_configs, ARRAY_SIZE(msm8x60_mdp_vsync_configs)},//gouayjun deleted for on system on logo always on panel
 	{msm8x60_hdmi_configs, ARRAY_SIZE(msm8x60_hdmi_configs)},
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{msm8x60_common_configs, ARRAY_SIZE(msm8x60_common_configs)},

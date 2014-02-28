@@ -778,6 +778,7 @@ struct asm_stream_cmd_open_read_write {
 #define ASM_STREAM_CMD_GET_ENCDEC_PARAM                  0x00010C11
 #define ASM_ENCDEC_CFG_BLK_ID				 0x00010C2C
 #define ASM_ENABLE_SBR_PS				 0x00010C63
+
 struct asm_stream_cmd_encdec_cfg_blk{
 	struct apr_hdr              hdr;
 	u32                         param_id;

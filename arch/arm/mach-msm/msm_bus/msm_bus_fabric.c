@@ -136,10 +136,12 @@ static int register_fabric_info(struct msm_bus_fabric *fabric)
 
 	for (i = 0; i < fabric->pdata->len; i++) {
 		struct msm_bus_inode_info *info;
+
 		info = kzalloc(sizeof(struct msm_bus_inode_info), GFP_KERNEL);
 		info->node_info = fabric->pdata->info + i;
 		info->commit_index = -1;
 		info->num_pnodes = -1;
+
 		if (info->node_info->slaveclk) {
 			info->nodeclk = clk_get(NULL, info->node_info->
 					slaveclk);

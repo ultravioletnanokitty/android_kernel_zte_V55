@@ -604,6 +604,7 @@ static void q6_audaac_cb(uint32_t opcode, uint32_t token,
 		pr_debug("%s:payload0[%x] payloa1d[%x]opcode= 0x%x\n",
 			 __func__, payload[0], payload[1], opcode);
 		break;
+
 	default:
 		pr_debug("%s:Unhandled event = 0x%8x\n", __func__, opcode);
 		break;
@@ -1217,10 +1218,10 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		rc = q6asm_enable_sbrps(audio->ac, sbr_ps);
 		if (rc < 0)
 			pr_err("sbr-ps enable failed\n");
-		if (audio->aac_config.sbr_on_flag)
-			aac_cfg.aot = AAC_ENC_MODE_AAC_P;
-		else if (audio->aac_config.sbr_ps_on_flag)
+		if (audio->aac_config.sbr_ps_on_flag)
 			aac_cfg.aot = AAC_ENC_MODE_EAAC_P;
+		else if (audio->aac_config.sbr_on_flag)
+			aac_cfg.aot = AAC_ENC_MODE_AAC_P;
 		else
 			aac_cfg.aot = AAC_ENC_MODE_AAC_LC;
 

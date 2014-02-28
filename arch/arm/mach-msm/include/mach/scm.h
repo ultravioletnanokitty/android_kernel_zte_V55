@@ -41,9 +41,9 @@
 #define SCM_SVC_OEM			0xFE
 #define SCM_SVC_TZSCHEDULER		0xFC
 
-#define ITEM_MDM9K_SERIAL	0
+#define ITEM_MDM9K_SERIAL 0
 #define ITEM_CRYPTO_RAMDUMP 1
-#define ITEM_ENCRYPT_RAMDUMP	3
+#define ITEM_ENCRYPT_RAMDUMP 3
 
 extern int scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
 		void *resp_buf, size_t resp_len);
@@ -51,4 +51,5 @@ extern int scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
 #define SCM_VERSION(major, minor) (((major) << 16) | ((minor) & 0xFF))
 
 extern u32 scm_get_version(void);
+
 #endif

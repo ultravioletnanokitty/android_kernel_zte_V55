@@ -128,6 +128,7 @@ static int charm_panic_prep(struct notifier_block *this,
 
 	CHARM_DBG("%s: setting AP2MDM_ERRFATAL high for a non graceful reset\n",
 			 __func__);
+
 	charm_disable_irqs();
 	gpio_set_value(AP2MDM_ERRFATAL, 1);
 	gpio_set_value(AP2MDM_WAKEUP, 1);
@@ -180,9 +181,8 @@ static long charm_modem_ioctl(struct file *filp, unsigned int cmd,
 			charm_boot_status = 0;
 		charm_ready = 1;
 
-       gpio_set_value(AP2MDM_KPDPWR_N, 0);
-       pr_info("%s: setting AP2MDM KPDPWR to 0\n", __func__);
-
+		gpio_set_value(AP2MDM_KPDPWR_N, 0);
+		pr_info("%s: setting AP2MDM KPDPWR to 0\n", __func__);
 		if (!first_boot)
 			complete(&charm_boot);
 		else
@@ -455,8 +455,8 @@ static void charm_modem_shutdown(struct platform_device *pdev)
 			break;
 	}
 
-    i = 0;
-    pr_info("%s: AP2MDM KPDPWR is %d\n", __func__, gpio_get_value(AP2MDM_KPDPWR_N));
+	i = 0;
+	pr_info("%s: AP2MDM KPDPWR is %d\n", __func__, gpio_get_value(AP2MDM_KPDPWR_N));
 
 	if (i <= 0) {
 		pr_err("%s: MDM2AP_STATUS never went low.\n",

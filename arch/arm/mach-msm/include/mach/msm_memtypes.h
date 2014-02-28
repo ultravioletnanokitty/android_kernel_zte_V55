@@ -21,6 +21,7 @@
 #include <linux/init.h>
 
 int __init meminfo_init(unsigned int, unsigned int);
+
 /* Redundant check to prevent this from being included outside of 7x30 */
 #if defined(CONFIG_ARCH_MSM7X30)
 unsigned int get_num_populated_chipselects(void);
@@ -42,8 +43,8 @@ enum {
 
 void msm_reserve(void);
 
-#define MEMTYPE_FLAGS_FIXED	0x1
-#define MEMTYPE_FLAGS_1M_ALIGN	0x2
+#define MEMTYPE_FLAGS_FIXED 0x1
+#define MEMTYPE_FLAGS_1M_ALIGN 0x2
 
 struct memtype_reserve {
 	unsigned long start;

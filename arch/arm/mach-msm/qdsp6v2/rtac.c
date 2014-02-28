@@ -107,7 +107,6 @@ static u32			rtac_voice_user_buf_size;
 static u8			*rtac_voice_buffer;
 
 
-
 struct mutex			rtac_dev_ctrl_mutex;
 struct mutex			rtac_adm_mutex;
 struct mutex			rtac_adm_apr_mutex;
@@ -419,8 +418,6 @@ void rtac_remove_voice(struct voice_data *v)
 	mutex_unlock(&rtac_voice_mutex);
 	return;
 }
-
-
 
 /* ADM APR */
 void rtac_set_adm_handle(void *handle)

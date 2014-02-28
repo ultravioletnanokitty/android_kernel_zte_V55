@@ -19,14 +19,6 @@
  * SOC Info Routines
  *
  */
-/*===========================================================================
-
-                        EDIT HISTORY 
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------       
-2011/07/11    jiangzhifeng0001 jiangzhifeng     svlte(v66,v68): set the hardware id manualy
-===========================================================================*/
 
 #include <linux/types.h>
 #include <linux/sysdev.h>
@@ -646,9 +638,8 @@ int __init socinfo_init(void)
 			socinfo->v5.accessory_chip);
 		break;
 	case 6:
-              socinfo->v3.hw_platform = 4;
-              socinfo->v6.hw_platform_subtype = 3;
-              
+			socinfo->v3.hw_platform = 4;
+			socinfo->v6.hw_platform_subtype = 3;
 		pr_info("%s: v%u, id=%u, ver=%u.%u, "
 			 "raw_id=%u, raw_ver=%u, hw_plat=%u,  hw_plat_ver=%u\n"
 			" accessory_chip=%u hw_plat_subtype=%u\n", __func__,
