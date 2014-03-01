@@ -41,10 +41,7 @@ static void ddl_getdec_profilelevel
 static void ddl_dma_done_callback(struct ddl_context *ddl_context)
 {
 	if (!DDLCOMMAND_STATE_IS(ddl_context, DDL_CMD_DMA_INIT)) {
-		if (printk_ratelimit())
-		{
-			VIDC_LOGERR_STRING("UNKWN_DMADONE");
-		}
+		VIDC_LOGERR_STRING("UNKWN_DMADONE");
 		return;
 	}
 	ddl_move_command_state(ddl_context, DDL_CMD_INVALID);

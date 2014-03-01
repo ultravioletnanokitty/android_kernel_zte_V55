@@ -26,16 +26,6 @@
  * useful for peripherals that send unsolicited RX such as Bluetooth.
  */
 
-/*===========================================================================
-
-                        EDIT HISTORY FOR
-
-when           comment tag             who                  what, where, why 
-
-----------     -------------       ------------    ----------------------------
-2011/08/22     longchunyan0002	    longchunyan		modify for bt sleeping & waking
-===========================================================================*/
-
 #include <linux/slab.h>
 #include <linux/module.h>
 
@@ -234,14 +224,12 @@ static DEVICE_ATTR(clock, S_IWUSR | S_IRUGO, show_clock, set_clock);
 
 static inline unsigned int use_low_power_wakeup(struct msm_hs_port *msm_uport)
 {
-   #ifdef CONFIG_BT_BCM4330_ZTE
-   if (msm_uport == &q_uart_port[0])
-        return 0;
-   else
-        return (msm_uport->wakeup.irq > 0);
-   #else
-        return (msm_uport->wakeup.irq > 0);
-   #endif
+#ifdef CONFIG_BT_BCM4330_ZTE
+	if (msm_uport == &q_uart_port[0])
+		return 0;
+	else
+#endif
+	return (msm_uport->wakeup.irq > 0);
 }
 
 static inline int is_gsbi_uart(struct msm_hs_port *msm_uport)
@@ -1085,7 +1073,7 @@ static void msm_hs_start_tx_locked(struct uart_port *uport )
 
 	clk_enable(msm_uport->clk);
 
-    if (msm_uport->tx.tx_ready_int_en == 0) {
+	if (msm_uport->tx.tx_ready_int_en == 0) {
 		msm_uport->tx.tx_ready_int_en = 1;
 		if (msm_uport->tx.dma_in_flight == 0)
 			msm_hs_submit_tx_locked(uport);
@@ -1872,8 +1860,8 @@ static int __init msm_hs_probe(struct platform_device *pdev)
 				dev_err(uport->dev, "Cannot configure"
 					"gpios\n");
 	}
-    
-    resource = platform_get_resource_byname(pdev, IORESOURCE_DMA,
+
+	resource = platform_get_resource_byname(pdev, IORESOURCE_DMA,
 						"uartdm_channels");
 	if (unlikely(!resource))
 		return -ENXIO;
@@ -2051,14 +2039,13 @@ static int msm_hs_runtime_resume(struct device *dev)
 	struct platform_device *pdev = container_of(dev, struct
 						    platform_device, dev);
 	struct msm_hs_port *msm_uport = &q_uart_port[pdev->id];
-    #ifdef CONFIG_BT_BCM4330_ZTE
-    if (pdev->id != 0)
-    {
-        msm_hs_request_clock_on(&msm_uport->uport);
-    }
-    #else
-        msm_hs_request_clock_on(&msm_uport->uport);
-    #endif
+#ifdef CONFIG_BT_BCM4330_ZTE
+	if (pdev->id != 0) {
+		msm_hs_request_clock_on(&msm_uport->uport);
+	}
+#else
+	msm_hs_request_clock_on(&msm_uport->uport);
+#endif
 	return 0;
 }
 
@@ -2067,15 +2054,14 @@ static int msm_hs_runtime_suspend(struct device *dev)
 	struct platform_device *pdev = container_of(dev, struct
 						    platform_device, dev);
 	struct msm_hs_port *msm_uport = &q_uart_port[pdev->id];
-    #ifdef CONFIG_BT_BCM4330_ZTE
-    if (pdev->id != 0)
-    {
-        msm_hs_request_clock_off(&msm_uport->uport);
-    }
-    #else
-        msm_hs_request_clock_off(&msm_uport->uport);
-    #endif
-    return 0;
+#ifdef CONFIG_BT_BCM4330_ZTE
+	if (pdev->id != 0) {
+		msm_hs_request_clock_off(&msm_uport->uport);
+	}
+#else
+	msm_hs_request_clock_off(&msm_uport->uport);
+#endif
+	return 0;
 }
 
 static const struct dev_pm_ops msm_hs_dev_pm_ops = {

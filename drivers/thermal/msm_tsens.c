@@ -29,7 +29,6 @@
 
 #include <linux/io.h>
 #include <mach/msm_iomap.h>
-
 #include <linux/pm.h>
 
 /* Trips: from very hot to very cold */
@@ -482,9 +481,7 @@ static irqreturn_t tsens_isr_thread(int irq, void *data)
 			if (lower_th_x)
 				mask |= TSENS_LOWER_STATUS_CLR;
 			if (upper_th_x || lower_th_x) {
-				thermal_zone_device_update(
-							tm->sensor[i].tz_dev);
-
+				thermal_zone_device_update(tm->sensor[i].tz_dev);
 				/* Notify user space */
 				schedule_work(&tm->work);
 				adc_code = readl(TSENS_S0_STATUS_ADDR
@@ -513,7 +510,6 @@ static int tsens_suspend(struct device *dev)
 	tmdev->prev_reading_avail = 0;
 
 	disable_irq_nosync(TSENS_UPPER_LOWER_INT);
-
 	return 0;
 }
 
@@ -539,7 +535,6 @@ static int tsens_resume(struct device *dev)
 	writel(tmdev->pm_tsens_thr_data, TSENS_THRESHOLD_ADDR);
 
 	enable_irq(TSENS_UPPER_LOWER_INT);
-
 	return 0;
 }
 

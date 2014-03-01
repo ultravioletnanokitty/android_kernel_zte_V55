@@ -15,15 +15,7 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
 
-                        EDIT HISTORY 
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/05/23   gouyajun0002              gouyajun        fixed wxvga panel blue bug 
-
-===========================================================================*/
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>

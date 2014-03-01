@@ -23,6 +23,7 @@
 #include <linux/mfd/pmic8901.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
+#include <linux/delay.h>
 
 /* PMIC8901 Revision */
 #define SSBI_REG_REV			0x002  /* PMIC4 revision */
@@ -68,6 +69,10 @@
 
 #define REGULATOR_PMR_STATE_MASK	0x60
 #define REGULATOR_PMR_STATE_OFF		0x20
+
+/* Shutdown/restart delays to allow for LDO 7/dVdd regulator load settling. */
+#define DELAY_AFTER_REG_DISABLE_MS	4
+#define DELAY_BEFORE_SHUTDOWN_MS	8
 
 struct pm8901_chip {
 	struct pm8901_platform_data	pdata;
@@ -175,36 +180,34 @@ int pm8901_write(struct pm8901_chip *chip, u16 addr, u8 *values,
 }
 EXPORT_SYMBOL(pm8901_write);
 
-/** ZTE MODIFY lixinyu add qcom patch*/
 int pm8901_preload_dVdd(void)
 {
-   int rc;
-   u8 reg;
+	int rc;
+	u8 reg;
 
-   if (pmic_chip == NULL) {
-    pr_err("%s: Error: PMIC 8901 driver has not probed\n",
-     	__func__);
-     return -ENODEV;
-   }
+	if (pmic_chip == NULL) {
+		pr_err("%s: Error: PMIC 8901 driver has not probed\n",
+			__func__);
+		return -ENODEV;
+	}
 
-    reg = 0x0F;
-    rc = ssbi_write(pmic_chip->dev, 0x0BD, &reg, 1);
-    if (rc)
-     pr_err("%s: ssbi_write failed for 0x0BD, rc=%d\n", __func__,
-		rc);
+	reg = 0x0F;
+	rc = ssbi_write(pmic_chip->dev, 0x0BD, &reg, 1);
+	if (rc)
+		pr_err("%s: ssbi_write failed for 0x0BD, rc=%d\n", __func__,
+			rc);
 
-    reg = 0xB4;
-    rc = ssbi_write(pmic_chip->dev, 0x001, &reg, 1);
-    if (rc)
-	pr_err("%s: ssbi_write failed for 0x001, rc=%d\n", __func__,
-		rc);
+	reg = 0xB4;
+	rc = ssbi_write(pmic_chip->dev, 0x001, &reg, 1);
+	if (rc)
+		pr_err("%s: ssbi_write failed for 0x001, rc=%d\n", __func__,
+			rc);
 
-    pr_info("%s: dVdd preloaded\n", __func__);
+	pr_info("%s: dVdd preloaded\n", __func__);
 
-    return rc;
+	return rc;
 }
 EXPORT_SYMBOL(pm8901_preload_dVdd);
-/*end lixinyu */
 
 int pm8901_irq_get_rt_status(struct pm8901_chip *chip, int irq)
 {
@@ -246,11 +249,6 @@ bail_out:
 }
 EXPORT_SYMBOL(pm8901_irq_get_rt_status);
 
-
-#define DELAY_AFTER_REG_DISABLE_MS  4
-#define DELAY_BEFORE_SHUTDOWN_MS   8
-/* end lixinyu*/
-
 int pm8901_reset_pwr_off(int reset)
 {
 	int rc = 0, i;
@@ -284,11 +282,12 @@ int pm8901_reset_pwr_off(int reset)
 				       "\n", __func__, pmr_addr[i], pmr, rc);
 				goto get_out;
 			}
-
+			mdelay(DELAY_AFTER_REG_DISABLE_MS);
 		}
 	}
 
 get_out:
+	mdelay(DELAY_BEFORE_SHUTDOWN_MS);
 	return rc;
 }
 EXPORT_SYMBOL(pm8901_reset_pwr_off);
@@ -716,6 +715,7 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	struct pm8901_dbg_device *dbgdev;
 	struct dentry *dent;
 	struct dentry *temp;
+	int rc;
 
 	if (chip == NULL) {
 		pr_err("%s: no parent data passed in.\n", __func__);
@@ -728,8 +728,6 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 		return -ENOMEM;
 	}
 
-	mutex_init(&dbgdev->dbg_mutex);
-
 	dbgdev->pm_chip = chip;
 	dbgdev->addr = -1;
 
@@ -737,7 +735,8 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	if (dent == NULL || IS_ERR(dent)) {
 		pr_err("%s: ERR debugfs_create_dir: dent=0x%X\n",
 					__func__, (unsigned)dent);
-		return -ENOMEM;
+		rc = PTR_ERR(dent);
+		goto dir_error;
 	}
 
 	temp = debugfs_create_file("addr", S_IRUSR | S_IWUSR, dent,
@@ -745,6 +744,7 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	if (temp == NULL || IS_ERR(temp)) {
 		pr_err("%s: ERR debugfs_create_file: dent=0x%X\n",
 					__func__, (unsigned)temp);
+		rc = PTR_ERR(temp);
 		goto debug_error;
 	}
 
@@ -753,8 +753,11 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 	if (temp == NULL || IS_ERR(temp)) {
 		pr_err("%s: ERR debugfs_create_file: dent=0x%X\n",
 					__func__, (unsigned)temp);
+		rc = PTR_ERR(temp);
 		goto debug_error;
 	}
+
+	mutex_init(&dbgdev->dbg_mutex);
 
 	dbgdev->dent = dent;
 
@@ -764,13 +767,17 @@ static int __devinit pmic8901_dbg_probe(struct pm8901_chip *chip)
 
 debug_error:
 	debugfs_remove_recursive(dent);
-	return -ENOMEM;
+dir_error:
+	kfree(dbgdev);
+
+	return rc;
 }
 
 static int __devexit pmic8901_dbg_remove(void)
 {
 	if (pmic_dbg_device) {
 		debugfs_remove_recursive(pmic_dbg_device->dent);
+		mutex_destroy(&pmic_dbg_device->dbg_mutex);
 		kfree(pmic_dbg_device);
 	}
 	return 0;
@@ -875,7 +882,6 @@ static int pm8901_probe(struct i2c_client *client,
 	if (rc < 0)
 		pr_err("%s: could not set up debugfs: %d\n", __func__, rc);
 
-	pm8901_preload_dVdd();/**ZTE MODIFY lixinyu add qcom CR patch from chendengchuan*/
 	return rc;
 }
 

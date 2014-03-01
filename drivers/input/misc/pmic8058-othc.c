@@ -99,18 +99,17 @@ static void hs_worker(struct work_struct *work)
 	int rc;
 	struct pm8058_othc *dd =
 		container_of(work, struct pm8058_othc, hs_work.work);
-	
+
 	rc = gpio_get_value_cansleep(dd->ir_gpio);
 	if (rc < 0) {
 		pr_err("Unable to read IR GPIO\n");
 		enable_irq(dd->othc_irq_ir);
 		return;
 	}
+
 	dd->othc_ir_state = !rc;
 	schedule_delayed_work(&dd->detect_work,
 				msecs_to_jiffies(dd->detection_delay_ms));
-	
-     
 }
 
 static irqreturn_t ir_gpio_irq(int irq, void *dev_id)
@@ -133,7 +132,6 @@ static irqreturn_t ir_gpio_irq(int irq, void *dev_id)
 
 	/* disable irq, this gets enabled in the workqueue */
 	disable_irq_nosync(dd->othc_irq_ir);
-	
 	schedule_delayed_work(&dd->hs_work, 0);
 
 	return IRQ_HANDLED;
@@ -142,14 +140,14 @@ static irqreturn_t ir_gpio_irq(int irq, void *dev_id)
 static irqreturn_t dock_headset_gpio_irq(int irq, void *dev_id)
 {
 	struct pm8058_othc *dd = dev_id;
-	
+
 	/* disable irq, this gets enabled in the workqueue */
 	disable_irq_nosync(dd->dock_irq_ir);
 	if (hrtimer_active(&dd->dock_timer))
 		hrtimer_cancel(&dd->dock_timer);
-      
+
 	hrtimer_start(&dd->dock_timer, ktime_set(0,  (500 % 1000) * 1000000), HRTIMER_MODE_REL);
-	
+
 	return IRQ_HANDLED;
 }
 /*
@@ -331,6 +329,7 @@ static enum hrtimer_restart pm8058_othc_timer(struct hrtimer *timer)
 
 	return HRTIMER_NORESTART;
 }
+
 static enum hrtimer_restart dock_audio_det_timer(struct hrtimer *timer)
 {
 	int rc;
@@ -342,25 +341,22 @@ static enum hrtimer_restart dock_audio_det_timer(struct hrtimer *timer)
 	if(dd->dock_insert == rc)
 	{
 		enable_irq(dd->dock_irq_ir);
-		return HRTIMER_NORESTART;	
+		return HRTIMER_NORESTART;
 	}
 
 	dd->dock_insert = rc;
-       if(rc)
-       {
-            //inserted
-            dock_audio_insert_set(1);
-       }
-       else
-       {
-            //removed
-            dock_audio_insert_set(0);
-            
-       }
-       enable_irq(dd->dock_irq_ir);
+	if(rc) {
+		//inserted
+		dock_audio_insert_set(1);
+	} else {
+		//removed
+		dock_audio_insert_set(0);
+	}
+	enable_irq(dd->dock_irq_ir);
 
 	return HRTIMER_NORESTART;
 }
+
 static void othc_report_switch(struct pm8058_othc *dd, u32 res)
 {
 	u8 i;
@@ -932,7 +928,6 @@ accessory_adc_fail:
 	return rc;
 }
 
-
 static int
 othc_configure_hsed(struct pm8058_othc *dd, struct platform_device *pd)
 {
@@ -1026,12 +1021,6 @@ othc_configure_hsed(struct pm8058_othc *dd, struct platform_device *pd)
 	hrtimer_init(&dd->dock_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	dd->dock_timer.function = dock_audio_det_timer;
 
-	INIT_DELAYED_WORK(&dd->detect_work, detect_work_f);
-
-	INIT_DELAYED_WORK(&dd->hs_work, hs_worker);
-
-	if (dd->othc_support_n_switch == true)
-		INIT_WORK(&dd->switch_work, switch_work_f);
 	/* Request the HEADSET IR interrupt */
 	if (dd->ir_gpio < 0) {
 		rc = request_threaded_irq(dd->othc_irq_ir, NULL, pm8058_nc_ir,
@@ -1061,9 +1050,6 @@ othc_configure_hsed(struct pm8058_othc *dd, struct platform_device *pd)
 			goto fail_ir_irq;
 		}
 	}
-
-		
-
 	/* Request the  SWITCH press/release interrupt */
 	rc = request_threaded_irq(dd->othc_irq_sw, NULL, pm8058_no_sw,
 	IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_DISABLED,
@@ -1099,10 +1085,15 @@ othc_configure_hsed(struct pm8058_othc *dd, struct platform_device *pd)
 	device_init_wakeup(&pd->dev,
 			hsed_config->hsed_bias_config->othc_wakeup);
 
-	
+	INIT_DELAYED_WORK(&dd->detect_work, detect_work_f);
+
+	INIT_DELAYED_WORK(&dd->hs_work, hs_worker);
+
+	if (dd->othc_support_n_switch == true)
+		INIT_WORK(&dd->switch_work, switch_work_f);
 
 	pr_err("chenfei dock config start....\n");
-      rc = gpio_request(ZTE_DOCK_HEADSET_DET, "dock_headset_gpio");
+	rc = gpio_request(ZTE_DOCK_HEADSET_DET, "dock_headset_gpio");
 	if (rc) {
 		pr_err("Unable to request IR GPIO\n");
 		goto fail_ir_status;
@@ -1113,33 +1104,27 @@ othc_configure_hsed(struct pm8058_othc *dd, struct platform_device *pd)
 		goto fail_dock_irq_req;
 	}
 	dd->dock_irq_ir = gpio_to_irq(ZTE_DOCK_HEADSET_DET);
-   
-       rc = request_threaded_irq(dd->dock_irq_ir, NULL, dock_headset_gpio_irq,
-       IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_DISABLED,
+	rc = request_threaded_irq(dd->dock_irq_ir, NULL, dock_headset_gpio_irq,
+		IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_DISABLED,
 		"dock_headset_ir_irq", dd);
-
 	if (rc < 0) {
 		pr_err("could not request hs irq err=%d\n", rc);
 		goto fail_dock_irq_req;
 	}
-       pr_err("chenfei dock config end....\n");
-     rc = gpio_get_value_cansleep(ZTE_DOCK_HEADSET_DET);
-     dd->dock_insert = rc;
-       if(rc)
-       {
-            //inserted
-            dock_audio_insert_set(1);
-       }
-       else
-       {
-            //removed
-            dock_audio_insert_set(0);
-       }
+	pr_err("chenfei dock config end....\n");
+	rc = gpio_get_value_cansleep(ZTE_DOCK_HEADSET_DET);
+	dd->dock_insert = rc;
+	if(rc) {
+		//inserted
+		dock_audio_insert_set(1);
+	} else {
+		//removed
+		dock_audio_insert_set(0);
+	}
 	return 0;
 
 fail_dock_irq_req:
 	gpio_free(ZTE_DOCK_HEADSET_DET);
-
 fail_ir_status:
 	free_irq(dd->othc_irq_sw, dd);
 fail_sw_irq:

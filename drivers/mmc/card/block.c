@@ -17,15 +17,6 @@
  * Author:  Andrew Christian
  *          28 May 2002
  */
-/*===========================================================================
-
-                            EDIT HISTORY
-
-when            comment tag        who                  what, where, why                           
-----------    ------------         -----------      --------------------------      
-2011/08/11    zhangxb0003      zhangxiaobo          fixing coredump caused by unplug t card manytimes
-===========================================================================*/
-
 #include <linux/moduleparam.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -241,11 +232,9 @@ static u32 get_card_status(struct mmc_card *card, struct request *req)
 		cmd.arg = card->rca << 16;
 	cmd.flags = MMC_RSP_SPI_R2 | MMC_RSP_R1 | MMC_CMD_AC;
 	err = mmc_wait_for_cmd(card->host, &cmd, 0);
-	if (err){
-		if (printk_ratelimit())
-		    printk(KERN_ERR "%s: error %d sending status comand",
-		           req->rq_disk->disk_name, err);
-  }
+	if (err)
+		printk(KERN_ERR "%s: error %d sending status comand",
+		       req->rq_disk->disk_name, err);
 	return cmd.resp[0];
 }
 
@@ -267,9 +256,8 @@ mmc_blk_set_blksize(struct mmc_blk_data *md, struct mmc_card *card)
 	mmc_release_host(card->host);
 
 	if (err) {
-		if (printk_ratelimit())
-		    printk(KERN_ERR "%s: unable to set block size to %d: %d\n",
-			    md->disk->disk_name, cmd.arg, err);
+		printk(KERN_ERR "%s: unable to set block size to %d: %d\n",
+			md->disk->disk_name, cmd.arg, err);
 		return -EINVAL;
 	}
 
@@ -388,9 +376,8 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		if (brq.cmd.error || brq.data.error || brq.stop.error) {
 			if (brq.data.blocks > 1 && rq_data_dir(req) == READ) {
 				/* Redo read one sector at a time */
-				if (printk_ratelimit())
-				    printk(KERN_WARNING "%s: retrying using single "
-				           "block read\n", req->rq_disk->disk_name);
+				printk(KERN_WARNING "%s: retrying using single "
+				       "block read\n", req->rq_disk->disk_name);
 				disable_multi = 1;
 				continue;
 			}
@@ -400,31 +387,28 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		}
 
 		if (brq.cmd.error) {
-			if (printk_ratelimit())
-			    printk(KERN_ERR "%s: error %d sending read/write "
-			           "command, response %#x, card status %#x\n",
-			           req->rq_disk->disk_name, brq.cmd.error,
-			           brq.cmd.resp[0], status);
+			printk(KERN_ERR "%s: error %d sending read/write "
+			       "command, response %#x, card status %#x\n",
+			       req->rq_disk->disk_name, brq.cmd.error,
+			       brq.cmd.resp[0], status);
 		}
 
 		if (brq.data.error) {
 			if (brq.data.error == -ETIMEDOUT && brq.mrq.stop)
 				/* 'Stop' response contains card status */
 				status = brq.mrq.stop->resp[0];
-			if (printk_ratelimit())
-			    printk(KERN_ERR "%s: error %d transferring data,"
-			           " sector %u, nr %u, card status %#x\n",
-			           req->rq_disk->disk_name, brq.data.error,
-			           (unsigned)blk_rq_pos(req),
-			           (unsigned)blk_rq_sectors(req), status);
+			printk(KERN_ERR "%s: error %d transferring data,"
+			       " sector %u, nr %u, card status %#x\n",
+			       req->rq_disk->disk_name, brq.data.error,
+			       (unsigned)blk_rq_pos(req),
+			       (unsigned)blk_rq_sectors(req), status);
 		}
 
 		if (brq.stop.error) {
-			if (printk_ratelimit())
-			    printk(KERN_ERR "%s: error %d sending stop command, "
-			           "response %#x, card status %#x\n",
-			           req->rq_disk->disk_name, brq.stop.error,
-			           brq.stop.resp[0], status);
+			printk(KERN_ERR "%s: error %d sending stop command, "
+			       "response %#x, card status %#x\n",
+			       req->rq_disk->disk_name, brq.stop.error,
+			       brq.stop.resp[0], status);
 		}
 
 		if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ) {

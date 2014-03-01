@@ -348,7 +348,6 @@ config TOUCHSCREEN_ATMEL_ZTE
 	  To compile this driver as a module, choose M here: the
 	  module will be called Atmel maxtouch i2c touchscreen.
 
-
 config TOUCHSCREEN_ATMEL_OLD_ZTE
 	tristate "Atmel maxtouch i2c touchscreen on v11 old"
 	depends on I2C && !TOUCHSCREEN_ATMEL_ZTE
@@ -360,7 +359,6 @@ config TOUCHSCREEN_ATMEL_OLD_ZTE
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called Atmel maxtouch i2c touchscreen.
-
 
 config TOUCHSCREEN_SYNAPTICS_I2C_RMI
 	tristate "Synaptics i2c touchscreen"

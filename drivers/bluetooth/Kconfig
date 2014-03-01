@@ -256,14 +256,12 @@ config BT_ATH3K
 	  Say Y here to compile support for "Atheros firmware download driver"
 	  into the kernel or say M to compile it as module (ath3k).
 
-# ZTE_MODIFY longchunyan0001  add bcm4329 & bcm4330 bt driver
 config BT_BCM4329_ZTE
-	bool "Broadcom 4329 zte bluetooth"
+	bool "Broadcom 4329 Bluetooth (zte)"
 	default n
 
 config BT_BCM4330_ZTE
-	bool "Broadcom 4330 zte bluetooth"
+	bool "Broadcom 4330 Bluetooth (zte)"
 	default n
-# ZTE_MODIFY end
-	
+
 endmenu

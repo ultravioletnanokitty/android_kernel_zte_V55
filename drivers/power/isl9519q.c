@@ -15,15 +15,7 @@
  * 02110-1301, USA.
  *
  */
-/*==============================================================================
 
-                           EDIT HISTORY
-
-when         who           what, where, why                        comment tag
---------     ---------     ---------------------------             ------------
-2011/03/18   huxiaobo      fixed for ISL9519Q poweroff charging      huxb0002
-2011/06/08   liuzhongzhi    add for compatibe charger IC    liuzhongzhi0007
-==============================================================================*/
 #include <linux/i2c.h>
 #include <linux/gpio.h>
 #include <linux/errno.h>
@@ -50,13 +42,13 @@ when         who           what, where, why                        comment tag
 #define DEVICE_ID_REG		0xFF
 
 #define TRCKL_CHG_STATUS_BIT	0x80
-#define CHG_OK_STATUS_BIT	    0x40        //huxb0001 fixed for change charge dection condition, 2011.02.24 
+#define CHG_OK_STATUS_BIT	0x40
 
 #define ISL9519_CHG_PERIOD	((HZ) * 150)
-#define MAX17040_BATTERY_FULL	98          //huxb fixed, 2011.02.06
-extern int max17040_get_vcell(struct i2c_client *client);   //huxb fixed, 2011.02.06
-extern int max17040_get_soc(struct i2c_client *client);     //huxb fixed, 2011.02.06
-extern struct i2c_client *max17040_bak_client;              //huxb fixed, 2011.02.06
+#define MAX17040_BATTERY_FULL	98
+extern int max17040_get_vcell(struct i2c_client *client);
+extern int max17040_get_soc(struct i2c_client *client);
+extern struct i2c_client *max17040_bak_client;
 
 struct isl9519q_struct {
 	struct i2c_client		*client;
@@ -167,7 +159,7 @@ static void isl9519q_charge(struct work_struct *isl9519_work)
 	struct isl9519q_struct *isl_chg;
 	int isl_charger_current;
 	int mv_reading;
-	int current_capacity; //huxb fixed, 2011.02.06
+	int current_capacity;
 
 	isl_chg = container_of(isl9519_work, struct isl9519q_struct,
 			charge_work.work);
@@ -181,27 +173,12 @@ static void isl9519q_charge(struct work_struct *isl9519_work)
 				__func__, mv_reading);
 		dev_dbg(&isl_chg->client->dev, "%s isl_charger_current=%d\n",
 				__func__, isl_charger_current);
-        
-//huxb fixed for change charging done condition, 2011.02.06	
-#if 0
-		if (isl_charger_current >= 0
-			&& isl_charger_current <= isl_chg->term_current) {
-			msm_charger_notify_event(
-					&isl_chg->adapter_hw_chg,
-					CHG_DONE_EVENT);
-		}
-#else
-        current_capacity = max17040_get_soc(max17040_bak_client);
+		current_capacity = max17040_get_soc(max17040_bak_client);
 		printk("===huxb current_capacity is %d \n ",  current_capacity); 
-        
-		if (isl_charger_current >= 0 && current_capacity >= MAX17040_BATTERY_FULL) 
-		{
-		     printk("===huxb isl9519q_charge CHG_DONE_EVENT\n ");  //huxb test, 2011.01.28
-		     msm_charger_notify_event(&isl_chg->adapter_hw_chg,  CHG_DONE_EVENT);
+		if (isl_charger_current >= 0 && current_capacity >= MAX17040_BATTERY_FULL) {
+			printk("===huxb isl9519q_charge CHG_DONE_EVENT\n ");  //huxb test, 2011.01.28
+			msm_charger_notify_event(&isl_chg->adapter_hw_chg,  CHG_DONE_EVENT);
 		}
-#endif
-//end by huxb fixed for change charging done condition, 2011.02.06	
-			
 		isl9519q_write_reg(isl_chg->client, CHG_CURRENT_REG,
 				isl_chg->chgcurrent);
 		ret = isl9519q_read_reg(isl_chg->client, CONTROL_REG, &temp);
@@ -224,7 +201,7 @@ static int isl9519q_start_charging(struct msm_hardware_charger *hw_chg,
 {
 	struct isl9519q_struct *isl_chg;
 	int ret = 0;
-	u16 temp;  //huxb add 2011.01.28
+	u16 temp;
 
 	isl_chg = container_of(hw_chg, struct isl9519q_struct, adapter_hw_chg);
 	if (isl_chg->charging)
@@ -233,7 +210,7 @@ static int isl9519q_start_charging(struct msm_hardware_charger *hw_chg,
 
 	dev_dbg(&isl_chg->client->dev, "%s\n", __func__);
 
-    printk("====huxb isl_chg->chgcurrent is %d\n", isl_chg->chgcurrent);
+	printk("====huxb isl_chg->chgcurrent is %d\n", isl_chg->chgcurrent);
 	ret = isl9519q_write_reg(isl_chg->client, CHG_CURRENT_REG,
 						isl_chg->chgcurrent);
 	if (ret) {
@@ -241,8 +218,6 @@ static int isl9519q_start_charging(struct msm_hardware_charger *hw_chg,
 			"%s coulnt write to current_reg\n", __func__);
 		goto out;
 	}
-	
-	//huxb add 2011.01.28
 	ret = isl9519q_read_reg(isl_chg->client, MAX_SYS_VOLTAGE_REG, &temp); 
 	if (ret) {
 		dev_err(&isl_chg->client->dev,
@@ -250,7 +225,6 @@ static int isl9519q_start_charging(struct msm_hardware_charger *hw_chg,
 		goto out;
 	}
 	printk("====huxb MAX_SYS_VOLTAGE_REG is 0x%x\n ", temp);
-	
 	ret = isl9519q_read_reg(isl_chg->client, MIN_SYS_VOLTAGE_REG, &temp); 
 	if (ret) {
 		dev_err(&isl_chg->client->dev,
@@ -258,7 +232,6 @@ static int isl9519q_start_charging(struct msm_hardware_charger *hw_chg,
 		goto out;
 	}
 	printk("====huxb MIN_SYS_VOLTAGE_REG is 0x%x\n ", temp);
-	
 	ret = isl9519q_read_reg(isl_chg->client, INPUT_CURRENT_REG, &temp); 
 	if (ret) {
 		dev_err(&isl_chg->client->dev,
@@ -266,7 +239,6 @@ static int isl9519q_start_charging(struct msm_hardware_charger *hw_chg,
 		goto out;
 	}
 	printk("====huxb INPUT_CURRENT_REG is 0x%x\n ", temp);
-	//end by huxb add ,2011.01.28
 
 	dev_dbg(&isl_chg->client->dev, "%s starting timed work\n",
 							__func__);
@@ -317,10 +289,10 @@ static irqreturn_t isl_valid_handler(int irq, void *dev_id)
 	int val;
 	struct isl9519q_struct *isl_chg;
 	struct i2c_client *client = dev_id;
-    int ret;    //huxb add 2011.02.24
-    u16 state;  //huxb add 2011.02.24
+	int ret;
+	u16 state;
 
-    msleep(400); //huxb0002 fixed for wait AC_OK stable , 2011.03.15
+	msleep(400);
 	isl_chg = i2c_get_clientdata(client);
 	val = gpio_get_value_cansleep(isl_chg->valid_n_gpio);
 	if (val < 0) {
@@ -330,46 +302,25 @@ static irqreturn_t isl_valid_handler(int irq, void *dev_id)
 		goto err;
 	}
 	dev_dbg(&isl_chg->client->dev, "%s val=%d\n", __func__, val);
-    
-    //huxb0001 fixed for change charge dection condition, 2011.02.24 
-#if 0
-	if (val) {
-		if (isl_chg->present == 1) {
-			msm_charger_notify_event(&isl_chg->adapter_hw_chg,
-						 CHG_REMOVED_EVENT);
-			isl_chg->present = 0;
-		}
-	} else {
-		if (isl_chg->present == 0) {
-			msm_charger_notify_event(&isl_chg->adapter_hw_chg,
-						 CHG_INSERTED_EVENT);
-			isl_chg->present = 1;
-		}
+
+	ret = isl9519q_read_reg(isl_chg->client, CONTROL_REG, &state);
+	if(ret) {
+		printk("===isl9519q_read_reg CONTROL_REG error\n");
 	}
-#else
-    ret = isl9519q_read_reg(isl_chg->client, CONTROL_REG, &state);
-	if(ret)
-	{
-		  printk("===isl9519q_read_reg CONTROL_REG error\n");
-	}	
 	printk("===isl9519 CONTROL_REG is 0x%x\n", state);
 
-    if( state & CHG_OK_STATUS_BIT)
-    {
-        printk("====huxb msm_charger_notify_event CHG_INSERTED_EVENT\n ");
-        msm_charger_notify_event(&isl_chg->adapter_hw_chg,
-        			 CHG_INSERTED_EVENT);
-        isl_chg->present = 1;
-    }
-    else
-    {
-        printk("====huxb msm_charger_notify_event CHG_REMOVED_EVENT\n ");
-        msm_charger_notify_event(&isl_chg->adapter_hw_chg,
-        			 CHG_REMOVED_EVENT);
-        isl_chg->present = 0;
-    }
-#endif
-    //end by huxb0001 fixed change charge dection condition, 2011.02.24
+	if( state & CHG_OK_STATUS_BIT) {
+		printk("====huxb msm_charger_notify_event CHG_INSERTED_EVENT\n ");
+		msm_charger_notify_event(&isl_chg->adapter_hw_chg,
+			CHG_INSERTED_EVENT);
+		isl_chg->present = 1;
+	} else {
+		printk("====huxb msm_charger_notify_event CHG_REMOVED_EVENT\n ");
+		msm_charger_notify_event(&isl_chg->adapter_hw_chg,
+			CHG_REMOVED_EVENT);
+		isl_chg->present = 0;
+	}
+
 err:
 	return IRQ_HANDLED;
 }
@@ -471,11 +422,8 @@ static int __devinit isl9519q_probe(struct i2c_client *client,
 		isl_chg->max_system_voltage = DEFAULT_MAX_VOLTAGE_REG_VALUE;
 	if (isl_chg->min_system_voltage == 0)
 		isl_chg->min_system_voltage = DEFAULT_MIN_VOLTAGE_REG_VALUE;
-
-    //huxb0006 fixed for change INPUT_CURRENT_REG, 2011.04.01
-    if (isl_chg->input_current == 0)
-        isl_chg->input_current = 0x780;
-    //end by huxb0006 fixed for change INPUT_CURRENT_REG, 2011.04.01
+	if (isl_chg->input_current == 0)
+		isl_chg->input_current = 0x780;
 
 	ret = isl9519q_write_reg(isl_chg->client, MAX_SYS_VOLTAGE_REG,
 			isl_chg->max_system_voltage);
@@ -601,8 +549,8 @@ static struct i2c_driver isl9519q_driver = {
 static int __init isl9519q_init(void)
 {
 #ifdef CONFIG_MAX8903_CHARGER
-    if (hw_ver != HW_VERSION_V11_A)
-        return 0;
+	if (hw_ver != HW_VERSION_V11_A)
+		return 0;
 #endif
 	return i2c_add_driver(&isl9519q_driver);
 }

@@ -25,17 +25,6 @@
 */
 
 /* Bluetooth L2CAP core and sockets. */
-/*===========================================================================
-
-                            EDIT HISTORY 
-
-when           comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/11/24    longchunyan0007   longchunyan     repaired for transporting audio file by bluetooth
-2011/12/08    chengjia0038      chengjia        repaired for transporting pic file by bluetooth
-2012/01/17    chengjia0053      chengjia        repaired for transporting file by bluetooth
-2012/04/12    chengjia0068      chengjia        repaired for transporting file by bluetooth better
-===========================================================================*/
 
 #include <linux/module.h>
 
@@ -71,6 +60,7 @@ when           comment tag        who                  what, where, why
 
 static int disable_ertm = 0;
 static unsigned long sk_ptr[2] = {0}; 
+
 static u32 l2cap_feat_mask = L2CAP_FEAT_FIXED_CHAN;
 static u8 l2cap_fixed_chan[8] = { L2CAP_FC_L2CAP | L2CAP_FC_A2MP, };
 
@@ -580,9 +570,7 @@ static void l2cap_chan_del(struct sock *sk, int err)
 	l2cap_sock_clear_timer(sk);
 
 	BT_DBG("sk %p, conn %p, err %d", sk, conn, err);
-	if (printk_ratelimit()) {
-		printk("chengjiatest: l2cap_chan_del!\n");
-	}
+
 	if (conn) {
 		/* Unlink from channel list */
 		l2cap_chan_unlink(&conn->chan_list, sk);
@@ -687,15 +675,18 @@ static void apply_fcs(struct sk_buff *skb)
 	struct sk_buff *iter;
 	struct sk_buff *final_frag = skb;
 
-    #if 0
-	if (skb_has_frags(skb))
-		len = skb_headlen(skb);
-	else
-		len = skb->len - L2CAP_FCS_SIZE;
+	if ((skb_has_frags(skb) == true)  && (skb->len < skb->data_len)) {
+		printk("lcytest:step1,skb len is %d,skb data len is %d\n",skb->len,skb->data_len);
+	} else if ((skb_has_frags(skb) == false)  && (skb->len <= 1)) {
+		printk("lcytest:step2,skb len is %d\n",skb->len);
+	} else {
+		if (skb_has_frags(skb))
+			len = skb_headlen(skb);
+		else
+			len = skb->len - L2CAP_FCS_SIZE;
+	partial_crc = crc16(0, (u8 *) skb->data, len);
 
-    partial_crc = crc16(0, (u8 *) skb->data, len);
-     
-    skb_walk_frags(skb, iter) {
+	skb_walk_frags(skb, iter) {
 		len = iter->len;
 		if (!iter->next)
 			len -= L2CAP_FCS_SIZE;
@@ -706,37 +697,7 @@ static void apply_fcs(struct sk_buff *skb)
 
 	put_unaligned_le16(partial_crc,
 		final_frag->data + final_frag->len - L2CAP_FCS_SIZE);
-    #else
-    if ((skb_has_frags(skb) == true)  && (skb->len < skb->data_len))
-    {
-        printk("lcytest:step1,skb len is %d,skb data len is %d\n",skb->len,skb->data_len);
-    }
-    else if ((skb_has_frags(skb) == false)  && (skb->len <= 1))
-    {
-        
-        printk("lcytest:step2,skb len is %d\n",skb->len);    
-    }
-    else
-    {
-        if (skb_has_frags(skb))
-		    len = skb_headlen(skb);
-	    else
-		    len = skb->len - L2CAP_FCS_SIZE;
-        partial_crc = crc16(0, (u8 *) skb->data, len);
-     
-        skb_walk_frags(skb, iter) {
-		len = iter->len;
-		if (!iter->next)
-			len -= L2CAP_FCS_SIZE;
-
-		partial_crc = crc16(partial_crc, iter->data, len);
-		final_frag = iter;
-        }
-
-	    put_unaligned_le16(partial_crc,
-		final_frag->data + final_frag->len - L2CAP_FCS_SIZE);
-    }
-    #endif
+	}
 }
 
 static inline void l2cap_send_cmd(struct l2cap_conn *conn, u8 ident, u8 code, u16 len, void *data)
@@ -1057,10 +1018,7 @@ static void l2cap_conn_del(struct hci_conn *hcon, int err)
 				l2cap_pi(sk)->release_flag = 1;	
 				break;
 			}
-			if (printk_ratelimit()) {
-				printk("chengjiatest: trans doing, wait...");
-			}
-		}			
+		}
 			bh_lock_sock(sk);
 			l2cap_chan_del(sk, err);
 			bh_unlock_sock(sk);
@@ -1177,7 +1135,6 @@ static void l2cap_sock_kill(struct sock *sk)
 	BT_DBG("sk %p state %d", sk, sk->sk_state);
 
 	printk("chengjiatest: kill sock!\n");
-	
 
 	/* Kill poor orphan */
 	bt_sock_unlink(&l2cap_sk_list, sk);
@@ -1189,8 +1146,7 @@ static void l2cap_sock_kill(struct sock *sk)
 	if(set_flag) {
 		sk_ptr[i] = (unsigned long)sk;
 		set_flag = 0;
-	}
-	else {
+	} else {
 		printk("chengjiatest: no need to set sk value+++!\n");
 	}
 	printk("chengjiatest: l2cap_sock_kill 0x%ld; 0x%ld\n", sk_ptr[0], sk_ptr[1]);
@@ -1863,7 +1819,6 @@ static inline void l2cap_do_send(struct sock *sk, struct sk_buff *skb)
 
 	if (sk->sk_state != BT_CONNECTED) {
 		printk("chengjiatest: l2cap bt is not connected sk_state = %d\n", sk->sk_state);
-		//return;
 	}
 
 	if(!pi ||!(pi->conn)) {
@@ -1907,8 +1862,8 @@ static int l2cap_ertm_send_txq(struct sock *sk)
 		if (printk_ratelimit()) {
 			printk("chengjiatest: %s bt sk 0x%ld has been released!\n", __func__, (unsigned long)sk);
 		}
-		//return -ENOTCONN;
 	}
+
 	if(l2cap_pi(sk)->release_flag) {
 		printk("chengjiatest: %s bt want to disconnect, not do anything!", __func__);
 		return -ENOTCONN;
@@ -2640,14 +2595,13 @@ static int l2cap_ertm_tx_state_xmit(struct sock *sk,
 
 	BT_DBG("sk %p, control %p, skbs %p, event %d", sk, control, skbs,
 		(int)event);
-    
 	pi = l2cap_pi(sk);
 
 	switch (event) {
 	case L2CAP_ERTM_EVENT_DATA_REQUEST:
 		if (sk->sk_send_head == NULL)
 			sk->sk_send_head = skb_peek(skbs);
-        
+
 		skb_queue_splice_tail_init(skbs, TX_QUEUE(sk));
 		l2cap_ertm_send_txq(sk);
 		break;
@@ -2868,7 +2822,7 @@ static int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
 
 	/* Remote device may have requested smaller PDUs */
 	pdu_len = min_t(size_t, pdu_len, l2cap_pi(sk)->remote_mps);
-   
+
 	if (len <= pdu_len) {
 		sar = L2CAP_SAR_UNSEGMENTED;
 		sdu_len = 0;
@@ -2878,12 +2832,12 @@ static int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
 		sdu_len = len;
 		pdu_len -= L2CAP_SDULEN_SIZE;
 	}
-   
+
 	while (len) {
 		skb = l2cap_create_iframe_pdu(sk, msg, pdu_len, sdu_len, reseg);
 
 		BT_DBG("iframe skb %p", skb);
-       
+
 		if (IS_ERR(skb)) {
 			__skb_queue_purge(seg_queue);
 			return PTR_ERR(skb);
@@ -2893,7 +2847,6 @@ static int l2cap_segment_sdu(struct sock *sk, struct sk_buff_head* seg_queue,
 		__skb_queue_tail(seg_queue, skb);
 
 		len -= pdu_len;
-       
 		if (sdu_len) {
 			sdu_len = 0;
 			pdu_len += L2CAP_SDULEN_SIZE;
@@ -3211,6 +3164,7 @@ static int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock, struct ms
 		}
 		goto done;
 	}
+
 	switch (pi->mode) {
 	case L2CAP_MODE_BASIC:
 		/* Check outgoing MTU */
@@ -3232,7 +3186,6 @@ static int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock, struct ms
 
 	case L2CAP_MODE_ERTM:
 	case L2CAP_MODE_STREAMING:
-       
 
 		/* Check outgoing MTU */
 		if (len > pi->omtu) {
@@ -3271,7 +3224,7 @@ static int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock, struct ms
 			if (err)
 				break;
 		}
-        
+
 		if (pi->mode != L2CAP_MODE_STREAMING)
 			err = l2cap_ertm_tx(sk, 0, &seg_queue,
 				L2CAP_ERTM_EVENT_DATA_REQUEST);

@@ -55,15 +55,14 @@
 
 #define KGSL_MAX_PWRLEVELS 5
 
-#define KGSL_CONVERT_TO_MBPS(val) \
-  (val*1000*1000U)
+#define KGSL_CONVERT_TO_MBPS(val) (val*1000*1000U)
 
 /* device id */
 enum kgsl_deviceid {
-	KGSL_DEVICE_3D0	= 0x00000000,
-	KGSL_DEVICE_2D0	= 0x00000001,
-	KGSL_DEVICE_2D1	= 0x00000002,
-	KGSL_DEVICE_MAX	= 0x00000003
+	KGSL_DEVICE_3D0		= 0x00000000,
+	KGSL_DEVICE_2D0		= 0x00000001,
+	KGSL_DEVICE_2D1		= 0x00000002,
+	KGSL_DEVICE_MAX		= 0x00000003
 };
 
 enum kgsl_user_mem_type {
@@ -136,30 +135,28 @@ struct kgsl_shadowprop {
 	unsigned int flags; /* contains KGSL_FLAGS_ values */
 };
 
-
-
 struct kgsl_pwrlevel {
-  unsigned int gpu_freq;
-  unsigned int bus_freq;
+	unsigned int gpu_freq;
+	unsigned int bus_freq;
 	unsigned int io_fraction;
 };
 
 struct kgsl_version {
-  unsigned int drv_major;
-  unsigned int drv_minor;
-  unsigned int dev_major;
-  unsigned int dev_minor;
+	unsigned int drv_major;
+	unsigned int drv_minor;
+	unsigned int dev_major;
+	unsigned int dev_minor;
 };
 
 #ifdef __KERNEL__
 #include <mach/msm_bus.h>
 
-#define KGSL_3D0_REG_MEMORY  "kgsl_3d0_reg_memory"
-#define KGSL_3D0_IRQ    "kgsl_3d0_irq"
-#define KGSL_2D0_REG_MEMORY  "kgsl_2d0_reg_memory"
-#define KGSL_2D0_IRQ    "kgsl_2d0_irq"
-#define KGSL_2D1_REG_MEMORY  "kgsl_2d1_reg_memory"
-#define KGSL_2D1_IRQ    "kgsl_2d1_irq"
+#define KGSL_3D0_REG_MEMORY	"kgsl_3d0_reg_memory"
+#define KGSL_3D0_IRQ		"kgsl_3d0_irq"
+#define KGSL_2D0_REG_MEMORY	"kgsl_2d0_reg_memory"
+#define KGSL_2D0_IRQ		"kgsl_2d0_irq"
+#define KGSL_2D1_REG_MEMORY	"kgsl_2d1_reg_memory"
+#define KGSL_2D1_IRQ		"kgsl_2d1_irq"
 
 struct kgsl_grp_clk_name {
 	const char *clk;
@@ -297,11 +294,11 @@ struct kgsl_cmdstream_freememontimestamp {
 #define IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP \
 	_IOW(KGSL_IOC_TYPE, 0x12, struct kgsl_cmdstream_freememontimestamp)
 
-	/* Previous versions of this header had incorrectly defined
-	   IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP as a read-only ioctl instead
-	   of a write only ioctl.  To ensure binary compatability, the following
-	   #define will be used to intercept the incorrect ioctl
-	*/
+/* Previous versions of this header had incorrectly defined
+   IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP as a read-only ioctl instead
+   of a write only ioctl.  To ensure binary compatability, the following
+   #define will be used to intercept the incorrect ioctl
+*/
 
 #define IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP_OLD \
 	_IOR(KGSL_IOC_TYPE, 0x12, struct kgsl_cmdstream_freememontimestamp)
@@ -441,7 +438,6 @@ struct kgsl_cmdwindow_write {
 
 #define IOCTL_KGSL_CMDWINDOW_WRITE \
 	_IOW(KGSL_IOC_TYPE, 0x2e, struct kgsl_cmdwindow_write)
-
 
 struct kgsl_gpumem_alloc {
 	unsigned long gpuaddr;

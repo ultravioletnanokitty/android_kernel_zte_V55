@@ -2,14 +2,6 @@
  * Copyright (C) 2004, OGAWA Hirofumi
  * Released under GPL v2.
  */
-/*===========================================================================
-
-                            EDIT HISTORY
-
-when            comment tag        who                  what, where, why                           
-----------    ------------         -----------      --------------------------      
-2011/08/11    zhangxb0003      zhangxiaobo          fixing coredump caused by unplug t card manytimes
-===========================================================================*/
 
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -103,8 +95,7 @@ static int fat12_ent_bread(struct super_block *sb, struct fat_entry *fatent,
 err_brelse:
 	brelse(bhs[0]);
 err:
-	if (printk_ratelimit())
-	    printk(KERN_ERR "FAT: FAT read failed (blocknr %llu)\n", (llu)blocknr);
+	printk(KERN_ERR "FAT: FAT read failed (blocknr %llu)\n", (llu)blocknr);
 	return -EIO;
 }
 
@@ -117,9 +108,8 @@ static int fat_ent_bread(struct super_block *sb, struct fat_entry *fatent,
 	fatent->fat_inode = MSDOS_SB(sb)->fat_inode;
 	fatent->bhs[0] = sb_bread(sb, blocknr);
 	if (!fatent->bhs[0]) {
-		if (printk_ratelimit())
-		    printk(KERN_ERR "FAT: FAT read failed (blocknr %llu)\n",
-		           (llu)blocknr);
+		printk(KERN_ERR "FAT: FAT read failed (blocknr %llu)\n",
+		       (llu)blocknr);
 		return -EIO;
 	}
 	fatent->nr_bhs = 1;
@@ -358,7 +348,7 @@ int fat_ent_read(struct inode *inode, struct fat_entry *fatent, int entry)
 
 	if (entry < FAT_START_ENT || sbi->max_cluster <= entry) {
 		fatent_brelse(fatent);
-//		fat_fs_error_ratelimit(sb, "invalid access to FAT (entry 0x%08x)", entry);
+		fat_fs_error(sb, "invalid access to FAT (entry 0x%08x)", entry);
 		return -EIO;
 	}
 

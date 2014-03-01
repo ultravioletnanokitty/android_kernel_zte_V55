@@ -8,13 +8,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
- /*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                       
-2011/06/15    liyuan0006            liyuan               add leds asynchronous blink function
-===========================================================================*/
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -173,7 +166,7 @@ static ssize_t led_blink_store(struct device *dev,
 		ret = count;
 
 	if (state >= LED_BLINKING_ON)
-          state = LED_BLINKING_ON;
+		state = LED_BLINKING_ON;
 	led_set_blink(led_cdev, state);
 	}
 
@@ -210,13 +203,7 @@ static ssize_t led_grpfreq_store(struct device *dev,
 
 	return ret;
 }
-/*
-static void led_update_grppwm(struct led_classdev *led_cdev)
-{
-	if (led_cdev->grppwm_get)
-		led_cdev->grppwm = led_cdev->grppwm_get(led_cdev);
-}
-*/
+
 static ssize_t led_grppwm_show(struct device *dev, 
 		struct device_attribute *attr, char *buf)
 {
@@ -254,9 +241,9 @@ static struct device_attribute led_class_attrs[] = {
 	__ATTR(max_brightness, 0644, led_max_brightness_show,
 			led_max_brightness_store),
 #ifdef CONFIG_LEDS_ZTE
-      __ATTR(blink, 0644, led_blink_show, led_blink_store),
-      __ATTR(grpfreq, 0644, led_grpfreq_show, led_grpfreq_store),
-      __ATTR(grppwm, 0644, led_grppwm_show, led_grppwm_store),
+	__ATTR(blink, 0644, led_blink_show, led_blink_store),
+	__ATTR(grpfreq, 0644, led_grpfreq_show, led_grpfreq_store),
+	__ATTR(grppwm, 0644, led_grppwm_show, led_grppwm_store),
 #endif
 #ifdef CONFIG_LEDS_TRIGGERS
 	__ATTR(trigger, 0644, led_trigger_show, led_trigger_store),

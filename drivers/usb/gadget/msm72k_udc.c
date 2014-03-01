@@ -1700,10 +1700,9 @@ void usb_function_reenumerate(void)
 	/* disable and re-enable the D+ pullup */
 	dev_dbg(&ui->pdev->dev, "disable pullup\n");
 	writel(readl(USB_USBCMD) & ~USBCMD_RS, USB_USBCMD);
-	
+
 	msleep(60);
-	//msleep(10);
-	
+
 	dev_dbg(&ui->pdev->dev, "enable pullup\n");
 	writel(readl(USB_USBCMD) | USBCMD_RS, USB_USBCMD);
 }

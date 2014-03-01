@@ -38,10 +38,5 @@ obj-$(CONFIG_MT9D112) += mt9d112.o mt9d112_reg.o
 obj-$(CONFIG_MT9D113) += mt9d113.o mt9d113_reg.o
 obj-$(CONFIG_MSM_GEMINI) += msm_gemini_dev.o msm_gemini_sync.o msm_gemini_core.o msm_gemini_hw.o msm_gemini_platform.o
 
-
-########################## FOR ADD ZTE #####################################
-# ZTE_MODIFY chengjia add camera
 obj-$(CONFIG_CAMERA_OV5640_ZTE) += ov5640.o
 obj-$(CONFIG_CAMERA_MT9D115_ZTE) += mt9d115.o
-# ZTE_MODIFY end
-########################## FOR ADD ZTE END #################################

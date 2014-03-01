@@ -14,16 +14,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-/*===========================================================================
 
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-
-2011/06/14    gouyajun0010  	gouyajun 			modify for lcd display in kernel
-2011/08/04    liyuan0010           liyuan                add FTM modem function
-===========================================================================*/
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
@@ -350,10 +341,8 @@ static int msm_fb_probe(struct platform_device *pdev)
 	rc = msm_fb_register(mfd);
 	if (rc)
 		return rc;
-//gouyajun0010  set lcdc control on start
-	if(mfd->panel_info.pdest==DISPLAY_1)
+	if (mfd->panel_info.pdest==DISPLAY_1)
 		mdp_lcdc_on(pdev);
-//gouyajun0010 end
 	err = pm_runtime_set_active(mfd->fbi->dev);
 	if (err < 0)
 		printk(KERN_ERR "pm_runtime: fail to set active.\n");
@@ -930,16 +919,16 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	var->grayscale = 0,	/* No graylevels */
 	var->nonstd = 0,	/* standard pixel format */
 	var->activate = FB_ACTIVATE_VBL,	/* activate it at vsync */
-	#if defined CONFIG_LCD_SIZE_7_INCH
-	var->height =94,	/* height of picture in mm */
+#if defined CONFIG_LCD_SIZE_7_INCH
+	var->height = 94,	/* height of picture in mm */
 	var->width = 151,	/* width of picture in mm */
-	#elif defined CONFIG_LCD_SIZE_10_INCH
-	var->height =136,	/* height of picture in mm */
+#elif defined CONFIG_LCD_SIZE_10_INCH
+	var->height = 136,	/* height of picture in mm */
 	var->width = 217,	/* width of picture in mm */
-	#else
-	var->height =-1,	/* height of picture in mm */
+#else
+	var->height = -1,	/* height of picture in mm */
 	var->width = -1,	/* width of picture in mm */
-	#endif
+#endif
 	var->accel_flags = 0,	/* acceleration flags */
 	var->sync = 0,	/* see FB_SYNC_* */
 	var->rotate = 0,	/* angle we rotate counter clockwise */
@@ -1186,16 +1175,12 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	     mfd->index, fbi->var.xres, fbi->var.yres, fbi->fix.smem_len);
 
 #ifdef CONFIG_FB_MSM_LOGO
-  	//if (!load_565rle_image(INIT_IMAGE_FILE)) ;	/* Flip buffer */
-  	printk(KERN_INFO ": LI YUAN zte_ftm_mod_disp=%d\n",zte_ftm_mod_ctl);
-	if(!zte_ftm_mod_ctl)
-       {
-          load_565rle_image(INIT_IMAGE_FILE);
-       }
-	else
-       {          
-          load_565rle_image(INIT_FTM_IMAGE_FILE); 
-       }
+	printk(KERN_INFO ": zte_ftm_mod_disp=%d\n",zte_ftm_mod_ctl);
+	if(!zte_ftm_mod_ctl) {
+		load_565rle_image(INIT_IMAGE_FILE);
+	} else {
+		load_565rle_image(INIT_FTM_IMAGE_FILE); 
+	}
 #endif
 	ret = 0;
 
@@ -1621,7 +1606,6 @@ static int msm_fb_set_par(struct fb_info *info)
 						       var->bits_per_pixel/8);
 
 	if (blank) {
-	//	msm_fb_blank_sub(FB_BLANK_POWERDOWN, info, mfd->op_enable);//gouyajun0010 don't power down lcd power
 		msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable);
 	}
 
@@ -2645,6 +2629,7 @@ static int msmfb_mixer_info(struct fb_info *info, unsigned long *argp)
 
 	return cnt;
 }
+
 #endif
 
 DECLARE_MUTEX(msm_fb_ioctl_ppp_sem);

@@ -43,9 +43,4 @@ obj-$(CONFIG_BATTERY_QCIBAT)	+= qci_battery.o
 obj-$(CONFIG_BATTERY_BQ27520)	+= bq27520_fuelgauger.o
 obj-$(CONFIG_BATTERY_BQ27541)	+= bq27541_fuelgauger.o
 obj-$(CONFIG_SMB137B_CHARGER)   += smb137b.o
-
-######## FOR ZTE ADD START #############################
-#** ZTE_MODIFY: liuzhongzhi added for max8903 charger IC, 20110520 *#
 obj-$(CONFIG_MAX8903_CHARGER)	+= max8903_charger.o
-#** end liuzhongzhi *#
-######## FOR ZTE ADD END ###############################

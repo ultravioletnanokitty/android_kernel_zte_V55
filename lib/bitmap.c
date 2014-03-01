@@ -329,11 +329,11 @@ EXPORT_SYMBOL(bitmap_clear);
  * is multiple of that power of 2.
  */
 unsigned long bitmap_find_next_zero_area_off(unsigned long *map,
-					     unsigned long size,
-					     unsigned long start,
-					     unsigned int nr,
-					     unsigned long align_mask,
-					     unsigned long align_offset)
+					 unsigned long size,
+					 unsigned long start,
+					 unsigned int nr,
+					 unsigned long align_mask,
+					 unsigned long align_offset)
 {
 	unsigned long index, end, i;
 again:
@@ -361,7 +361,6 @@ EXPORT_SYMBOL(bitmap_find_next_zero_area_off);
 
 #define CHUNKSZ				32
 #define nbits_to_hold_value(val)	fls(val)
-//#define unhex(c)			(isdigit(c) ? (c - '0') : (toupper(c) - 'A' + 10))
 #define BASEDEC 10		/* fancier cpuset lists input in decimal */
 
 /**

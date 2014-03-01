@@ -2375,14 +2375,11 @@ config FB_MSM_LCDC_PRISM_WVGA
 	bool
 	select FB_MSM_LCDC_PANEL
 	default n
-###ZTE_MODIFY chenfei0001 LCD driver porting 20110713###
-##########################FOR ZTE ADD START##############################
+
 config FB_MSM_LCDC_HANNSTAR_WXVGA_ZTE
 	bool
 	select FB_MSM_LCDC_PANEL
 	default n
-##########################FOR ZTE ADD START##############################
-###ZTE_MODIFY end. chenfei0001
 
 config FB_MSM_LCDC_SAMSUNG_WSVGA
 	bool
@@ -2444,7 +2441,7 @@ config FB_MSM_OVERLAY_WRITEBACK
         bool "MDP overlay write back mode enable"
 	---help---
 	  Support for MDP4 OVERLAY write back mode
-### ZTE_MODIFY chenfei0001 LCD pclk and size config 20111214
+
 choice 
 	prompt "LCDC PCLK"
 	default LCDC_HANNSTAR_WXVGA_PANEL_PCLK_OTHER
@@ -2477,7 +2474,7 @@ config LCD_SIZE_7_INCH
 	bool "Whether the LCD is 7 inch"
 	
 endchoice	
-###ZTE_MODIFY end. chenfei0001
+
 choice
 	prompt "LCD Panel"
 	default FB_MSM_MDDI_AUTO_DETECT
@@ -2488,7 +2485,7 @@ config FB_MSM_LCDC_PRISM_WVGA_PANEL
 	select FB_MSM_LCDC_PRISM_WVGA
 	---help---
 	  Support for LCDC Prism WVGA (800x480) panel
-### ZTE_MODIFY chenfei0001 LCD driver porting 20110713
+
 config FB_MSM_LCDC_HANNSTAR_WXVGA_PANEL_ZTE
 	depends on FB_MSM_LCDC_HW
 	bool "LCDC hannstar WXGA Panel ZTE"
@@ -2496,7 +2493,6 @@ config FB_MSM_LCDC_HANNSTAR_WXVGA_PANEL_ZTE
 	---help---
 	  Support for LCDC Prism WVGA (1280x800) panel
 
-###ZTE_MODIFY end. chenfei0001
 config FB_MSM_LCDC_SAMSUNG_WSVGA_PANEL
 	depends on FB_MSM_LCDC_HW
 	bool "LCDC Samsung WSVGA Panel"

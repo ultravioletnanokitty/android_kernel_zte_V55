@@ -112,11 +112,7 @@ endif
 obj-$(CONFIG_FB_MSM_LCDC_PANEL) += lcdc_panel.o
 obj-$(CONFIG_FB_MSM_LCDC_PRISM_WVGA) += lcdc_prism.o
 obj-$(CONFIG_FB_MSM_LCDC_SAMSUNG_WSVGA) += lcdc_samsung_wsvga.o
-###ZTE_MODIFY chenfei0001 LCD driver porting 20110713
-#################FOR ZTE ADD START##############################################
 obj-$(CONFIG_FB_MSM_LCDC_HANNSTAR_WXVGA_ZTE) += lcdc_hannstar_wxvga_lvds_zte.o
-#################FOR ZTE ADD END################################################
-###ZTE_MODIFY end. chenfei0001
 obj-$(CONFIG_FB_MSM_LCDC_CHIMEI_WXGA) += lcdc_chimei_wxga.o
 obj-$(CONFIG_FB_MSM_LCDC_EXTERNAL_WXGA) += lcdc_external.o
 obj-$(CONFIG_FB_MSM_HDMI_SII_EXTERNAL_720P) += hdmi_sii9022.o

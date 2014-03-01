@@ -26,6 +26,7 @@
 #include <linux/io.h>
 #include <linux/ioport.h>
 #include <linux/pm_runtime.h>
+#include <linux/usb/android_composite.h>
 
 #include <linux/device.h>
 #include <linux/pm_qos_params.h>
@@ -36,10 +37,6 @@
 #include <linux/uaccess.h>
 #include <mach/clk.h>
 #include <mach/msm_xo.h>
-
-/** liuyuanyuan added for switch back to usb_mass_sotrage start */
-#include <linux/usb/android_composite.h>
-/** liuyuanyuan added for switch back to usb_mass_storage end */
 
 #define MSM_USB_BASE	(dev->regs)
 #define USB_LINK_RESET_TIMEOUT	(msecs_to_jiffies(10))
@@ -158,7 +155,6 @@ static void disable_idgnd(struct msm_otg *dev)
 	/* Do nothing if instead of ID pin, USER controls mode switch */
 	if (dev->pdata->otg_mode == OTG_USER_CONTROL)
 		return;
-
 	ulpi_write(dev, (1<<4), 0x0F);
 	ulpi_write(dev, (1<<4), 0x12);
 	writel(readl(USB_OTGSC) & ~OTGSC_IDIE, USB_OTGSC);
@@ -697,6 +693,7 @@ static int msm_otg_suspend(struct msm_otg *dev)
 	 * 4. peripheral is supported, but, vbus is not routed to pmic
 	 */
 	host_bus_suspend = dev->otg.host && is_host();
+
 	if ((dev->otg.gadget && chg_type == USB_CHG_TYPE__WALLCHARGER) ||
 		host_bus_suspend ||
 		(dev->otg.host && !dev->pmic_id_notif_supp) ||
@@ -1105,7 +1102,7 @@ static int msm_otg_set_host(struct otg_transceiver *xceiv, struct usb_bus *host)
 	return 0;
 }
 #endif
-
+ 
 void msm_otg_set_id_state(int id)
 {
 	struct msm_otg *dev = the_msm_otg;
@@ -1702,7 +1699,6 @@ static void msm_otg_sm_work(struct work_struct *w)
 
 			/* Workaround: Reset phy after session */
 			otg_reset(&dev->otg, 1);
-			
 			work = 1;
 		} else if (test_bit(B_BUS_REQ, &dev->inputs) &&
 				dev->otg.gadget->b_hnp_enable &&
@@ -1726,11 +1722,6 @@ static void msm_otg_sm_work(struct work_struct *w)
 #ifdef CONFIG_USB_MSM_ACA
 			del_timer_sync(&dev->id_timer);
 #endif
-      #if 0
-			/* Workaround: Reset PHY in SE1 state */
-			otg_reset(&dev->otg, 1);
-			#endif
-			
 			pr_debug("entering into lpm with wall-charger\n");
 			msm_otg_put_suspend(dev);
 			/* Allow idle power collapse */
@@ -2581,7 +2572,7 @@ static int __init msm_otg_probe(struct platform_device *pdev)
 		if (!ret) {
 			dev->pmic_id_notif_supp = 1;
 		} else if (ret != -ENOTSUPP) {
-			pr_err("%s: pmic_id_ notif_init failed err:%d",
+			pr_err("%s: pmic_id_notif_init failed err:%d",
 					__func__, ret);
 			goto free_pmic_vbus_notif;
 		}

@@ -128,11 +128,11 @@ struct mmc_request {
 
 struct mmc_host;
 struct mmc_card;
-/** ZTE_MODIFY chengjia0029 added by chengjia 2011/08/09 for syn remove*/
+
 #if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
 extern int bcm_syn_rm_flag;
 #endif
-/** ZTE_MODIFY chengjia0029 end*/
+
 extern void mmc_wait_for_req(struct mmc_host *, struct mmc_request *);
 extern int mmc_wait_for_cmd(struct mmc_host *, struct mmc_command *, int);
 extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,

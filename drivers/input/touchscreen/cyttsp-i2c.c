@@ -315,7 +315,6 @@ static void cyttsp_exit_bl_mode(struct cyttsp *ts)
 			CY_REG_BASE, sizeof(bl_cmd), bl_cmd);
 		msleep(20);
 	} while (tries++ < 10 && (retval < 0));
-
 	msleep(50);
 }
 
@@ -532,7 +531,6 @@ static int flash_data_rec(struct cyttsp *ts, u8 *buf)
 	} while (g_bl_data.bl_status != 0x10 &&
 		g_bl_data.bl_status != 0x11 &&
 		tries++ < 100);
-
 	return rc;
 }
 

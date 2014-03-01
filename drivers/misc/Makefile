@@ -27,9 +27,6 @@ obj-$(CONFIG_ISL29003)		+= isl29003.o
 obj-$(CONFIG_SENSORS_TSL2550)	+= tsl2550.o
 obj-$(CONFIG_EP93XX_PWM)	+= ep93xx_pwm.o
 obj-$(CONFIG_DS1682)		+= ds1682.o
-##ZTE_MODIFY chenfei0002 echo suppression driver porting 20110721##
-obj-$(CONFIG_BELASIGNA300)		+= belasigna300.o
-##ZTE_MODIFY end. chenfei0002 ##
 obj-$(CONFIG_TI_DAC7512)	+= ti_dac7512.o
 obj-$(CONFIG_UID_STAT)		+= uid_stat.o
 obj-$(CONFIG_C2PORT)		+= c2port/
@@ -54,6 +51,5 @@ obj-$(CONFIG_PMIC8058_XOADC) += pmic8058-xoadc.o
 obj-$(CONFIG_PMIC8058_MISC) += pmic8058-misc.o
 obj-$(CONFIG_PMIC8058_BATTALARM) += pmic8058-batt-alarm.o
 obj-$(CONFIG_TZCOM) += tzcom.o
-## ZTE_MODIFY zhaoyang add cap gyro_MPU3050 sensor driver ##
+obj-$(CONFIG_BELASIGNA300)		+= belasigna300.o
 obj-$(CONFIG_GYRO_MPU3050_ZTE) += mpu3050/
-## ZTE_MODIFY end ##

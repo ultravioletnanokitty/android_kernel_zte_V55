@@ -14,15 +14,6 @@
  *
  */
 
-/*===========================================================================
-
-                        EDIT HISTORY 
-
-when          comment tag      who              what, where, why
-----------    ------------     -----------      --------------------------
-2011/07/22    yuanbo0013       yuanbo           modified for kernel logging
-===========================================================================*/
-
 #ifndef _LINUX_LOGGER_H
 #define _LINUX_LOGGER_H
 
@@ -43,10 +34,7 @@ struct logger_entry {
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
-
-/** ZTE_MODIFY yuanbo kernel logging yuanbo0013 2011-7-22*/
-#define LOGGER_LOG_KERNEL	"log_kernel"	/* everything else */
-/** ZTE_MODIFY yuanbo0013 end*/
+#define LOGGER_LOG_KERNEL	"log_kernel"	/* kernel messages */
 
 #define LOGGER_ENTRY_MAX_LEN		(4*1024)
 #define LOGGER_ENTRY_MAX_PAYLOAD	\

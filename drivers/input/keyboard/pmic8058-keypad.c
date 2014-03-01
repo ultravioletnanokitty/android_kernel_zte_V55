@@ -15,15 +15,6 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2011/03/23    zhangxb0006       zhangxiaobo      modify for adding keypad
-2011/04/29    liyuan0003           liyuan                modify for keyboard detection
-===========================================================================*/
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -106,10 +97,9 @@ when              comment tag        who                  what, where, why
 #define KEYF_FIX_LAST_ROW		0x01
 
 #ifdef CONFIG_KEYBOARD_ZTE
-#define KEYP_NUM_ROWS      1
-#define KEYP_NUM_COLS        2
+#define KEYP_NUM_ROWS			1
+#define KEYP_NUM_COLS			2
 #endif
-
 
 /* ---------------------------------------------------------------------*/
 struct pmic8058_kp {
@@ -310,23 +300,21 @@ static int __pmic8058_kp_scan_matrix(struct pmic8058_kp *kp, u16 *new_state,
 {
 	int row, col, code;
 
-       #ifdef CONFIG_KEYBOARD_ZTE
-       for (row = 0; row < KEYP_NUM_ROWS; row++)  
-	#else 
-       for (row = 0; row < kp->pdata->num_rows; row++)
-	#endif
-	{
+#ifdef CONFIG_KEYBOARD_ZTE
+	for (row = 0; row < KEYP_NUM_ROWS; row++) {
+#else
+	for (row = 0; row < kp->pdata->num_rows; row++) {
+#endif
 		int bits_changed = new_state[row] ^ old_state[row];
 
 		if (!bits_changed)
 			continue;
 
-              #ifdef CONFIG_KEYBOARD_ZTE
-              for (col = 0; col < KEYP_NUM_COLS; col++) 
-	       #else		  
-		for (col = 0; col < kp->pdata->num_cols; col++) 
-		#endif
-		{
+#ifdef CONFIG_KEYBOARD_ZTE
+		for (col = 0; col < KEYP_NUM_COLS; col++) {
+#else
+		for (col = 0; col < kp->pdata->num_cols; col++) {
+#endif
 			if (!(bits_changed & (1 << col)))
 				continue;
 
@@ -614,12 +602,11 @@ static int pm8058_kp_config_drv(int gpio_start, int num_gpios)
 		return -EINVAL;
 
 	while (num_gpios--) {
-		#ifdef CONFIG_KEYBOARD_ZTE
-		if (gpio_start > 9)
-		{
+#ifdef CONFIG_KEYBOARD_ZTE
+		if (gpio_start > 9) {
 			continue;
 		}
-		#endif
+#endif
 		rc = pm8058_gpio_config(gpio_start++, &kypd_drv);
 		if (rc) {
 			pr_err("%s: FAIL pm8058_gpio_config(): rc=%d.\n",

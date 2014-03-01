@@ -15,16 +15,6 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
-
-                           EDIT HISTORY
-
-when         who           what, where, why                 comment tag
---------     ---------     ---------------------------      ----------------
-2011/04/08   liuzhongzhi   charger timer out change to 8h    liuzhongzhi0002
-2011/05/26   liuzhongzhi   not report Battery Low warning    liuzhongzhi0006
-                           when charger is in.
-===========================================================================*/
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -39,12 +29,11 @@ when         who           what, where, why                 comment tag
 #include <linux/time.h>
 #include <linux/slab.h>
 #include <linux/wakelock.h>
+#include <linux/i2c.h>
 
 #include <asm/atomic.h>
 
 #include <mach/msm_hsusb.h>
-
-#include <linux/i2c.h>  //huxb fixed, 2001.02.06
 
 #define MSM_CHG_MAX_EVENTS		16
 #define CHARGING_TEOC_MS		28800000
@@ -59,9 +48,9 @@ when         who           what, where, why                 comment tag
 
 #define BATTERY_LOW_SOC_WARNING  1 
 
-extern int max17040_get_vcell(struct i2c_client *client);   //huxb fixed, 2011.02.06
-extern int max17040_get_soc(struct i2c_client *client);   //huxb fixed, 2011.02.06
-extern struct i2c_client *max17040_bak_client;    //huxb fixed, 2001.02.06
+extern int max17040_get_vcell(struct i2c_client *client);
+extern int max17040_get_soc(struct i2c_client *client);
+extern struct i2c_client *max17040_bak_client;
 /**
  * enum msm_battery_status
  * @BATT_STATUS_ABSENT: battery not present
@@ -213,16 +202,6 @@ static int get_battery_temperature(void)
 		return MSM_CHARGER_GAUGE_MISSING_TEMP;
 	}
 }
-
-#if 0
-static int get_prop_batt_capacity(void)
-{
-	if (msm_batt_gauge && msm_batt_gauge->get_batt_remaining_capacity)
-		return msm_batt_gauge->get_batt_remaining_capacity();
-
-	return msm_chg.get_batt_capacity_percent();
-}
-#endif
 
 static int get_prop_batt_health(void)
 {
@@ -861,11 +840,7 @@ static void handle_event(struct msm_hardware_charger *hw_chg, int event)
 			if (priv->hw_chg_state != CHG_PRESENT_STATE)
 				handle_charger_removed(priv, CHG_PRESENT_STATE);
 		} else {
-		#if 0
-			if (priv->hw_chg_state != CHG_READY_STATE) {
-		#else
 			if (priv->hw_chg_state == CHG_PRESENT_STATE) {
-		#endif
 				priv->hw_chg_state = CHG_READY_STATE;
 				handle_charger_ready(priv);
 			}
@@ -957,11 +932,7 @@ static void handle_event(struct msm_hardware_charger *hw_chg, int event)
 		event, msm_chg.batt_status);
 
 	/* update userspace */
-#if 0
-	if (msm_batt_gauge)
-#else
 	if (msm_psy_batt_registered)
-#endif
 		power_supply_changed(&msm_psy_batt);
 	if (priv)
 		power_supply_changed(&priv->psy);
@@ -1029,25 +1000,6 @@ void msm_register_usb_charger_state(void (*function)(int *))
 {
 	get_usb_charger_state = function;
 }
-#if 0
-/*
- * msm_get_source_current() - get max_source_current from hw private charger struct
- * @hw_chg:	hw charger 
- */
-unsigned int msm_get_source_current(struct msm_hardware_charger *hw_chg)
-{
-	int ret;
-	struct msm_hardware_charger_priv *priv;
-	
-	priv = hw_chg->charger_private;
-	ret = priv->max_source_current;
-
-	//pr_debug("%s:%s source current is %dmA\n", __func__, hw_chg->name, ret);
-	printk("%s:%s source current is %dmA\n", __func__, hw_chg->name, ret);
-
-	return ret;
-}
-#endif
 /*
  * msm_set_source_current() - Set hw charger max source current
  * @hw_chg:	The hw charger to set current
@@ -1071,7 +1023,6 @@ void msm_charger_vbus_draw(unsigned int mA)
 	if (get_usb_charger_state)
 		(*get_usb_charger_state)(&mA);
 #endif
-
 	if (usb_hw_chg_priv) {
 		usb_hw_chg_priv->max_source_current = mA;
 		msm_charger_notify_event(usb_hw_chg_priv->hw_chg,
@@ -1106,6 +1057,7 @@ static int __init determine_initial_batt_status(void)
 			" rc=%d\n", __func__, rc);
 		return rc;
 	}
+
 	msm_psy_batt_registered = 1;
 	/* start updaing the battery powersupply every msm_chg.update_time
 	 * milliseconds */

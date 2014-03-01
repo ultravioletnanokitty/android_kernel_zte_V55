@@ -14,15 +14,6 @@
  * GNU General Public License for more details.
  *
  */
- /*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-
-2011/06/14    gouyajun0011  	gouyajun 			modify for load logo to framebuffer
-===========================================================================*/
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/fb.h>
@@ -36,8 +27,7 @@ when              comment tag        who                  what, where, why
 #define fb_width(fb)	((fb)->var.xres)
 #define fb_height(fb)	((fb)->var.yres)
 #define fb_size(fb)	((fb)->var.xres * (fb)->var.yres * 2)
-
-#define fb_bpp(fb) ((fb)->var.bits_per_pixel)		//gouyajun0011 add for display android logo in kernel
+#define fb_bpp(fb) ((fb)->var.bits_per_pixel)
 
 static void memset16(void *_ptr, unsigned short val, unsigned count)
 {
@@ -46,15 +36,14 @@ static void memset16(void *_ptr, unsigned short val, unsigned count)
 	while (count--)
 		*ptr++ = val;
 }
-//gouyajun0011 add start
+
 void memset32(uint32_t* dst, uint32_t value, size_t size)
-{    
-	size >>= 2;    
-	while (size--) {        
-		*dst++ = value;    
-	}
+{
+	size >>= 2;
+	while (size--) 
+		*dst++ = value;
 }
-//gouyajun0011 add end 
+
 /* 565RLE image format: [count(2 bytes), rle(2 bytes)] */
 int load_565rle_image(char *filename)
 {
@@ -62,7 +51,8 @@ int load_565rle_image(char *filename)
 	int fd, count, err = 0;
 	unsigned max;
 	unsigned short *data, *bits, *ptr;
-	uint32_t rgb32, red, green, blue, alpha;//gouyajun0011 add 
+	uint32_t rgb32, red, green, blue, alpha;
+
 	info = registered_fb[0];
 	if (!info) {
 		printk(KERN_WARNING "%s: Can not access framebuffer\n",
@@ -100,24 +90,22 @@ int load_565rle_image(char *filename)
 		unsigned n = ptr[0];
 		if (n > max)
 			break;
-
-//gouyajun0011 add load logo to framebuffer	
 		if (fb_bpp(info) == 16) {
 			memset16(bits, ptr[1], n << 1);
 			bits += n;
-		}else{//kylin196822 modify start
-		      rgb32 = ((ptr[1] >> 11) & 0x1F);
-                    red = (rgb32 << 3) | (rgb32 >> 2);
-                    rgb32 = ((ptr[1] >> 5) & 0x3F);
-                    green = (rgb32 << 2) | (rgb32 >> 4);
-                    rgb32 = ((ptr[1]) & 0x1F);
-                    blue = (rgb32 << 3) | (rgb32 >> 2);
-                    alpha = 0xff;
-                    rgb32 = (alpha << 24) | (blue << 16)
-                    | (green << 8) | (red);
-                    memset32((uint32_t *)bits, rgb32, n << 2);
-                    bits += (n * 2);
-		}//gouyajun0011 add load logo to framebuffer end
+		} else {
+			rgb32 = ((ptr[1] >> 11) & 0x1F);
+			red = (rgb32 << 3) | (rgb32 >> 2);
+			rgb32 = ((ptr[1] >> 5) & 0x3F);
+			green = (rgb32 << 2) | (rgb32 >> 4);
+			rgb32 = ((ptr[1]) & 0x1F);
+			blue = (rgb32 << 3) | (rgb32 >> 2);
+			alpha = 0xff;
+			rgb32 = (alpha << 24) | (blue << 16)
+			| (green << 8) | (red);
+			memset32((uint32_t *)bits, rgb32, n << 2);
+			bits += (n * 2);
+		}
 		max -= n;
 		ptr += 2;
 		count -= 4;

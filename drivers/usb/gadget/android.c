@@ -29,7 +29,10 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/debugfs.h>
+#include <linux/miscdevice.h>
 #include <linux/types.h>
+#include <linux/wakelock.h>
+
 #include <linux/usb/android_composite.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
@@ -37,8 +40,7 @@
 
 #include "gadget_chips.h"
 #include "u_serial.h"
-#include <linux/miscdevice.h>
-#include <linux/wakelock.h>
+
 /*
  * Kbuild is not very cooperative with respect to linking separately
  * compiled library objects into one module.  So for now we won't use
@@ -97,8 +99,6 @@ struct usb_ex_work
 struct usb_ex_work global_usbwork = {0};
 static int create_usb_work_queue(void);
 static int destroy_usb_work_queue(void);
-
-
 
 static struct android_dev *_android_dev;
 
@@ -265,23 +265,6 @@ static int product_matches_functions(struct android_usb_product *p)
 	}
 	return 1;
 }
-#if 0
-static int get_vendor_id(struct android_dev *dev)
-{
-	struct android_usb_product *p = dev->products;
-	int count = dev->num_products;
-	int i;
-
-	if (p) {
-		for (i = 0; i < count; i++, p++) {
-			if (p->vendor_id && product_matches_functions(p))
-				return p->vendor_id;
-		}
-	}
-	/* use default vendor ID */
-	return dev->vendor_id;
-}
-#endif
 
 static int get_product_id(struct android_dev *dev)
 {
@@ -362,27 +345,16 @@ static int __devinit android_bind(struct usb_composite_dev *cdev)
 
 	usb_gadget_set_selfpowered(gadget);
 	dev->cdev = cdev;
-
-	#if 0	
-	device_desc.idVendor = __constant_cpu_to_le16(get_vendor_id(dev));
-	device_desc.idProduct = __constant_cpu_to_le16(get_product_id(dev));
-	cdev->desc.idVendor = device_desc.idVendor;
-	cdev->desc.idProduct = device_desc.idProduct;
-	#else
 	product_id = get_product_id(dev);
-	if(product_id == 0x2D00 || product_id == 0x2D01)
-	{
+	if(product_id == 0x2D00 || product_id == 0x2D01) {
 		vendor_id = 0x18D1;
-	}
-	else
-	{
+	} else {
 		vendor_id = 0x19D2;
 	}
 	device_desc.idVendor = __constant_cpu_to_le16(vendor_id);
 	device_desc.idProduct = __constant_cpu_to_le16(product_id);
 	cdev->desc.idVendor = device_desc.idVendor;
 	cdev->desc.idProduct = device_desc.idProduct;
-	#endif
 
 	return 0;
 }
@@ -589,7 +561,6 @@ int android_enable_function(struct usb_function *f, int enable)
 	int disable = !enable;
 	int product_id;
 	int vendor_id;
-	printk("liuyuanyuan android_enable_function, f->name %s, !!f->disabled=%d, disable=%d\n", f->name, !!f->disabled, disable);
 
 	if (!is_sysfschange_allowed(f))
 		return -EINVAL;
@@ -624,11 +595,6 @@ int android_enable_function(struct usb_function *f, int enable)
 			android_config_functions(f, enable);
 #endif
 
-#ifdef CONFIG_USB_ANDROID_MTP
-		if (!strcmp(f->name, "mtp"))
-			android_config_functions(f, enable);
-#endif
-
 		if (!strcmp(f->name, "diag"))
 		{
 			android_config_functions(f, enable);
@@ -649,16 +615,12 @@ int android_enable_function(struct usb_function *f, int enable)
 		{
 			android_config_functions(f, enable);
 		}
-	
-		//device_desc.idVendor = __constant_cpu_to_le16(get_vendor_id(dev));
+
 		product_id = get_product_id(dev);
-		printk("liuyuanyuan PID=0x%x\n", product_id);
-		if(product_id == 0x2D00 || product_id == 0x2D01)
-		{
+		printk("usb: PID=0x%x\n", product_id);
+		if(product_id == 0x2D00 || product_id == 0x2D01) {
 			vendor_id = 0x18D1;
-		}
-		else
-		{
+		} else {
 			vendor_id = 0x19D2;
 		}
 		device_desc.idVendor = __constant_cpu_to_le16(vendor_id);
@@ -669,13 +631,6 @@ int android_enable_function(struct usb_function *f, int enable)
 			dev->cdev->desc.idProduct = device_desc.idProduct;
 		}
 		usb_composite_force_reset(dev->cdev);
-		#if 0
-		if (!strcmp(f->name, "rndis") && (enable==0) )
-		{
-			printk("liuyuanyuan detect rndis disable operation, enable rndis automatically in enable_mtp()\n");
-			enable_mtp();
-		}
-		#endif
 	}
 	return 0;
 }
@@ -780,11 +735,7 @@ static int __init android_probe(struct platform_device *pdev)
 		if (pdata->manufacturer_name)
 			strings_dev[STRING_MANUFACTURER_IDX].s =
 					pdata->manufacturer_name;
-		#if 0
-		if (pdata->serial_number)
-			strings_dev[STRING_SERIAL_IDX].s = pdata->serial_number;
-		#else
-		printk("liuyuanyuan pdata->serial_number is <%s>, pdata->product_id is <0x%x>\n", pdata->serial_number, pdata->product_id);
+		printk("usb: pdata->serial_number is <%s>, pdata->product_id is <0x%x>\n", pdata->serial_number, pdata->product_id);
 		if (pdata->serial_number)
 		{
 			if(pdata->product_id == 0x0249)
@@ -796,7 +747,6 @@ static int __init android_probe(struct platform_device *pdev)
 				strings_dev[STRING_SERIAL_IDX].s = pdata->serial_number;
 			}
 		}
-		#endif
 	}
 #ifdef CONFIG_DEBUG_FS
 	result = android_debugfs_init(dev);
@@ -838,7 +788,6 @@ static int __init init(void)
 		return -ENOMEM;
 
 	create_usb_work_queue();
-
 	/* set default values, which should be overridden by platform data */
 	dev->product_id = PRODUCT_ID;
 	_android_dev = dev;
@@ -856,88 +805,37 @@ static void __exit cleanup(void)
 	platform_driver_unregister(&android_platform_driver);
 	kfree(_android_dev);
 	_android_dev = NULL;
-
 	destroy_usb_work_queue();
-
-	
 }
 module_exit(cleanup);
 
-
-
 static void usb_switch_work(struct work_struct *w)
 {
-	struct usb_ex_work *p = container_of(w, struct usb_ex_work, switch_work.work);
-	//unsigned long flags;
-	//if (!_android_dev) {
-
-		//printk(KERN_ERR"usb:%s: %d: _android_dev == NULL\n",
-		      // __FUNCTION__, __LINE__);
-		//return ;
-	//}
-	//if (!p->enable_switch) {
-		//return ;
-	//}
-	//if (p->has_switch) {
-		//printk("usb:rms:%s %d: already switch pid 0x%x switch_pid 0x%x\n",
-		      // __FUNCTION__, __LINE__, current_pid(), p->switch_pid);
-		//return ;
-	//}
-	//spin_lock_irqsave(&p->lock, flags);
-//	p->cur_pid = ui->composition->product_id;
-	//p->has_switch = 1;
-	//spin_unlock_irqrestore(&p->lock, flags);
-//	DBG("auto switch usb mode");
-	//printk("usb:rms:%s %d: pid 0x%x switch_pid 0x%x\n",
-	       //__FUNCTION__, __LINE__, current_pid(), p->switch_pid);
-	//enable_cdrom(0);
-
-	//mutex_lock(&_android_dev->lock);
-	wake_lock(&p->wlock);
-	//android_switch_composition((unsigned short)p->switch_pid);
-	wake_unlock(&p->wlock);
-	//mutex_unlock(&_android_dev->lock);
-
 	return ;
 }
+
 void schedule_cdrom_stop(void)
 {
-	
-	//if (NULL == global_usbwork.workqueue) {
-		//return ;
-	//}
 	queue_delayed_work(global_usbwork.workqueue, &global_usbwork.switch_work, HZ/10);
 
 	return;
 }
 EXPORT_SYMBOL(schedule_cdrom_stop);
+
 static int create_usb_work_queue(void)
 {
 	struct usb_ex_work *p = &global_usbwork;
 	if (p->workqueue) {
-		printk(KERN_ERR"usb:workqueue has created");
+		printk(KERN_ERR"usb: workqueue has created");
 		return 0;
 	}
-	//spin_lock_init(&p->lock);
-	//p->enable_switch = 1;
-	//p->enable_linux_switch = 0;
-	//p->switch_pid = PRODUCT_ID_MS_ADB;
-	//p->linux_pid = PRODUCT_ID_MS_ADB;
-	//p->cur_pid = PRODUCT_ID_MS_CDROM;
-	//p->has_switch = 0;
 	p->workqueue = create_singlethread_workqueue("usb_workqueue");
-	//if (NULL == p->workqueue) {
-		//printk(KERN_ERR"usb:workqueue created fail");
-		//p->enable_switch = 0;
-		//return -1;
-	//}
 	INIT_DELAYED_WORK(&p->switch_work, usb_switch_work);
-	//INIT_DELAYED_WORK(&p->linux_switch_work, usb_switch_os_work);
-	//INIT_DELAYED_WORK(&p->plug_work, usb_plug_work);
 	wake_lock_init(&p->wlock,
-		       WAKE_LOCK_SUSPEND, "usb_switch_wlock");
+				WAKE_LOCK_SUSPEND, "usb_switch_wlock");
 	return 0;
 }
+
 static int destroy_usb_work_queue(void)
 {
 	struct usb_ex_work *p = &global_usbwork;
@@ -949,4 +847,3 @@ static int destroy_usb_work_queue(void)
 	memset(&global_usbwork, 0, sizeof(global_usbwork));
 	return 0;
 }
-

@@ -2752,11 +2752,7 @@ static void vfe31_process_output_path_irq_0(uint32_t ping_pong)
 		vfe_send_outmsg(MSG_ID_OUTPUT_P, pyaddr, pcbcraddr);
 	} else {
 		vfe31_ctrl->outpath.out0.frame_drop_cnt++;
-
-       if(printk_ratelimit()){
-           pr_warning("path_irq_0 - no free buffer!\n");
-       }
-
+		pr_warning("path_irq_0 - no free buffer!\n");
 #ifdef CONFIG_MSM_CAMERA_V4L2
 		pr_info("Swapping ping and pong\n");
 
@@ -2976,10 +2972,7 @@ static void vfe31_process_output_path_irq_1(uint32_t ping_pong)
 		vfe31_process_zsl_frame(ping_pong);
 	} else {
 		vfe31_ctrl->outpath.out1.frame_drop_cnt++;
-
-       if(printk_ratelimit()){
-           pr_warning("path_irq_1 - no free buffer!\n");
-       }
+		pr_info("path_irq_1 - no free buffer!\n");
 	}
 }
 
@@ -3032,10 +3025,7 @@ static void vfe31_process_output_path_irq_2(uint32_t ping_pong)
 		vfe_send_outmsg(MSG_ID_OUTPUT_V, pyaddr, pcbcraddr);
 	} else {
 		vfe31_ctrl->outpath.out2.frame_drop_cnt++;
-
-       if(printk_ratelimit()){
-           pr_warning("path_irq_2 - no free buffer!\n");
-       }
+		pr_warning("path_irq_2 - no free buffer!\n");
 	}
 }
 

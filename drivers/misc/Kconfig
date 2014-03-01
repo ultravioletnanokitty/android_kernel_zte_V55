@@ -363,7 +363,7 @@ config DS1682
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called ds1682.
-##ZTE_MODIFY chenfei0002 echo suppression driver porting 20110721##
+
 config BELASIGNA300
 	tristate "belasigna300 echo cancellation devices"
 	depends on I2C && EXPERIMENTAL
@@ -373,7 +373,7 @@ config BELASIGNA300
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called belasigna300.
-##ZTE_MODIFY end. chenfei0002 ##	
+
 config TI_DAC7512
 	tristate "Texas Instruments DAC7512"
 	depends on SPI && SYSFS
@@ -542,7 +542,6 @@ source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
 source "drivers/misc/iwmc3200top/Kconfig"
 source "drivers/misc/video_core/720p/Kconfig"
-### ZTE_MODIFY zhaoy0001:added by zhaoyang 2011/05/21 for adding MPU3050 gyro driver ###
 source "drivers/misc/mpu3050/Kconfig"
-## ZTE_MODIFY end ##
+
 endif # MISC_DEVICES

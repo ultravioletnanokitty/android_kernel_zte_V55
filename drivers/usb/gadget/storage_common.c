@@ -232,13 +232,8 @@ struct interrupt_data {
 #define SC_WRITE_6			0x0a
 #define SC_WRITE_10			0x2a
 #define SC_WRITE_12			0xaa
-
-
-#define SC_GET_CONFIGRATION    0x46
-#define SC_SET_CD_SPEED	           0xbb	
-
-
-
+#define SC_GET_CONFIGRATION	0x46
+#define SC_SET_CD_SPEED		0xbb
 
 /* SCSI Sense Key/Additional Sense Code/ASC Qualifier values */
 #define SS_NO_SENSE				0
@@ -276,7 +271,7 @@ struct fsg_lun {
 	unsigned int	prevent_medium_removal:1;
 	unsigned int	registered:1;
 	unsigned int	info_valid:1;
-	//unsigned int	nofua:1;
+
 	u32		sense_data;
 	u32		sense_data_info;
 	u32		unit_attention_data;
@@ -700,15 +695,6 @@ static ssize_t fsg_show_ro(struct device *dev, struct device_attribute *attr,
 				  ? curlun->ro
 				  : curlun->initially_ro);
 }
-#if 0
-static ssize_t fsg_show_nofua(struct device *dev, struct device_attribute *attr,
-				char *buf)
-{
-	struct fsg_lun  *curlun = fsg_lun_from_dev(dev);
-
-	return sprintf(buf, "%u\n", curlun->nofua);
-}
-#endif
 
 static ssize_t fsg_show_file(struct device *dev, struct device_attribute *attr,
 			     char *buf)
@@ -763,24 +749,6 @@ static ssize_t fsg_store_ro(struct device *dev, struct device_attribute *attr,
 	up_read(filesem);
 	return rc;
 }
-#if 0
-static ssize_t fsg_store_nofua(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct fsg_lun  *curlun = fsg_lun_from_dev(dev);
-
-	if (strict_strtoul(buf, 2, &fsg_nofua))
-		return -EINVAL;
-
-	/* Sync data when switching from async mode to sync */
-	if (!fsg_nofua && curlun->nofua)
-		fsg_lun_fsync_sub(curlun);
-	curlun->nofua = fsg_nofua;
-
-	return count;
-}
-#endif
 
 static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 			      const char *buf, size_t count)

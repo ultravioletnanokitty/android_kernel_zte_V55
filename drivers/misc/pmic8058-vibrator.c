@@ -261,10 +261,6 @@ static int __devinit pmic8058_vib_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto err_read_vib;
 
-	#if 0//mask the qualconn orig code 
-	pmic8058_vib_enable(&vib->timed_dev, pdata->initial_vibrate_ms);
-	#endif
-
 	platform_set_drvdata(pdev, vib);
 
 	pm_runtime_set_suspended(&pdev->dev);

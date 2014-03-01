@@ -559,15 +559,11 @@ struct msm_snapshot_pp_status {
 #define CFG_SENSOR_INIT    29
 #define CFG_GET_3D_CALI_DATA 30
 #define CFG_GET_CALIB_DATA		31
-
-/* ZTE_MODIFY : liyibo0001 for adding MACRO at 2011-07-15*/
-#define CFG_SET_SATURATION    32
-#define CFG_SET_SHARPNESS 		33
-#define CFG_CANCEL_AUTOFOCUS 		34
-/** ZTE_MODIFY : chengjia0026 added  for camera iso setting */
-#define CFG_SET_ISO 		35
-#define CFG_MAX				36
-/** ZTE_MODIFY chengjia0026 end*/
+#define CFG_SET_SATURATION		32
+#define CFG_SET_SHARPNESS		33
+#define CFG_CANCEL_AUTOFOCUS	34
+#define CFG_SET_ISO		35
+#define CFG_MAX		36
 
 
 #define MOVE_NEAR	0
@@ -595,16 +591,12 @@ struct msm_snapshot_pp_status {
 #define CAMERA_EFFECT_BLACKBOARD	7
 #define CAMERA_EFFECT_AQUA		8
 
-/* ZTE_MODIFY : liyibo0001 for added camera effect at 2011-07-15*/
 #define CAMERA_EFFECT_BLUE		9
 #define CAMERA_EFFECT_RED		10
 #define CAMERA_EFFECT_GREEN		11
 #define CAMERA_EFFECT_MAX		12
-/* ZTE_MODIFY :  end by liyibo0001  2011-07-15 */
 
-/* ZTE_MODIFY : liyibo0001 for added camera balance at 2011-08-05**/
 #define CAMERA_KER_WB_AUTO			1
-//#define CAMERA_KER_WB_CUSTOM				2
 #define CAMERA_KER_WB_INCANDESCENT 	3
 #define CAMERA_KER_WB_FLUORESCENT	4
 #define CAMERA_KER_WB_DAYLIGHT		5
@@ -613,8 +605,6 @@ struct msm_snapshot_pp_status {
 #define CAMERA_KER_WB_CWF			9
 #define CAMERA_KER_WB_MAX				10
 
-
-//contrast
 #define CAMERA_CONTRAST_NEG_2	0
 #define CAMERA_CONTRAST_NEG_1	1
 #define CAMERA_CONTRAST_ZERO		2
@@ -622,7 +612,6 @@ struct msm_snapshot_pp_status {
 #define CAMERA_CONTRAST_POSI_2	4
 #define CAMERA_CONTRAST_MAX		5
 
-//brightness
 #define CAMERA_BRIGHTNESS_NEG_3	0
 #define CAMERA_BRIGHTNESS_NEG_2	1
 #define CAMERA_BRIGHTNESS_NEG_1	2
@@ -632,7 +621,6 @@ struct msm_snapshot_pp_status {
 #define CAMERA_BRIGHTNESS_POSI_3	6
 #define CAMERA_BRIGHTNESS_MAX	7
 
-//saturation
 #define CAMERA_SATURATION_NEG_2	0
 #define CAMERA_SATURATION_NEG_1	1
 #define CAMERA_SATURATION_ZERO	2
@@ -640,18 +628,11 @@ struct msm_snapshot_pp_status {
 #define CAMERA_SATURATION_POSI_2	4
 #define CAMERA_SATURATION_MAX	5
 
-//shapness
 #define CAMERA_SHAPNESS_POSI_1	0
 #define CAMERA_SHAPNESS_POSI_2	1
 #define CAMERA_SHAPNESS_ZERO		2
 #define CAMERA_SHAPNESS_NEG_2	3
 #define CAMERA_SHAPNESS_NEG_1	4
-
-
-
-#define CAMERA_BRIGHTNESS_MAX	7
-
-/* ZTE_MODIFY : liyibo0001 added end by liyibo 2011-08-05 */
 
 struct sensor_pict_fps {
 	uint16_t prevfps;
@@ -747,18 +728,14 @@ struct sensor_cfg_data {
 		uint32_t pict_max_exp_lc;
 		uint16_t p_fps;
 		struct sensor_init_cfg init_info;
-/* ZTE_MODIFY : liyibo0001 added for added camera fn at 2011-07-15 */		
 		uint32_t contr_val;
 		uint32_t sat_val;
 		uint32_t sharp_val;
 		uint32_t exgain_val;
 		int8_t wb_val;
 		int8_t anti_val;
-        int8_t brightness_val;
-/* ZTE_MODIFY :  end by liyibo0001  2011-07-15 */
-                /** ZTE_MODIFY : chengjia0026 added  for camera iso setting */
-                int8_t iso_val;
-                /** ZTE_MODIFY chengjia0026 end*/
+		int8_t brightness_val;
+		int8_t iso_val;
 		struct sensor_pict_fps gfps;
 		struct exp_gain_cfg exp_gain;
 		struct focus_cfg focus;

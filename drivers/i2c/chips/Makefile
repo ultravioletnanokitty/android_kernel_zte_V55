@@ -10,11 +10,9 @@
 # * I/O expander drivers go to drivers/gpio
 #
 
-## ZTE_MODIFY zhaoyang add I2C sensor driver ##
 obj-$(CONFIG_ALS_TSL2583_ZTE)	+= taos_v3.o
 obj-$(CONFIG_PROX_TMD26713_ZTE) += TMD26713.o
 obj-$(CONFIG_ALS_PROX_TMD27713_ZTE) += TMD27713.o
-## ZTE_MODIFY end ##
 
 ifeq ($(CONFIG_I2C_DEBUG_CHIP),y)
 EXTRA_CFLAGS += -DDEBUG

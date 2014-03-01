@@ -57,10 +57,8 @@ obj-$(CONFIG_BCM4329)	+= bcm4329/
 
 obj-$(CONFIG_BCM4329_ZTE)	+= bcm4329_zte/
 
+obj-$(CONFIG_BCM4330_ZTE)	+= bcm4330_b1_b2_zte/
+
 obj-$(CONFIG_LIBRA_SDIOIF)	+= libra/
 
 obj-$(CONFIG_WCNSS_WLAN)	+= wcnss/
-
-# ZTE_MODIFY longchunyan0002 add bcm wifi driver
-obj-$(CONFIG_BCM4330_ZTE)	+= bcm4330_b1_b2_zte/
-# ZTE_MODIFY end

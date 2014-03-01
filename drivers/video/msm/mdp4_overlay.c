@@ -102,6 +102,7 @@ struct mdp4_overlay_ctrl {
 
 static struct mdp4_overlay_ctrl *ctrl = &mdp4_overlay_db;
 static int new_perf_level;
+
 /* static array with index 0 for unset status and 1 for set status */
 static bool overlay_status[MDP4_OVERLAY_TYPE_MAX];
 
@@ -2031,7 +2032,6 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 			pipe->mixer_num == MDP4_MIXER0)
 			mdp4_overlay_status_write(MDP4_OVERLAY_TYPE_SET, true);
 	}
-
 
 	if (new_perf_level != perf_level) {
 		new_perf_level = perf_level;

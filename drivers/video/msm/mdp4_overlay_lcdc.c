@@ -15,15 +15,7 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
 
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-
-2011/06/14    gouyajun0009  	gouyajun 			modify reduce power consumption in system suspend
-===========================================================================*/
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
@@ -59,9 +51,8 @@ static int writeback_offset;
 
 static struct mdp4_overlay_pipe *lcdc_pipe;
 static struct completion lcdc_comp;
-//static int wait4vsync_cnt;
 
-static int mdp_lcdc_on_state = 0;//gouyajun0009 for reduce power consumption
+static int mdp_lcdc_on_state = 0;
 
 int mdp_lcdc_on(struct platform_device *pdev)
 {
@@ -102,12 +93,10 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 	struct mdp4_overlay_pipe *pipe;
 	int ret;
-//gouyajun0009 for reduce power consumption start
 	if(mdp_lcdc_on_state == 0)
 		mdp_lcdc_on_state = 1;
 	else
 		return 0;
-//gouyajun0009 for reduce power consumption end
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
 	if (!mfd)
@@ -275,9 +264,12 @@ int mdp_lcdc_off(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct msm_fb_data_type *mfd;
+
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
+
 	mutex_lock(&mfd->dma->ov_mutex);
-	mdp_lcdc_on_state = 0;//gouyajun0009 for reduce power consumption
+
+	mdp_lcdc_on_state = 0;
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	MDP_OUTP(MDP_BASE + LCDC_BASE, 0);
@@ -287,7 +279,9 @@ int mdp_lcdc_off(struct platform_device *pdev)
 
 	mdp_histogram_ctrl(FALSE);
 	ret = panel_next_off(pdev);
+
 	mutex_unlock(&mfd->dma->ov_mutex);
+
 	/* delay to make sure the last frame finishes */
 	msleep(16);
 

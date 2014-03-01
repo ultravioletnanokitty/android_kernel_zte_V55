@@ -279,7 +279,7 @@
 	#define CY_USE_DEEP_SLEEP_SEL	0x80
 #else
 	#define CY_USE_DEEP_SLEEP_SEL	0x00
-#endif
+#endif /* CY_USE_DEEP_SLEEP */
 #ifdef CY_USE_LOW_POWER
 	#define CY_USE_SLEEP	(CY_USE_DEEP_SLEEP_SEL | 0x01)
 #else

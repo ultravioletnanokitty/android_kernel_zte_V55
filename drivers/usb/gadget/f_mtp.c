@@ -126,16 +126,6 @@ static struct usb_interface_descriptor mtp_interface_desc = {
 	.bInterfaceProtocol     = 0,
 };
 
-/*static struct usb_interface_descriptor ptp_interface_desc = {
-	.bLength                = USB_DT_INTERFACE_SIZE,
-	.bDescriptorType        = USB_DT_INTERFACE,
-	.bInterfaceNumber       = 0,
-	.bNumEndpoints          = 3,
-	.bInterfaceClass        = USB_CLASS_STILL_IMAGE,
-	.bInterfaceSubClass     = 1,
-	.bInterfaceProtocol     = 1,
-};*/
-
 static struct usb_endpoint_descriptor mtp_highspeed_in_desc = {
 	.bLength                = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType        = USB_DT_ENDPOINT,
@@ -190,22 +180,6 @@ static struct usb_descriptor_header *hs_mtp_descs[] = {
 	(struct usb_descriptor_header *) &mtp_intr_desc,
 	NULL,
 };
-
-/*static struct usb_descriptor_header *fs_ptp_descs[] = {
-	(struct usb_descriptor_header *) &ptp_interface_desc,
-	(struct usb_descriptor_header *) &mtp_fullspeed_in_desc,
-	(struct usb_descriptor_header *) &mtp_fullspeed_out_desc,
-	(struct usb_descriptor_header *) &mtp_intr_desc,
-	NULL,
-};
-
-static struct usb_descriptor_header *hs_ptp_descs[] = {
-	(struct usb_descriptor_header *) &ptp_interface_desc,
-	(struct usb_descriptor_header *) &mtp_highspeed_in_desc,
-	(struct usb_descriptor_header *) &mtp_highspeed_out_desc,
-	(struct usb_descriptor_header *) &mtp_intr_desc,
-	NULL,
-};*/
 
 static struct usb_string mtp_string_defs[] = {
 	/* Naming interface "MTP" so libmtp will recognize us */
@@ -335,8 +309,7 @@ static void req_put(struct mtp_dev *dev, struct list_head *head,
 }
 
 /* remove a request from the head of a list */
-static struct usb_request 
-*req_get(struct mtp_dev *dev, struct list_head *head)
+static struct usb_request *req_get(struct mtp_dev *dev, struct list_head *head)
 {
 	unsigned long flags;
 	struct usb_request *req;
@@ -383,7 +356,6 @@ static void mtp_complete_intr(struct usb_ep *ep, struct usb_request *req)
 		dev->state = STATE_ERROR;
 
 	req_put(dev, &dev->intr_idle, req);
-
 	wake_up(&dev->intr_wq);
 }
 
@@ -442,7 +414,7 @@ static int __init create_bulk_endpoints(struct mtp_dev *dev,
 		dev->rx_req[i] = req;
 	}
 	for (i = 0; i < INTR_REQ_MAX; i++) {
-	req = mtp_request_new(dev->ep_intr, INTR_BUFFER_SIZE);
+		req = mtp_request_new(dev->ep_intr, INTR_BUFFER_SIZE);
 		if (!req)
 			goto fail;
 		req->complete = mtp_complete_intr;
@@ -817,13 +789,13 @@ static int mtp_send_event(struct mtp_dev *dev, struct mtp_event *event)
 
 	if (length < 0 || length > INTR_BUFFER_SIZE)
 		return -EINVAL;
+
 	if (dev->state == STATE_OFFLINE)
 		return -ENODEV;
 
-	ret = wait_event_interruptible_timeout(dev->intr_wq,
-		(req = req_get(dev, &dev->intr_idle)), msecs_to_jiffies(1000));
+	ret = wait_event_interruptible_timeout(dev->intr_wq, (req = req_get(dev, &dev->intr_idle)), msecs_to_jiffies(1000));
 	if (!req)
-	    return -ETIME;
+		return -ETIME;
 
 	if (copy_from_user(req->buf, (void __user *)event->data, length)) {
 		req_put(dev, &dev->intr_idle, req);
@@ -894,7 +866,6 @@ static long mtp_ioctl(struct file *fp, unsigned code, unsigned long value)
 			dev->xfer_transaction_id = mfr.transaction_id;
 		} else if (code == MTP_SEND_FILE) {
 			work = &dev->send_file_work;
-			dev->xfer_send_header = 0;
 		} else {
 			work = &dev->receive_file_work;
 		}
@@ -913,20 +884,6 @@ static long mtp_ioctl(struct file *fp, unsigned code, unsigned long value)
 		ret = dev->xfer_result;
 		break;
 	}
-/*	case MTP_SET_INTERFACE_MODE:
-		if (value == MTP_INTERFACE_MODE_MTP ||
-			value == MTP_INTERFACE_MODE_PTP) {
-			dev->interface_mode = value;
-			if (value == MTP_INTERFACE_MODE_PTP) {
-				dev->function.descriptors = fs_ptp_descs;
-				dev->function.hs_descriptors = hs_ptp_descs;
-			} else {
-				dev->function.descriptors = fs_mtp_descs;
-				dev->function.hs_descriptors = hs_mtp_descs;
-			}
-			ret = 0;
-		}
-		break;*/
 	case MTP_SEND_EVENT:
 	{
 		struct mtp_event	event;
@@ -1085,14 +1042,16 @@ static int mtp_function_setup(struct usb_function *f,
 		DBG(cdev, "vendor request: %d index: %d value: %d length: %d\n",
 			ctrl->bRequest, w_index, w_value, w_length);
 
-		if (ctrl->bRequest == 1
+		if (dev->interface_mode == MTP_INTERFACE_MODE_MTP
+				&& ctrl->bRequest == 1
 				&& (ctrl->bRequestType & USB_DIR_IN)
 				&& (w_index == 4 || w_index == 5)) {
 			value = (w_length < sizeof(mtp_ext_config_desc) ?
 					w_length : sizeof(mtp_ext_config_desc));
 			memcpy(cdev->req->buf, &mtp_ext_config_desc, value);
 		}
-	} else if ((ctrl->bRequestType & USB_TYPE_MASK) == USB_TYPE_CLASS) {
+	}
+	if ((ctrl->bRequestType & USB_TYPE_MASK) == USB_TYPE_CLASS) {
 		DBG(cdev, "class request: %d index: %d value: %d length: %d\n",
 			ctrl->bRequest, w_index, w_value, w_length);
 
@@ -1253,9 +1212,6 @@ static int mtp_bind_config(struct usb_configuration *c)
 	dev->function.setup = mtp_function_setup;
 	dev->function.set_alt = mtp_function_set_alt;
 	dev->function.disable = mtp_function_disable;
-
-	/* MTP mode by default */
-//	dev->interface_mode = MTP_INTERFACE_MODE_MTP;
 
 	/* _mtp_dev must be set before calling usb_gadget_register_driver */
 	_mtp_dev = dev;

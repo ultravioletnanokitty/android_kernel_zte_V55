@@ -16,15 +16,6 @@
  *        David S. Miller (davem@caip.rutgers.edu), 1995
  */
 
-/*===========================================================================
-
-                        EDIT HISTORY
-
-when         comment tag     who           what, where, why
---------     -----------     ----------    ----------------
-2011/7/19    yuanbo0008      yuanbo        avoid ext4 IO error   
-===========================================================================*/
-
 #include <linux/module.h>
 #include <linux/string.h>
 #include <linux/fs.h>
@@ -3397,17 +3388,10 @@ static int ext4_commit_super(struct super_block *sb, int sync)
 		cpu_to_le64(EXT4_SB(sb)->s_kbytes_written +
 			    ((part_stat_read(sb->s_bdev->bd_part, sectors[1]) -
 			      EXT4_SB(sb)->s_sectors_written_start) >> 1));
-
-    if(EXT4_SB(sb)->s_freeblocks_counter.counters != NULL){
-        ext4_free_blocks_count_set(es, percpu_counter_sum_positive(
-                        &EXT4_SB(sb)->s_freeblocks_counter));
-    }
-
-    if(EXT4_SB(sb)->s_freeinodes_counter.counters != NULL){
-        es->s_free_inodes_count = cpu_to_le32(percpu_counter_sum_positive(
-                        &EXT4_SB(sb)->s_freeinodes_counter));
-    }
-
+	ext4_free_blocks_count_set(es, percpu_counter_sum_positive(
+					&EXT4_SB(sb)->s_freeblocks_counter));
+	es->s_free_inodes_count = cpu_to_le32(percpu_counter_sum_positive(
+					&EXT4_SB(sb)->s_freeinodes_counter));
 	sb->s_dirt = 0;
 	BUFFER_TRACE(sbh, "marking dirty");
 	mark_buffer_dirty(sbh);
@@ -3485,7 +3469,7 @@ static void ext4_clear_journal_err(struct super_block *sb,
 			     "from previous mount: %s", errstr);
 		ext4_warning(sb, "Marking fs in need of filesystem check.");
 
-		//EXT4_SB(sb)->s_mount_state |= EXT4_ERROR_FS;
+		EXT4_SB(sb)->s_mount_state |= EXT4_ERROR_FS;
 		es->s_state |= cpu_to_le16(EXT4_ERROR_FS);
 		ext4_commit_super(sb, 1);
 

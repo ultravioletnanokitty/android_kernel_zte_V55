@@ -31,11 +31,9 @@
 #include <linux/msm_adc.h>
 #include <linux/notifier.h>
 #include <linux/pmic8058-batt-alarm.h>
-//#include <linux/pmic8058-charger.h> 
 
 #include <mach/msm_xo.h>
 #include <mach/msm_hsusb.h>
-
 #include <mach/hw_ver.h> 
 
 /* Config Regs  and their bits*/
@@ -580,15 +578,6 @@ static int get_fsm_status(void *data, u64 * val)
 {
 	*val = get_fsm_state();
 	return 0;
-/*}
-enum pmic8058_chg_state pmic8058_get_fsm_state(void)
-{
-	if (!pm8058_chg.inited) {
-		pr_err("%s: called when not inited\n", __func__);
-		return -EINVAL;
-	}
-
-	return get_fsm_state();*/
 }
 
 static int pm_chg_disable(int value)
@@ -737,12 +726,9 @@ static void charging_check_work(struct work_struct *work)
 
 	switch (fsm_state) {
 	/* We're charging, so disarm alarm */
-    case 2:
+	case 2:
 	case 7:
 	case 8:
-	//case PMIC8058_CHG_STATE_ATC:
-	//case PMIC8058_CHG_STATE_FAST_CHG:
-	//case PMIC8058_CHG_STATE_TRKL_CHG:
 		rc = pm8058_batt_alarm_state_set(0, 0);
 		if (rc)
 			dev_err(pm8058_chg.dev,
@@ -1901,15 +1887,15 @@ static int __devinit pm8058_charger_probe(struct platform_device *pdev)
 								__func__);
 		goto free_irq;
 	}
-	
-    if(BOARD_NUM(hw_ver) == BOARD_NUM_V11) {
-	    rc = msm_charger_register(&usb_hw_chg);
-	    if (rc) {
-		    pr_err("%s: msm_charger_register failed ret=%d\n",
-							__func__, rc);
-		    goto free_irq;
-	    }
-    }
+
+	if(BOARD_NUM(hw_ver) == BOARD_NUM_V11) {
+		rc = msm_charger_register(&usb_hw_chg);
+		if (rc) {
+			pr_err("%s: msm_charger_register failed ret=%d\n",
+					__func__, rc);
+			goto free_irq;
+		}
+	}
 
 	pm_chg_batt_temp_disable(0);
 	msm_battery_gauge_register(&pm8058_batt_gauge);

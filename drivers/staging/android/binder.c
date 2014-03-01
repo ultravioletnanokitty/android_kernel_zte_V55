@@ -123,8 +123,7 @@ module_param_call(stop_on_user_error, binder_set_stop_on_user_error,
 #define binder_debug(mask, x...) \
 	do { \
 		if (binder_debug_mask & mask) \
-			if (printk_ratelimit()) \
-               printk(KERN_INFO x); \
+			printk(KERN_INFO x); \
 	} while (0)
 
 #define binder_user_error(x...) \

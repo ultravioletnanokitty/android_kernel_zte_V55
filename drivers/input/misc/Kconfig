@@ -484,27 +484,27 @@ config CAP_PROX_ATTINY44A_ZTE
 	help
 	 ATTINY44A CAP PROX Driver implemented by ZTE.
 
-
 config SIM_CARD_DETECTOR_ZTE
-       bool "sim card detector driver"
-       default n
-       help
-         Say Y here if you want to have sim card detector driver
-         If unsure, say N.
-		 
+	bool "sim card detector driver"
+	default n
+	help
+	  Say Y here if you want to have sim card detector driver
+	  If unsure, say N.
+
 config SIM_CARD_DETECTOR_IRQ_ZTE
-       bool "IRQ supprot in sim card detector driver"
-	   depends on SIM_CARD_DETECTOR_ZTE
-       default n
-       help
-         Say Y here if you want to have IRQ supprot in sim card detector driver
-         If unsure, say N.
+	bool "IRQ supprot in sim card detector driver"
+	depends on SIM_CARD_DETECTOR_ZTE
+	default n
+	help
+	  Say Y here if you want to have IRQ supprot in sim card detector driver
+	  If unsure, say N.
 
 config SIM_CARD_DETECTOR_SYSFS_ZTE
-       bool "SYSFS supprot in sim card detector driver"
-       depends on SIM_CARD_DETECTOR_ZTE
-       default n
-       help
-         Say Y here if you want to have SYSFS support in sim card detector driver
-         If unsure, say N.
+	bool "SYSFS supprot in sim card detector driver"
+	depends on SIM_CARD_DETECTOR_ZTE
+	default n
+	help
+	  Say Y here if you want to have SYSFS support in sim card detector driver
+	  If unsure, say N.
+
 endif

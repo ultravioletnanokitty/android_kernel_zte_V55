@@ -9,23 +9,13 @@
  * published by the Free Software Foundation.
  *
  */
- /*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                       
-2011/06/15    liyuan0006            liyuan               add leds asynchronous blink function
-===========================================================================*/
 #ifndef __LINUX_LEDS_H_INCLUDED
 #define __LINUX_LEDS_H_INCLUDED
 
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/rwsem.h>
-
-/** ZTE_MODIFY yuanbo to add leds  blink function , 2011-10-19*/
 #include <linux/wakelock.h>
-/** ZTE_MODIFY yuanbo 2011-10-19 end */
 
 struct device;
 /*
@@ -41,8 +31,8 @@ enum led_brightness {
 #ifdef CONFIG_LEDS_ZTE
 enum led_blink {
 	LED_BLINKING_OFF		= 0,
-	LED_BLINKING_ON	= 1,	
-	LED_BLINKING_FAST_ON	= 2,	
+	LED_BLINKING_ON			= 1,
+	LED_BLINKING_FAST_ON	= 2,
 };
 #endif
 
@@ -51,11 +41,11 @@ struct led_classdev {
 	int			 brightness;
 	int			 max_brightness;
 	int			 flags;
-	int                   blink;
-    int          grpfreq;
-    int          grppwm;
+	int			 blink;
+	int			 grpfreq;
+	int			 grppwm;
 #ifdef CONFIG_LEDS_BLINK_NOSUSPEND_ZTE
-    struct wake_lock wlock;
+	struct wake_lock wlock;
 #endif
 
 	/* Lower 16 bits reflect status */
@@ -74,15 +64,16 @@ struct led_classdev {
 	 * miliseconds and if none is provided then a sensible default
 	 * should be chosen. The call can adjust the timings if it can't
 	 * match the values specified exactly. */
-	#ifdef CONFIG_LEDS_ZTE
-       void		(*blink_set)(struct led_classdev *led_cdev,
+#ifdef CONFIG_LEDS_ZTE
+	void	(*blink_set)(struct led_classdev *led_cdev,
 				     enum led_blink en_blink);
 	enum led_blink (*blink_get)(struct led_classdev *led_cdev);
-	#else
+#else
 	int		(*blink_set)(struct led_classdev *led_cdev,
 				     unsigned long *delay_on,
 				     unsigned long *delay_off);
-	#endif
+#endif
+
 	struct device		*dev;
 	struct list_head	 node;			/* LED Device list */
 	const char		*default_trigger;	/* Trigger to use */

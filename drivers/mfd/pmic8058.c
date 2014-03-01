@@ -554,7 +554,7 @@ done:
 	return rc;
 }
 
-/**
+/*
  * pm8058_stay_off - disables stay_on feature
  * 
  * PMIC stay-on feature allows PMIC to ignore MSM PS_HOLD=low
@@ -569,25 +569,24 @@ static int pm8058_stay_off(void)
 	u8	pon = 0x90;//bank9
 	int	rc;
 
-        rc = ssbi_write(pmic_chip->dev, 0x7A, &pon, 1);
+	rc = ssbi_write(pmic_chip->dev, 0x7A, &pon, 1);
 	if (rc != 0){
 		printk("%s %d ssbi_write fail\n", __func__, __LINE__);
 		return rc;
 	}
-        rc = ssbi_read(pmic_chip->dev, 0x7A, &pon, 1);
+	rc = ssbi_read(pmic_chip->dev, 0x7A, &pon, 1);
 	if (rc != 0){
 		printk("%s %d ssbi_read fail\n", __func__, __LINE__);
 		return rc;
 	}
-        pon &= 0x0D;
-        pon |= 0x90;
-        rc = ssbi_write(pmic_chip->dev, 0x7A, &pon, 1);
+	pon &= 0x0D;
+	pon |= 0x90;
+	rc = ssbi_write(pmic_chip->dev, 0x7A, &pon, 1);
 	if (rc != 0){
 		printk("%s %d ssbi_write fail\n", __func__, __LINE__);
 	}
 	return rc;
 }
-/**ZTE MODIFY end**/
 
 int pm8058_reset_pwr_off(int reset)
 {
@@ -599,10 +598,7 @@ int pm8058_reset_pwr_off(int reset)
 
 	/* When shutting down, enable active pulldowns on important rails. */
 	if (!reset) {
-
 		pm8058_stay_off();
-		/**ZTE MODIFY end**/ 
-
 		/* Disable SMPS's 0,1,3 locally and set pulldown enable bits. */
 		disable_smps_locally_set_pull_down(SSBI_REG_ADDR_S0_CTRL,
 		     SSBI_REG_ADDR_S0_TEST2, SSBI_REG_ADDR_VREG_EN_MSM, BIT(7));

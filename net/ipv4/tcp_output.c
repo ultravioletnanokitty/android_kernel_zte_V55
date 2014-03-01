@@ -232,10 +232,6 @@ void tcp_select_initial_window(int __space, __u32 mss,
 		int init_cwnd = 4;
 		if (mss > 1460 * 3)
 			init_cwnd = 2;
-		else if(mss == 1440)
-		{
-			init_cwnd = 8; //window size = mss * cwnd. For the V55 project requirement: window size=11520, mss=1440		
-		}		
 		else if (mss > 1460)
 			init_cwnd = 3;
 		/* when initializing use the value from init_rcv_wnd
@@ -245,14 +241,10 @@ void tcp_select_initial_window(int __space, __u32 mss,
 			*rcv_wnd = min(*rcv_wnd, init_rcv_wnd * mss);
 		else
 			*rcv_wnd = min(*rcv_wnd, init_cwnd * mss);
-		
-
-		
 	}
 
 	/* Set the clamp no higher than max representable value */
 	(*window_clamp) = min(65535U << (*rcv_wscale), *window_clamp);
-
 }
 
 /* Chose a new window to advertise, update state in tcp_sock for the

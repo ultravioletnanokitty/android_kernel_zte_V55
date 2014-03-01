@@ -25,16 +25,7 @@
    2007-Jan-24  Motorola         Added mbm_handle_ioi() call to ISR.
 
 */
-/*===========================================================================
 
-                             EDIT HISTORY FOR
-    
- when           comment tag             who                  what, where, why 
-    
-----------     -------------       ------------    ----------------------------
-2011/08/22     longchunyan0002      longchunyan     modify for bt sleeping & waking
-2011/09/24     longchunyan0003      longchunyan     modify for bt information
-===========================================================================*/
 #include <linux/module.h>	/* kernel module definitions */
 #include <linux/errno.h>
 #include <linux/init.h>
@@ -148,11 +139,11 @@ static void hsuart_power(int on)
 {
 	if (on) {
 		msm_hs_request_clock_on(bsi->uport);
-   msm_hs_set_mctrl(bsi->uport, TIOCM_RTS);
+		msm_hs_set_mctrl(bsi->uport, TIOCM_RTS);
 	} else {
 		msm_hs_set_mctrl(bsi->uport, 0);
 		msm_hs_request_clock_off(bsi->uport);
-  }
+	}
 }
 
 
@@ -174,24 +165,24 @@ void bluesleep_sleep_wakeup(void)
 		/* Start the timer */
 		mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
 		gpio_set_value(bsi->ext_wake, 0);
-    clear_bit(BT_ASLEEP, &flags);
+		clear_bit(BT_ASLEEP, &flags);
 		/*Activating UART */
 		hsuart_power(1);
 	}
-    else
-    {
-         /*Tx idle, Rx busy, we must also make host_wake asserted, that is low
-         * 1 means bt chip can sleep, in bluesleep.c
-         */
-         /* Here we depend on the status of MSM gpio, for stability */
-         if(gpio_get_value(bsi->ext_wake) == 1)
-         {
-             BT_DBG("bluesleep_sleep_wakeup wakeup bt chip");
-             /*0 means wakeup bt chip */
-             gpio_set_value(bsi->ext_wake, 0); 
-             mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
-         } 
-     }
+	else
+	{
+		/*Tx idle, Rx busy, we must also make host_wake asserted, that is low
+		* 1 means bt chip can sleep, in bluesleep.c
+		*/
+		/* Here we depend on the status of MSM gpio, for stability */
+		if(gpio_get_value(bsi->ext_wake) == 1)
+		{
+			BT_DBG("bluesleep_sleep_wakeup wakeup bt chip");
+			/*0 means wakeup bt chip */
+			gpio_set_value(bsi->ext_wake, 0); 
+			mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
+		} 
+	}
 }
 
 /**
@@ -205,23 +196,19 @@ static void bluesleep_sleep_work(struct work_struct *work)
 		/* already asleep, this is an error case */
 		if (test_bit(BT_ASLEEP, &flags)) {
 			BT_DBG("already asleep");
-      return;
+			return;
 		}
 
 		if (msm_hs_tx_empty(bsi->uport)) {
 			BT_DBG("going to sleep...");
-           
-            
 			set_bit(BT_ASLEEP, &flags);
 			/*Deactivating UART */
-            
 			hsuart_power(0);
 		} else {
-      mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
+		  mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
 			return;
 		}
 	} else {
-	   
 		bluesleep_sleep_wakeup();
 	}
 }
@@ -234,20 +221,20 @@ static void bluesleep_sleep_work(struct work_struct *work)
 static void bluesleep_hostwake_task(unsigned long data)
 {
 	BT_DBG("hostwake line change");
-   
+
 	spin_lock(&rw_lock);
 
-    #ifdef CONFIG_BT_BCM4330_ZTE
-    if (!(gpio_get_value(bsi->host_wake)))
+#ifdef CONFIG_BT_BCM4330_ZTE
+	if (!(gpio_get_value(bsi->host_wake)))
 		bluesleep_rx_busy();
 	else
 		bluesleep_rx_idle();
-    #else
-    if (gpio_get_value(bsi->host_wake))
-        	bluesleep_rx_busy();
+#else
+	if (gpio_get_value(bsi->host_wake))
+		bluesleep_rx_busy();
 	else
 		bluesleep_rx_idle();
-    #endif
+#endif
 
 	spin_unlock(&rw_lock);
 }
@@ -328,7 +315,7 @@ static void bluesleep_tx_timer_expire(unsigned long data)
 	/* were we silent during the last timeout? */
 	if (!test_bit(BT_TXDATA, &flags)) {
 		BT_DBG("Tx has been idle");
-    gpio_set_value(bsi->ext_wake, 1);
+		gpio_set_value(bsi->ext_wake, 1);
 		bluesleep_tx_idle();
 	} else {
 		BT_DBG("Tx data during last period");
@@ -351,7 +338,7 @@ static irqreturn_t bluesleep_hostwake_isr(int irq, void *dev_id)
 {
 	/* schedule a tasklet to handle the change in the host wake line */
 	tasklet_schedule(&hostwake_task);
-  return IRQ_HANDLED;
+	return IRQ_HANDLED;
 }
 
 /**
@@ -391,7 +378,6 @@ static int bluesleep_start(void)
 		BT_ERR("Couldn't acquire BT_HOST_WAKE IRQ");
 		goto fail;
 	}
- 
 
 	retval = enable_irq_wake(bsi->host_wake_irq);
 	if (retval < 0) {
@@ -430,7 +416,7 @@ static void bluesleep_stop(void)
 
 	if (test_bit(BT_ASLEEP, &flags)) {
 		clear_bit(BT_ASLEEP, &flags);
-    hsuart_power(1);
+		hsuart_power(1);
 	}
 
 	atomic_inc(&open_count);
@@ -544,7 +530,6 @@ static int bluesleep_read_proc_asleep(char *page, char **start, off_t offset,
 static int bluesleep_read_proc_btinfo(char *page, char **start, off_t offset,
 					int count, int *eof, void *data)
 {
-	
 	*eof = 1;
 	return sprintf(page, "BT Information: %s\n", "BCM4330");
 }
@@ -591,7 +576,7 @@ static int bluesleep_write_proc_proto(struct file *file, const char *buffer,
 
 	if (copy_from_user(&proto, buffer, 1))
 		return -EFAULT;
-  if (proto == '0')
+	if (proto == '0')
 		bluesleep_stop();
 	else
 		bluesleep_start();
@@ -752,14 +737,14 @@ static int __init bluesleep_init(void)
 		retval = -ENOMEM;
 		goto fail;
 	}
-    #ifdef CONFIG_BT_BCM4330_ZTE
-    /* read only proc entries */
+#ifdef CONFIG_BT_BCM4330_ZTE
+	/* read only proc entries */
 	if (create_proc_read_entry("msm_btinfo", 0,
 			NULL, bluesleep_read_proc_btinfo, NULL) == NULL) {
 		BT_ERR("Unable to create /proc/msm_btinfo entry");
 		goto fail2;
 	}
-    #endif
+#endif
 	flags = 0; /* clear all status bits */
 
 	/* Initialize spinlock. */
@@ -776,10 +761,10 @@ static int __init bluesleep_init(void)
 	hci_register_notifier(&hci_event_nblock);
 
 	return 0;
-    #ifdef CONFIG_BT_BCM4330_ZTE
+#ifdef CONFIG_BT_BCM4330_ZTE
 fail2:
-     remove_proc_entry("msm_btinfo", 0);
-     #endif
+	remove_proc_entry("msm_btinfo", 0);
+#endif
 fail:
 	remove_proc_entry("asleep", sleep_dir);
 	remove_proc_entry("proto", sleep_dir);

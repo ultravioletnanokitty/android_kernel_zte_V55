@@ -15,15 +15,6 @@
  * 02110-1301, USA.
  *
  */
-/*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-
-2011/05/31    gouyajun0002  	gouyajun 			modify hdmi circuit power on code
-===========================================================================*/
 /* #define DEBUG */
 #define DEV_DBG_PREFIX "HDMI: "
 /* #define PORT_DEBUG */

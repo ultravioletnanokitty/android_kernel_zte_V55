@@ -17,14 +17,6 @@
  * GNU General Public License for more details.
  */
 
-/*===========================================================================
-
-                        EDIT HISTORY 
-
-when          comment tag      who              what, where, why
-----------    ------------     -----------      --------------------------
-2011/07/22    yuanbo0013       yuanbo           modified for kernel logging
-===========================================================================*/
 #include <linux/sched.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -570,8 +562,8 @@ DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, 64*1024)
 DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, 256*1024)
 DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, 64*1024)
 DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, 64*1024)
-
 DEFINE_LOGGER_DEVICE(log_kernel, LOGGER_LOG_KERNEL, 64*1024)
+
 static struct logger_log *get_log_from_minor(int minor)
 {
 	if (log_main.misc.minor == minor)
@@ -582,10 +574,8 @@ static struct logger_log *get_log_from_minor(int minor)
 		return &log_radio;
 	if (log_system.misc.minor == minor)
 		return &log_system;
-
-    if (log_kernel.misc.minor == minor)
-        return &log_kernel;
-
+	if (log_kernel.misc.minor == minor)
+		return &log_kernel;
 	return NULL;
 }
 
@@ -626,9 +616,10 @@ static int __init logger_init(void)
 	if (unlikely(ret))
 		goto out;
 
-    ret = init_log(&log_kernel);
-    if (unlikely(ret))
-        goto out;
+	ret = init_log(&log_kernel);
+	if (unlikely(ret))
+		goto out;
+
 out:
 	return ret;
 }

@@ -284,19 +284,14 @@ config LEDS_PMIC8058
 	  This option enables support for LEDs connected over PMIC8058
 	  (Power Management IC) chip on Qualcomm reference boards,
 	  for example SURF and FFAs.
-	  
-###############################FOR ZTE ADD START ###########################
-### liyuan0002:added by liyuan 2011/05/23 for adding three-color lights driver
+
 config LEDS_ZTE
 	tristate "LED Support for ZTE"
-	default n	
-### end liyuan 2011/05/23  
-### ZTE_MODIFY yuanbo add for led blink 2011-10-20
+	default n
+
 config LEDS_BLINK_NOSUSPEND_ZTE
 	tristate "LED Support for ZTE"
-	default n	
-### ZTE_MODIFY end yuanbo 2011-10-20
-###############################FOR ZTE ADD END #############################	  
+	default n
 
 config LEDS_INTEL_SS4200
 	tristate "LED driver for Intel NAS SS4200 series"

@@ -24,19 +24,9 @@
    SOFTWARE IS DISCLAIMED.
 */
 
-/*===========================================================================
-
-                            EDIT HISTORY 
-
-when           comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2012/01/17    chengjia0053      chengjia        repaired for transporting file by bluetooth
-===========================================================================*/
-
-
 #ifndef __L2CAP_H
 #define __L2CAP_H
-   
+
 /* L2CAP defaults */
 #define L2CAP_DEFAULT_MTU		672
 #define L2CAP_DEFAULT_MIN_MTU		48
@@ -502,10 +492,10 @@ struct l2cap_pinfo {
 	__u8		amp_move_cmd_ident;
 	__u16		amp_move_reqseq;
 	__u16		amp_move_event;
-/** ZTE_MODIFY chengjia0053 repaired for transporting file by bluetooth 2012/01/17*/
+
 	__u8		release_flag;
-        __u8            trans_flag;
-/** ZTE_MODIFY end*/
+	__u8		trans_flag;
+
 	__u16		next_tx_seq;
 	__u16		expected_ack_seq;
 	__u16		expected_tx_seq;

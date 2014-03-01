@@ -14,14 +14,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
  * 02110-1301, USA.
  */
-/*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                         
-2011/03/25    liyuan0002            liyuan               modify three-color lights driver
-2011/06/15    liyuan0006            liyuan               add leds asynchronous blink function
-===========================================================================*/
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
@@ -118,13 +110,14 @@ static void led_lc_set(struct pmic8058_led_data *led, enum led_brightness value)
 
 	spin_lock_irqsave(&led->value_lock, flags);
 
-       #ifdef CONFIG_LEDS_ZTE
-       level = (value << PM8058_DRV_LED_CTRL_SHIFT) &
-				 PM8058_DRV_LED_CTRL_MASK;	
-	#else   
+#ifdef CONFIG_LEDS_ZTE
+	level = (value << PM8058_DRV_LED_CTRL_SHIFT) &
+		PM8058_DRV_LED_CTRL_MASK;
+#else
 	level = (led->brightness << PM8058_DRV_LED_CTRL_SHIFT) &
 		PM8058_DRV_LED_CTRL_MASK;
-	#endif
+#endif
+
 	offset = PMIC8058_LED_OFFSET(led->id);
 	tmp = led->reg_led_ctrl[offset];
 
@@ -287,42 +280,33 @@ static void pmic8058_led_blink_set(struct led_classdev *led_cdev,
 	spin_unlock_irqrestore(&led->value_lock, flags);
 
 	switch (led->id) {
-	case PMIC8058_ID_LED_KB_LIGHT:	
-	case PMIC8058_ID_LED_0:		 
-	case PMIC8058_ID_LED_1:		
+	case PMIC8058_ID_LED_KB_LIGHT:
+	case PMIC8058_ID_LED_0:
+	case PMIC8058_ID_LED_1:
 	case PMIC8058_ID_LED_2:
-		 if(LED_BLINKING_ON==led->cdev.blink)
-               {
+		if(LED_BLINKING_ON==led->cdev.blink) {
 #ifdef CONFIG_LEDS_BLINK_NOSUSPEND_ZTE
-                 wake_lock(&led->cdev.wlock);
+			wake_lock(&led->cdev.wlock);
 #endif
-                  blink_led_speed[led->id-1]=0;                            
-                  mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + HZ);	
-               }
-               else if(LED_BLINKING_FAST_ON==led->cdev.blink)
-               {
-                  blink_led_speed[led->id-1]=1;                            
-                  mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + HZ/2);	
-               }
-	        else		   
-               {
+			blink_led_speed[led->id-1]=0;
+			mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + HZ);
+		} else if(LED_BLINKING_FAST_ON==led->cdev.blink) {
+			blink_led_speed[led->id-1]=1;
+			mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + HZ/2);
+		} else {
 #ifdef CONFIG_LEDS_BLINK_NOSUSPEND_ZTE
-                  wake_unlock(&led->cdev.wlock);
+			wake_unlock(&led->cdev.wlock);
 #endif
-                  if(led->id == PMIC8058_ID_LED_KB_LIGHT)
-                  {
-                   kp_bl_set(led, LED_OFF);
-                  }
-		    else
-                  {
-                   led_lc_set(led, LED_OFF); 
-                  }                  
-		    blink_led_speed[led->id-1]=0;	 
-                  del_timer(&led_blink_ctl_timer[led->id-1]); 	 
-               }
-               break;		
+			if(led->id == PMIC8058_ID_LED_KB_LIGHT) {
+				kp_bl_set(led, LED_OFF);
+			} else {
+				led_lc_set(led, LED_OFF);
+			}
+			blink_led_speed[led->id-1]=0;
+			del_timer(&led_blink_ctl_timer[led->id-1]);
+		}
+		break;
 	}
-	
 }
 
 static enum led_blink pmic8058_led_blink_get(struct led_classdev *led_cdev)
@@ -331,68 +315,56 @@ static enum led_blink pmic8058_led_blink_get(struct led_classdev *led_cdev)
 
 	led = container_of(led_cdev, struct pmic8058_led_data, cdev);
 
-	switch (led->id) {	
-	case PMIC8058_ID_LED_KB_LIGHT:	
+	switch (led->id) {
+	case PMIC8058_ID_LED_KB_LIGHT:
 	case PMIC8058_ID_LED_0:
 	case PMIC8058_ID_LED_1:
 	case PMIC8058_ID_LED_2:
-		return (led->cdev.blink);		
+	return (led->cdev.blink);
 	}
 	return LED_BLINKING_OFF;
 }
 
 static void led_lc_blink_set(unsigned long data)
-{      
-       struct pmic8058_led_data *led;
-       int totalms;
-       int onms;
-       int offms;
+{
+	struct pmic8058_led_data *led;
+	int totalms;
+	int onms;
+	int offms;
+	int indx =data;
 
-	int indx =data;          
+	led = &led_data[data+1];
+	totalms = led->cdev.grpfreq * 50;
+	onms = led->cdev.grppwm * totalms /255;
+	offms = totalms - onms;
 
-	led = &led_data[data+1];   	
-
-    totalms = led->cdev.grpfreq * 50;
-    onms = led->cdev.grppwm * totalms /255;
-    offms = totalms - onms;
-	
-        if(0 ==blink_led_status[indx] )
-        {               
-          	   if(0==indx) 
-          {
-             kp_bl_set(led, LED_FULL);
-          }
-	   else
-          {
-             led_lc_set(led, LED_FULL);
-          }	  
-          if ( offms != 0){
-              blink_led_status[indx] =1; 
-              mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + (onms * HZ/1000));
-          }else{
-             blink_led_status[indx] = 0; 
-              mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + (totalms * HZ/1000));
-          }
-        }
-        else
-        {          
-          
-	   if(0==indx) 
-          {
-             kp_bl_set(led, LED_OFF);
-          }
-	   else
-          {
-             led_lc_set(led, LED_OFF);
-          }
-          if ( onms != 0){
-              blink_led_status[indx] =0; 
-              mod_timer(&led_blink_ctl_timer[led->id-1], (jiffies + offms * HZ/1000));
-          }else{
-              blink_led_status[indx] =1; 
-              mod_timer(&led_blink_ctl_timer[led->id-1], (jiffies + totalms * HZ/1000));
-          }
-        }	  
+	if(0 ==blink_led_status[indx] ) {
+		if(0==indx) {
+			kp_bl_set(led, LED_FULL);
+		} else {
+			led_lc_set(led, LED_FULL);
+		}
+		if ( offms != 0) {
+			blink_led_status[indx] =1; 
+			mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + (onms * HZ/1000));
+		} else {
+			blink_led_status[indx] = 0; 
+			mod_timer(&led_blink_ctl_timer[led->id-1],jiffies + (totalms * HZ/1000));
+		}
+	} else {
+		if(0==indx) {
+			kp_bl_set(led, LED_OFF);
+		} else {
+			led_lc_set(led, LED_OFF);
+		}
+		if ( onms != 0) {
+			blink_led_status[indx] =0; 
+			mod_timer(&led_blink_ctl_timer[led->id-1], (jiffies + offms * HZ/1000));
+		} else {
+			blink_led_status[indx] =1; 
+			mod_timer(&led_blink_ctl_timer[led->id-1], (jiffies + totalms * HZ/1000));
+		}
+	}
 }
 #endif
 
@@ -497,16 +469,16 @@ static int pmic8058_led_probe(struct platform_device *pdev)
 		led_dat->cdev.default_trigger   = curr_led->default_trigger;
 		led_dat->cdev.brightness_set    = pmic8058_led_set;
 		led_dat->cdev.brightness_get    = pmic8058_led_get;
-	       #ifdef CONFIG_LEDS_ZTE
-              led_dat->cdev.blink_set    = pmic8058_led_blink_set;
+#ifdef CONFIG_LEDS_ZTE
+		led_dat->cdev.blink_set    = pmic8058_led_blink_set;
 		led_dat->cdev.blink_get    = pmic8058_led_blink_get;
 		led_dat->cdev.blink	= LED_BLINKING_OFF;
-       led_dat->cdev.grpfreq = 20;
-       led_dat->cdev.grppwm = 128;
+		led_dat->cdev.grpfreq = 20;
+		led_dat->cdev.grppwm = 128;
 #ifdef CONFIG_LEDS_BLINK_NOSUSPEND_ZTE
-       wake_lock_init(&led_dat->cdev.wlock, WAKE_LOCK_SUSPEND, "msm_led_blink");
+		wake_lock_init(&led_dat->cdev.wlock, WAKE_LOCK_SUSPEND, "msm_led_blink");
 #endif
-		#endif
+#endif
 		led_dat->cdev.brightness	= LED_OFF;
 		led_dat->cdev.max_brightness	= curr_led->max_brightness;
 		led_dat->cdev.flags		= LED_CORE_SUSPENDRESUME;
@@ -538,9 +510,9 @@ static int pmic8058_led_probe(struct platform_device *pdev)
 						 led_dat->id);
 			goto fail_id_check;
 		}
-              #ifdef CONFIG_LEDS_ZTE
-              setup_timer(&led_blink_ctl_timer[i], led_lc_blink_set,i);
-	       #endif
+#ifdef CONFIG_LEDS_ZTE
+		setup_timer(&led_blink_ctl_timer[i], led_lc_blink_set,i);
+#endif
 	}
 
 	platform_set_drvdata(pdev, led_data);

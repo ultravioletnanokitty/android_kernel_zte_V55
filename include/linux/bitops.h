@@ -98,6 +98,7 @@ static inline __u8 rol8(__u8 word, unsigned int shift)
 {
 	return (word << shift) | (word >> (8 - shift));
 }
+
 /**
  * sign_extend32 - sign extend a 32-bit value using specified bit as sign-bit
  * @value: value to sign extend

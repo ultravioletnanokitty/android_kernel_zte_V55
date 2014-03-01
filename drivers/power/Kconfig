@@ -177,18 +177,12 @@ config ISL9519_CHARGER
 	  of its high current rating.
 	  Choose Y if you are compiling for Qualcomm's msm8x60 surf/ffa board.
 
-
-######## FOR ZTE ADD START #############################
-#** ZTE_MODIFY: liuzhongzhi added for max8903 charger IC, 20110520 *#
 config MAX8903_CHARGER
 	tristate "max8903 charger"
 	depends on BATTERY_MSM8X60
 	default n
 	help
 	  Say Y to enable support for battery charging from the MAX8903 DC-DC charger.
-
-#** end liuzhongzhi *#
-######## FOR ZTE ADD END ###############################
 
 config SMB137B_CHARGER
 	tristate "smb137b charger"

@@ -71,15 +71,6 @@
  * 		J Hadi Salim	:	- Backlog queue sampling
  *				        - netif_rx() feedback
  */
-/*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when           comment tag           who                  what, where, why                           
-----------    ------------        -----------      --------------------------      
-2011/07/12     longchunyan0001    longchunyan          modified for bcm4330
-===========================================================================*/
-
 
 #include <asm/uaccess.h>
 #include <asm/system.h>
@@ -2733,8 +2724,9 @@ static inline struct sk_buff *handle_ing(struct sk_buff *skb,
 					 struct packet_type **pt_prev,
 					 int *ret, struct net_device *orig_dev)
 {
+
 #ifdef CONFIG_WIFI_BCM4330_ZTE
-if (!skb->dev->rx_queue.qdisc  || skb->dev->rx_queue.qdisc == &noop_qdisc)
+	if (!skb->dev->rx_queue.qdisc || skb->dev->rx_queue.qdisc == &noop_qdisc)
 		goto out;
 #else
 	if (skb->dev->rx_queue.qdisc == &noop_qdisc)

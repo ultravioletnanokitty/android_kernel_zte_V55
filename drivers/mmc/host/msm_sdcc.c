@@ -14,18 +14,7 @@
  * Author: San Mehat (san@android.com)
  *
  */
-/*===========================================================================
 
-                            EDIT HISTORY
-
-when            comment tag        who                  what, where, why                           
-----------    ------------         -----------      --------------------------      
-2011/07/12    longchunyan0001      longchunyan            modify for wifi
-2011/08/05    chengjia0028         chengjia               modify for wifi pm
-2011/08/11    zhangxb0003      zhangxiaobo          fixing coredump caused by unplug t card manytimes
-2011/09/16    longchunyan0002      longchunyan      fixing coredump caused by unplug t card manytimes
-2011/09/26    lixinyu0001                lixinyu                create proc/msm_memory and store emmc info 
-===========================================================================*/
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -62,10 +51,6 @@ when            comment tag        who                  what, where, why
 #include <mach/htc_pwrsink.h>
 #include <mach/sdio_al.h>
 
-/** ZTE MODIFY lixinyu 20110926 */
-#include <linux/seq_file.h> 
-#include <linux/proc_fs.h>
-/* end lixinyu*/
 
 #include "msm_sdcc.h"
 
@@ -126,7 +111,7 @@ msmsdcc_print_status(struct msmsdcc_host *host, char *hdr, uint32_t status)
 }
 #endif
 
-extern void arm_machine_restart(char mode, const char *cmd);/** ZTE MODIFY lixinyu 20111219 add*/
+extern void arm_machine_restart(char mode, const char *cmd);
 static void
 msmsdcc_start_command(struct msmsdcc_host *host, struct mmc_command *cmd,
 		      u32 c);
@@ -239,7 +224,7 @@ static inline void msmsdcc_delay_us(unsigned long us)
 	dsb();
 	udelay(us);
 }
-/* end lixinyu */
+
 static inline void
 msmsdcc_start_command_exec(struct msmsdcc_host *host, u32 arg, u32 c)
 {
@@ -291,17 +276,14 @@ msmsdcc_dma_complete_tlet(unsigned long data)
 		if (host->dma.result & DMOV_RSLT_ERROR)
 			pr_err("%s: DMA error (0x%.8x)\n",
 			       mmc_hostname(host->mmc), host->dma.result);
-		if (host->dma.result & DMOV_RSLT_FLUSH){
-			if (printk_ratelimit())
-			    pr_err("%s: DMA channel flushed (0x%.8x)\n",
-			           mmc_hostname(host->mmc), host->dma.result);
-		}
-	        if (printk_ratelimit())	
-		    pr_err("Flush data: %.8x %.8x %.8x %.8x %.8x %.8x\n",
-		           host->dma.err.flush[0], host->dma.err.flush[1],
-		           host->dma.err.flush[2], host->dma.err.flush[3],
-		           host->dma.err.flush[4],
-		           host->dma.err.flush[5]);
+		if (host->dma.result & DMOV_RSLT_FLUSH)
+			pr_err("%s: DMA channel flushed (0x%.8x)\n",
+			       mmc_hostname(host->mmc), host->dma.result);
+		pr_err("Flush data: %.8x %.8x %.8x %.8x %.8x %.8x\n",
+		       host->dma.err.flush[0], host->dma.err.flush[1],
+		       host->dma.err.flush[2], host->dma.err.flush[3],
+		       host->dma.err.flush[4],
+		       host->dma.err.flush[5]);
 		msmsdcc_reset_and_restore(host);
 		if (!mrq->data->error)
 			mrq->data->error = -EIO;
@@ -336,16 +318,16 @@ msmsdcc_dma_complete_tlet(unsigned long data)
 		}
 		msmsdcc_stop_data(host);
 
-        /** ZTE MODIFY lixinyu 20111219 for mmc dma data protection.
-        the timer (10s) has expired but dma complete tlet do not run, the card status is dataend, this 
-        will commit a data timeout error which make data partition read-only status.*/
-        if((host->pdev_id ==1) && (mrq->data->error))
-       {
-          pr_err("%s: DMOV_RSLT_DON, but 10s timer expires, data transfer error (error=:0x%.8x)\n",
-		            mmc_hostname(host->mmc), mrq->data->error);
-          arm_machine_restart('h',NULL);
-       }
-       /* end lixinyu*/
+		/* for mmc dma data protection. the timer (10s) has expired
+		 * but dma complete tlet do not run, the card status is dataend,
+		 * this will commit a data timeout error which make data
+		 * partition read-only status.
+		 */
+		if((host->pdev_id ==1) && (mrq->data->error)) {
+			pr_err("%s: DMOV_RSLT_DON, but 10s timer expires, data transfer error (error=:0x%.8x)\n",
+				mmc_hostname(host->mmc), mrq->data->error);
+		arm_machine_restart('h',NULL);
+		}
 		if (!mrq->data->error) {
 			host->curr.data_xfered = host->curr.xfer_size;
 			host->curr.xfer_remain -= host->curr.xfer_size;
@@ -359,15 +341,12 @@ msmsdcc_dma_complete_tlet(unsigned long data)
 
 			mmc_request_done(host->mmc, mrq);
 			return;
-		} else
-		 {
-		        /** ZTE MODIFY  lixinyu add 20111009 for command 25 error on MAG4FA  emmc*/
-		        if(host->pdev_id == 1) /*emmc id*/
-		         msmsdcc_delay_us(100);
-                        /* end lixinyu */
-
+		} else {
+			/* for command 25 error on MAG4FA emmc (?) */
+			if(host->pdev_id == 1) /*emmc id*/
+				msmsdcc_delay_us(100);
 			msmsdcc_start_command(host, mrq->data->stop, 0);
-	          }
+		}
 	}
 
 out:
@@ -536,13 +515,13 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 	 * Kick the software command timeout timer here.
 	 * Timer expires in 10 secs.
 	 */
-    if(host->pdev_id == 3 && host->pwr == 0 &&  host->clks_on == 0  && host->sdcc_irq_disabled == 1){
-         mod_timer(&host->req_tout_timer,
-              (jiffies + msecs_to_jiffies(10)));/*when error, only wait for 10ms*/
-    }else{
-         mod_timer(&host->req_tout_timer,
-              (jiffies + msecs_to_jiffies(MSM_MMC_REQ_TIMEOUT)));
-    }
+	if(host->pdev_id == 3 && host->pwr == 0 &&  host->clks_on == 0  && host->sdcc_irq_disabled == 1){
+		mod_timer(&host->req_tout_timer,
+			(jiffies + msecs_to_jiffies(10)));/*when error, only wait for 10ms*/
+	} else {
+		mod_timer(&host->req_tout_timer,
+			(jiffies + msecs_to_jiffies(MSM_MMC_REQ_TIMEOUT)));
+	}
 }
 
 static void
@@ -646,15 +625,12 @@ msmsdcc_data_err(struct msmsdcc_host *host, struct mmc_data *data,
 	if (status & MCI_DATACRCFAIL) {
 		if (!(data->mrq->cmd->opcode == MMC_BUSTEST_W
 			|| data->mrq->cmd->opcode == MMC_BUSTEST_R)) {
-			if (printk_ratelimit())
-			{
 			pr_err("%s: Data CRC error\n",
 			       mmc_hostname(host->mmc));
 			pr_err("%s: opcode 0x%.8x\n", __func__,
 			       data->mrq->cmd->opcode);
 			pr_err("%s: blksz %d, blocks %d\n", __func__,
 			       data->blksz, data->blocks);
-			}
 			data->error = -EILSEQ;
 		}
 	} else if (status & MCI_DATATIMEOUT) {
@@ -898,7 +874,7 @@ static void msmsdcc_do_cmdirq(struct msmsdcc_host *host, uint32_t status)
 				if (status & MCI_PROGDONE) {
 					host->prog_scan = 0;
 					host->prog_enable = 0;
-					 msmsdcc_request_end(host, cmd->mrq);
+					msmsdcc_request_end(host, cmd->mrq);
 				} else
 					host->curr.cmd = cmd;
 			} else {
@@ -1690,7 +1666,6 @@ static void msmsdcc_req_tout_timer_hdlr(unsigned long data)
 	spin_unlock_irqrestore(&host->lock, flags);
 }
 
-
 #if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
 struct mmc_host *wifi_bcm_host = NULL;
 void enable_sdcc4_detect(void) {
@@ -1701,48 +1676,6 @@ void enable_sdcc4_detect(void) {
 }
 EXPORT_SYMBOL(enable_sdcc4_detect);
 #endif
-
-/** ZTE MODIFY lixinyu 20110926 for save emmc info to proc/msm_memory file*/
-#define EMMC_DEV_ID  1
-struct mmc_host * emmc_host = NULL;
-static int mmc_proc_show(struct seq_file *m, void *v)
-{
-    struct mmc_card * emmc_card = NULL;
-    unsigned int inte, deci;
-    if(NULL != emmc_host &&  NULL != emmc_host->card)
-    {
-        emmc_card = emmc_host->card;
-        inte = emmc_card->ext_csd.sectors/(2*1024);  /*MB*/
-        deci = ((inte%1024)*10)/1024;
-        inte = inte/1024; 
-        seq_printf(m,"%s %d.%dGB\n", emmc_card->cid.prod_name, inte, deci);
-    }
-    else
-    {
-        seq_printf(m,"No emmc info\n");
-    }        
-
-    return 0;
-}
-
-static int msm_proc_open(struct inode *inode, struct file *file)
-{
-    return single_open(file, mmc_proc_show, NULL);
-}
-
-static const struct file_operations mmc_proc_fops = {
-	.open		= msm_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static int  proc_msmsdcc_init(void)
-{
-    proc_create("msm_memory", 0, NULL, &mmc_proc_fops);
-    return 0;
-}
-/* end lixinyu */
 
 static int
 msmsdcc_probe(struct platform_device *pdev)
@@ -1915,6 +1848,7 @@ msmsdcc_probe(struct platform_device *pdev)
 	mmc->caps |= plat->mmc_bus_width;
 
 	mmc->caps |= MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED;
+
 #if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
 	if(host->pdev_id == 4) {
 		wifi_bcm_host = mmc;
@@ -1929,12 +1863,13 @@ msmsdcc_probe(struct platform_device *pdev)
 
 	if (plat->is_sdio_al_client)
 		mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;
+
 #if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
 	if(host->pdev_id == 4) {
 		mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;
 	}
 #endif
-		
+
 	mmc->max_phys_segs = NR_SG;
 	mmc->max_hw_segs = NR_SG;
 	mmc->max_blk_size = 4096;	/* MCI_DATA_CTL BLOCKSIZE up to 4096 */
@@ -2113,15 +2048,6 @@ msmsdcc_probe(struct platform_device *pdev)
 		if (ret)
 			goto platform_irq_free;
 	}
-
-        /** ZTE MODIFY lixinyu 20110926 for save emmc info to proc/msm_memory file*/
-       if(pdev->id == EMMC_DEV_ID)
-        {
-            emmc_host = mmc;
-            proc_msmsdcc_init();
-        }
-       /* end lixinyu */
-
 	return 0;
 
  platform_irq_free:
@@ -2163,11 +2089,13 @@ msmsdcc_probe(struct platform_device *pdev)
  ioremap_free:
 	iounmap(host->base);
  host_free:
+
 #if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
 	if(((struct msmsdcc_host*)(mmc->private))->pdev_id == 4) {
- 		wifi_bcm_host = NULL;
+		wifi_bcm_host = NULL;
 	}
-	#endif
+#endif
+
 	mmc_free_host(mmc);
  out:
 	return ret;
@@ -2343,26 +2271,20 @@ msmsdcc_runtime_suspend(struct device *dev)
 		 * simple become pm usage counter increment operations.
 		 */
 		pm_runtime_get_noresume(dev);
-
-		#if 0
-		rc = mmc_suspend_host(mmc);
-		#else
 		if(!mmc->card) {
-		rc = mmc_suspend_host(mmc);
-		}
-		else if(mmc->card && ((struct msmsdcc_host*)(mmc->private))->pdev_id != 4)  
-		{
+			rc = mmc_suspend_host(mmc);
+		} else if(mmc->card && ((struct msmsdcc_host*)(mmc->private))->pdev_id != 4) {
 			rc = mmc_suspend_host(mmc);
 		}
-		#endif
-		
+
 		pm_runtime_put_noidle(dev);
+
 #if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
 		if(((struct msmsdcc_host*)(mmc->private))->pdev_id == 4) {
 			mmc->pm_flags |= MMC_PM_WAKE_SDIO_IRQ;
 		}
 #endif
-		
+
 		if (!rc) {
 			if (mmc->card && (mmc->card->type == MMC_TYPE_SDIO) &&
 				(mmc->pm_flags & MMC_PM_WAKE_SDIO_IRQ)) {
@@ -2431,17 +2353,11 @@ msmsdcc_runtime_resume(struct device *dev)
 
 		spin_unlock_irqrestore(&host->lock, flags);
 
-		#if 0
-		mmc_resume_host(mmc);
-		#else
 		if(!mmc->card) {
 			mmc_resume_host(mmc);
+		} else if(mmc->card && ((struct msmsdcc_host*)(mmc->private))->pdev_id != 4) {
+			mmc_resume_host(mmc);
 		}
-		else if(mmc->card && ((struct msmsdcc_host*)(mmc->private))->pdev_id != 4)  
-		{
-		mmc_resume_host(mmc);
-		}
-		#endif
 
 		/*
 		 * FIXME: Clearing of flags must be handled in clients

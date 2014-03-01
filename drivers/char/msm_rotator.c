@@ -315,8 +315,6 @@ static int msm_rotator_ycxcx_h2v1(struct msm_rotator_img_info *info,
 		out_chr_addr = out_chroma_paddr;
 
 	iowrite32(in_paddr, MSM_ROTATOR_SRCP0_ADDR);
-
-	iowrite32(in_paddr, MSM_ROTATOR_SRCP0_ADDR);
 	iowrite32(in_chr_addr, MSM_ROTATOR_SRCP1_ADDR);
 	iowrite32(out_paddr +
 			((info->dst_y * info->dst.width) + info->dst_x),
@@ -433,7 +431,7 @@ static int msm_rotator_ycxcx_h2v2(struct msm_rotator_img_info *info,
 				MSM_ROTATOR_OUT_YSTRIDE1);
 
 		if ((info->src.format == MDP_Y_CBCR_H2V2) ||
-		    (info->src.format == MDP_Y_CB_CR_H2V2)) {
+			(info->src.format == MDP_Y_CB_CR_H2V2)) {
 			iowrite32(GET_PACK_PATTERN(0, 0, CLR_CB, CLR_CR, 8),
 				  MSM_ROTATOR_SRC_UNPACK_PATTERN1);
 			iowrite32(GET_PACK_PATTERN(0, 0, CLR_CB, CLR_CR, 8),

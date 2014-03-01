@@ -30,15 +30,8 @@
 #ifndef __RTC_PM8058_H__
 #define __RTC_PM8058_H__
 
-/**  ZTE_MODIFY hezhibin modify for debug powerup automatically,according SR00551116,2011-07-20 */
-#if 0 //mask the orig qualcomm code
-struct pm8058_rtc_pdata {
-	bool rtc_write_enable;
-};
-#else
 struct pm8058_rtc_platform_data {
 	bool rtc_alarm_powerup;
 };
-#endif
-/**  ZTE_MODIFY end */
+
 #endif /* __RTC_PM8058_H__ */

@@ -258,13 +258,6 @@ ldo15_put:
 
 static void msm_camera_vreg_disable(void)
 {
-	#if 0
-	if (ldo15) {
-		regulator_disable(ldo15);
-		regulator_put(ldo15);
-	}
-	#endif
-
 	if (lvs0) {
 		regulator_disable(lvs0);
 		regulator_put(lvs0);
@@ -563,7 +556,6 @@ int msm_camio_enable(struct platform_device *pdev)
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
 	uint32_t val;
-
 	camio_dev = pdev;
 	camio_ext = camdev->ioext;
 	camio_clk = camdev->ioclk;
@@ -670,7 +662,6 @@ void msm_camio_disable(struct platform_device *pdev)
 	iounmap(csibase);
 	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
 	CDBG("disable clocks\n");
-
 	msm_camio_clk_disable(CAMIO_CSI0_VFE_CLK);
 	msm_camio_clk_disable(CAMIO_CSI0_CLK);
 	msm_camio_clk_disable(CAMIO_CSI1_VFE_CLK);
@@ -744,7 +735,7 @@ int msm_camio_csi_config(struct msm_camera_csi_params *csi_params)
 	int rc = 0;
 	uint32_t val = 0;
 
-	CDBG("msm_camio_csi_config \n");
+	CDBG("msm_camio_csi_config\n");
 
 	/* SOT_ECC_EN enable error correction for SYNC (data-lane) */
 	msm_io_w(0x4, csibase + MIPI_PHY_CONTROL);
@@ -785,7 +776,6 @@ int msm_camio_csi_config(struct msm_camera_csi_params *csi_params)
 	msm_io_w(val, csibase + MIPI_PHY_D1_CONTROL2);
 	msm_io_w(val, csibase + MIPI_PHY_D2_CONTROL2);
 	msm_io_w(val, csibase + MIPI_PHY_D3_CONTROL2);
-
 
 	val = (0x0F << MIPI_PHY_CL_CONTROL_HS_TERM_IMP_SHFT) |
 		(0x1 << MIPI_PHY_CL_CONTROL_LP_REC_EN_SHFT);

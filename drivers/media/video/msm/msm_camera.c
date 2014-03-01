@@ -23,16 +23,6 @@
 /* FIXME: check limits on command lenghts passed from userspace */
 /* FIXME: __msm_release: which queues should we flush when opencnt != 0 */
 
-/*===========================================================================
-
-                        				EDIT HISTORY
-
-when              comment tag        who                  what, where, why                           
-----------    ------------     -----------      --------------------------      
-2012-04-23     jidewei001       jidewei                      improve the problem that camera can't be opened 
-                                                                            after gtalk error force closed
-===========================================================================*/
-
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -2701,7 +2691,7 @@ static long msm_ioctl_config(struct file *filep, unsigned int cmd,
 	struct msm_cam_device *pmsm = filep->private_data;
 
 	CDBG("%s: cmd %d\n", __func__, _IOC_NR(cmd));
-       //pr_info("%s:%d\n",__func__, _IOC_NR(cmd));
+
 	switch (cmd) {
 	case MSM_CAM_IOCTL_GET_SENSOR_INFO:
 		rc = msm_get_sensor_info(pmsm->sync, argp);
@@ -2869,8 +2859,8 @@ static long msm_ioctl_frame(struct file *filep, unsigned int cmd,
 	int rc = -EINVAL;
 	void __user *argp = (void __user *)arg;
 	struct msm_cam_device *pmsm = filep->private_data;
-//	   CDBG("%s: cmd %d\n", __func__, _IOC_NR(cmd)); 
-       //pr_info("%s:%d\n",__func__, cmd);
+
+
 	switch (cmd) {
 	case MSM_CAM_IOCTL_GETFRAME:
 		/* Coming from frame thread to get frame
@@ -3004,8 +2994,8 @@ static int __msm_release(struct msm_sync *sync)
 		}
 		msm_queue_drain(&sync->pict_q, list_pict);
 		msm_queue_drain(&sync->event_q, list_config);
-             msm_queue_drain(&sync->frame_q, list_frame);  //zte_modify added by jidewei001 2012-04-23
-			  
+		msm_queue_drain(&sync->frame_q, list_frame);
+
 		wake_unlock(&sync->wake_lock);
 		sync->apps_id = NULL;
 		sync->core_powered_on = 0;
@@ -3041,7 +3031,7 @@ static int msm_release_control(struct inode *node, struct file *filep)
 		pmsm->sync->vfefn.vfe_stop();
 	}
 	mutex_unlock(&pmsm->sync->lock);
-	if(pmsm->sync->opencnt > 1) // zte_modify added by jidewei001 2012-04-23
+	if(pmsm->sync->opencnt > 1)
 	{
 		pmsm->sync->opencnt = 1;
 		pr_info("%s: jidewei debug %s  pmsm->sync->opencnt=%d\n", __func__, filep->f_path.dentry->d_name.name,pmsm->sync->opencnt);
@@ -3052,7 +3042,7 @@ static int msm_release_control(struct inode *node, struct file *filep)
 		kfree(ctrl_pmsm);
 	}
 
-	atomic_set(&pmsm->opened, 0);    //zte_modify added by jidewei001 2012-04-23 
+	atomic_set(&pmsm->opened, 0);
 	
 	return rc;
 }
@@ -3770,7 +3760,7 @@ static int msm_open_common(struct inode *inode, struct file *filep,
 		container_of(inode->i_cdev, struct msm_cam_device, cdev);
 
 	CDBG("%s: open %s\n", __func__, filep->f_path.dentry->d_name.name);
-       //pr_info("%s:%s\n",__func__, filep->f_path.dentry->d_name.name);
+
 	if (atomic_cmpxchg(&pmsm->opened, 0, 1) && once) {
 		pr_err("%s: %s is already opened.\n",
 			__func__,

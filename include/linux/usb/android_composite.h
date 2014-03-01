@@ -98,4 +98,5 @@ extern void android_register_function(struct android_usb_function *f);
 
 extern int android_enable_function(struct usb_function *f, int enable);
 
+
 #endif	/* __LINUX_USB_ANDROID_H */

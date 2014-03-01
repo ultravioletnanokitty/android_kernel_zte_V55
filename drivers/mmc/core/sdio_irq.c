@@ -12,15 +12,6 @@
  * the Free Software Foundation; either version 2 of the License, or (at
  * your option) any later version.
  */
-/*===========================================================================
-
-                        EDIT HISTORY FOR V11
-
-when              comment tag        who                  what, where, why                           
-----------        ------------     -----------      --------------------------      
-2012/01/31         chengj0060       chengjia         keep syn removing 
-===========================================================================*/
-
 
 #include <linux/kernel.h>
 #include <linux/sched.h>
@@ -73,10 +64,12 @@ static int process_sdio_pending_irqs(struct mmc_card *card)
 
 	return ret;
 }
+
 #if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
 int bcm_syn_rm_flag = 0;
 EXPORT_SYMBOL_GPL(bcm_syn_rm_flag);
 #endif
+
 static int sdio_irq_thread(void *_host)
 {
 	struct mmc_host *host = _host;
@@ -113,12 +106,11 @@ static int sdio_irq_thread(void *_host)
 		 * holding of the host lock does not cover too much work
 		 * that doesn't require that lock to be held.
 		 */
-
 		ret = __mmc_claim_host(host, &host->sdio_irq_thread_abort);
 		if (ret)
 			break;
-#if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)	
-			bcm_syn_rm_flag = 1;
+#if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
+		bcm_syn_rm_flag = 1;
 #endif
 		ret = process_sdio_pending_irqs(host->card);
 		mmc_release_host(host);

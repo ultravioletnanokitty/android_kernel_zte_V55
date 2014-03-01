@@ -480,14 +480,11 @@ config KEYBOARD_PMIC8058
 	  To compile this driver as a module, choose M here: the module will
 	  be called pmic8058-keypad.
 
-###############################FOR ZTE ADD START ###########################
-### liyuan0003:added by liyuan 2011/05/23 for keyboard detection driver
 config KEYBOARD_ZTE
-    tristate "ZTE keypad support"        
-    default n        
+	tristate "ZTE keypad support"
+	default n
+
 endif
-### end liyuan 2011/05/23  
-###############################FOR ZTE ADD END #############################	
 
 config KEYBOARD_PMIC8058
         tristate "Qualcomm PMIC8058 keypad"

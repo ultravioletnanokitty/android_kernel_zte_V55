@@ -49,37 +49,26 @@ config WEBCAM_OV9726
 	default n
 	---help---
 	  Omni Vision VGA Bayer Sensor.
-########################## FOR ADD ZTE #####################################
-###chengj0001: added by chengjia 2011/02/22 for adding ov5640 driver
 config CAMERA_OV5640_ZTE
 	bool "Sensor OV5640 (5M YUV)"
 	depends on MSM_CAMERA && ARCH_MSM8X60
 	default y
 	---help---
 	  Omni Vision 5M YUV Sensor.
-### end chengjia 2011/02/22
-###liyibo0002: added by liyibo 2011/05/31 for vflip & mirror
 config CAMERA_OV5640_FLIP_ZTE
-	bool "Sensor OV5640 vflip (5M YUV)"
+	bool "Sensor OV5640 vflip & mirror (5M YUV)"
 	depends on MSM_CAMERA && ARCH_MSM8X60 && CAMERA_OV5640_ZTE
 	default n
-### end liyibo 2011/05/31	
-
-###liyibo0001: added by liyibo 2011/03/14 for adding mt9d115 driver
 config  CAMERA_MT9D115_ZTE
 	bool "Sensor MT9D115 (2M YUV)"
 	depends on MSM_CAMERA && ARCH_MSM8X60
 	default y
 	---help---
 	  MICRON Vision 2M YUV Sensor.
-### end liyibo 2011/03/14
-###liyibo0002: added by liyibo 2011/05/31 for for mirror
 config CAMERA_MT9D115_MIRROR_ZTE
 	bool "Sensor mt9d115 mirror (2M YUV)"
 	depends on MSM_CAMERA && ARCH_MSM8X60 && CAMERA_MT9D115_ZTE
 	default n
-### end liyibo 2011/05/31
-###liyibo0003: added by liyibo 2011/06/9 for for mirror	
 config CAMERA_MT9D115_FLIP_ZTE
 	bool "Sensor mt9d115 flip (2M YUV)"
 	depends on MSM_CAMERA && ARCH_MSM8X60 && CAMERA_MT9D115_ZTE
@@ -88,8 +77,6 @@ config CAMERA_MT9D115_FLIP_MIRROR_ZTE
 	bool "Sensor mt9d115 flip & mirror (2M YUV)"
 	depends on MSM_CAMERA && ARCH_MSM8X60 && CAMERA_MT9D115_ZTE
 	default n
-### end liyibo 2011/06/9
-########################## FOR ADD ZTE END ##################################
 #	This Senosr is used as a webcam.
 #	This uses the CSI interface.
 config VX6953

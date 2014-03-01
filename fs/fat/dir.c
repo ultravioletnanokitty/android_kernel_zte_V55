@@ -12,14 +12,6 @@
  *  Rewritten for constant inumbers. Plugged buffer overrun in readdir(). AV
  *  Short name translation 1999, 2001 by Wolfram Pienkoss <wp@bszh.de>
  */
-/*===========================================================================
-
-                            EDIT HISTORY
-
-when            comment tag        who                  what, where, why                           
-----------    ------------         -----------      --------------------------      
-2011/08/11    zhangxb0003      zhangxiaobo          fixing coredump caused by unplug t card manytimes
-===========================================================================*/
 
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -106,9 +98,8 @@ next:
 
 	*bh = sb_bread(sb, phys);
 	if (*bh == NULL) {
-		if (printk_ratelimit())
-		    printk(KERN_ERR "FAT: Directory bread(block %llu) failed\n",
-		           (llu)phys);
+		printk(KERN_ERR "FAT: Directory bread(block %llu) failed\n",
+		       (llu)phys);
 		/* skip this block */
 		*pos = (iblock + 1) << sb->s_blocksize_bits;
 		goto next;
