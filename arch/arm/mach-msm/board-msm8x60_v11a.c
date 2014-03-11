@@ -9333,7 +9333,7 @@ static void display_common_power(int on)
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
 	    machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa()) {
 		if (on) {
-			if(hw_ver == HW_VERSION_V71A_A) {
+			if(hw_ver == HW_VERSION_V11A_A) {
 				gpio_direction_output(GPIO_12V_BOOST_EN, 1);
 				msleep(20);
 				gpio_direction_output(103, 1);
