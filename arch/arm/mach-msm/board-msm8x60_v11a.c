@@ -159,7 +159,7 @@ extern int hw_ver;
 #define CT_HPD 63
 
 #ifdef CONFIG_FB_MSM_LCDC_HANNSTAR_WXVGA_ZTE
-#define GPIO_LCD_VLEN_EN	PM8058_GPIO_PM_TO_SYS(13)
+#define GPIO_LCD_VLED_EN	PM8058_GPIO_PM_TO_SYS(13)
 #define GPIO_LCD_PWM_EN		PM8058_GPIO_PM_TO_SYS(25)
 #define GPIO_12V_BOOST_EN	PM8901_GPIO_PM_TO_SYS(1)
 
@@ -5614,9 +5614,9 @@ static void zte_v11a_gpio_request(void) {
 		printk(KERN_ERR "%s: LEVEL_SHIFT_EN gpio %d request failed\n", __func__, LEVEL_SHIFT_EN);
 		goto out3;
 	}
-	rc = gpio_request(GPIO_LCD_VLEN_EN, "LCD_VLED_EN");
+	rc = gpio_request(GPIO_LCD_VLED_EN, "LCD_VLED_EN");
 	if (rc) {
-		printk(KERN_ERR "%s: LCD_VLED_EN gpio %d request failed\n", __func__, GPIO_LCD_VLEN_EN);
+		printk(KERN_ERR "%s: LCD_VLED_EN gpio %d request failed\n", __func__, GPIO_LCD_VLED_EN);
 		goto out4;
 	}
 	rc = gpio_request(LVDS_SHUTDOWN_N, "LVDS_SHUTDOWN_EN");
@@ -9312,14 +9312,14 @@ static void setup_display_power(void) {
 #ifdef CONFIG_FB_MSM_LCDC_HANNSTAR_WXVGA_ZTE
 	if (display_power_on ) {
 		gpio_set_value_cansleep(GPIO_12V_BOOST_EN, 1);
-		gpio_set_value_cansleep(GPIO_LCD_VLEN_EN, 1);
+		gpio_set_value_cansleep(GPIO_LCD_VLED_EN, 1);
 		msleep(50);
 		gpio_set_value_cansleep(LVDS_SHUTDOWN_N, 1);
 		gpio_set_value_cansleep(LEVEL_SHIFT_EN, 1);
 		gpio_set_value_cansleep(LCD_POWER_EN, 1);
 	} else {
 		gpio_set_value_cansleep(GPIO_12V_BOOST_EN, 0);
-		gpio_set_value_cansleep(GPIO_LCD_VLEN_EN, 0);
+		gpio_set_value_cansleep(GPIO_LCD_VLED_EN, 0);
 		gpio_set_value_cansleep(LVDS_SHUTDOWN_N, 0);
 		gpio_set_value_cansleep(LEVEL_SHIFT_EN, 0);
 		gpio_set_value_cansleep(LCD_POWER_EN, 0);
