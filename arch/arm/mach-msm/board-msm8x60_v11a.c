@@ -5647,7 +5647,7 @@ out2:
 out3:
 	gpio_free(LEVEL_SHIFT_EN);
 out4:
-	gpio_free(LCD_VLED_EN);
+	gpio_free(GPIO_LCD_VLED_EN);
 out5:
 	gpio_free(LVDS_SHUTDOWN_N);
 out6:
