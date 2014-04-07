@@ -65,11 +65,6 @@ static int process_sdio_pending_irqs(struct mmc_card *card)
 	return ret;
 }
 
-#if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
-int bcm_syn_rm_flag = 0;
-EXPORT_SYMBOL_GPL(bcm_syn_rm_flag);
-#endif
-
 static int sdio_irq_thread(void *_host)
 {
 	struct mmc_host *host = _host;
@@ -109,14 +104,8 @@ static int sdio_irq_thread(void *_host)
 		ret = __mmc_claim_host(host, &host->sdio_irq_thread_abort);
 		if (ret)
 			break;
-#if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
-		bcm_syn_rm_flag = 1;
-#endif
 		ret = process_sdio_pending_irqs(host->card);
 		mmc_release_host(host);
-#if defined (CONFIG_WIFI_BCM4329_ZTE) || defined(CONFIG_WIFI_BCM4330_ZTE)
-   		bcm_syn_rm_flag = 0;
-#endif
 
 		/*
 		 * Give other threads a chance to run in the presence of

@@ -324,23 +324,7 @@ sdioh_interrupt_deregister(sdioh_info_t *sd)
 #if !defined(OOB_INTR_ONLY)
 	if (gInstance->func[1]) {
 		/* register and unmask irq */
-		while(1) {
-		/* register and unmask irq */
-			if(bcm_syn_rm_flag) {
-			msleep(2);
-				continue;
-		}
 		sdio_claim_host(gInstance->func[1]);
-			if(bcm_syn_rm_flag) {/////////////check flag again
-				sdio_release_host(gInstance->func[1]);
-				if (printk_ratelimit()) {
-					printk("chengjiatest: sdio irq is running!just wait for a moment!sdioh_interrupt_deregister\n");
-				}
-			}
-			else {
-				break;
-			}
-		}
 		sdio_release_irq(gInstance->func[1]);
 		sdio_release_host(gInstance->func[1]);
 	}
@@ -1317,23 +1301,7 @@ sdioh_stop(sdioh_info_t *si)
 	*/
 	if (gInstance->func[0]) {
 #if !defined(OOB_INTR_ONLY)
-	while(1) {
-		if(bcm_syn_rm_flag) {
-			msleep(2);			
-			continue;
-		}
-		/* register and unmask irq */
 		sdio_claim_host(gInstance->func[0]);
-		if(bcm_syn_rm_flag) {/////////////check flag again
-			sdio_release_host(gInstance->func[0]);
-			if (printk_ratelimit()) {
-				printk("chengjiatest: sdio irq is running!just wait for a moment!sdioh_stop\n");
-			}	
-		}
-		else {
-			break;
-		}
-	}
 		sdio_release_irq(gInstance->func[1]);
 		sdio_release_irq(gInstance->func[2]);
 		sdio_release_host(gInstance->func[0]);
