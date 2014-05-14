@@ -233,13 +233,6 @@ void arch_reset(char mode, const char *cmd)
 	}
 
 	writel(0, WDT0_EN);
-	if (!(machine_is_msm8x60_charm_surf() ||
-	      machine_is_msm8x60_charm_ffa())) {
-		dsb();
-		writel(0, PSHOLD_CTL_SU); /* Actually reset the chip */
-		mdelay(5000);
-		pr_notice("PS_HOLD didn't work, falling back to watchdog\n");
-	}
 
 	__raw_writel(1, WDT0_RST);
 	__raw_writel(5*0x31F3, WDT0_BARK_TIME);

@@ -373,85 +373,26 @@ config MACH_MSM8X55_SVLTE_SURF
        help
          Support for the Qualcomm MSM8x55 SVLTE SURF eval board.
 
-config MACH_MSM8X60_RUMI3
+config MACH_SMARTTAB_V11A
 	depends on ARCH_MSM8X60
 	default n
-	bool "MSM8x60 RUMI3"
-	help
-	  Support for the Qualcomm MSM8x60 RUMI3 emulator.
-
-config MACH_MSM8X60_SIM
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 Simulator"
-	help
-	  Support for the Qualcomm MSM8x60 simulator.
-
-config MACH_MSM8X60_SURF
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 SURF"
-	help
-	  Support for the Qualcomm MSM8x60 SURF eval board.
-
-config MACH_MSM8X60_V11A
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 V11A"
+	bool "SmartTab V11A"
 	help
 	  Support for the ZTE V11A (msm8x60) board.
 
-config MACH_MSM8X60_V71A
+config MACH_SMARTTAB_V55
 	depends on ARCH_MSM8X60
 	default n
-	bool "MSM8x60 V71A"
-	help
-	  Support for the ZTE V71A (msm8x60) board.
-
-config MACH_MSM8X60_V55
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 V55"
+	bool "SmartTab V55"
 	help
 	  Support for the ZTE V55 (msm8x60) board.
 
-config MACH_MSM8X60_FFA
+config MACH_SMARTTAB_V71A
 	depends on ARCH_MSM8X60
 	default n
-	bool "MSM8x60 FFA"
+	bool "SmartTab V71A"
 	help
-	  Support for the Qualcomm MSM8x60 FFA eval board.
-
-config MACH_MSM8X60_QRDC
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 QRDC"
-	help
-	  Support for the Qualcomm MSM8x60 QRDC board.
-
-config MACH_MSM8X60_FLUID
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 FLUID"
-	help
-	  Support for the Qualcomm MSM8x60 FLUID platform. The FLUID is an
-	  8x60 target which has a form factor that is much closer to that
-	  of a phone than other targets. It also has a new display and
-	  touchscreen controller.
-
-config MACH_MSM8X60_CHARM_SURF
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 CHARM SURF"
-	help
-	  Support for the Qualcomm MSM8x60 Charm SURF device.
-
-config MACH_MSM8X60_CHARM_FFA
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 CHARM FFA"
-	help
-	  Support for the Qualcomm MSM8x60 Charm FFA device.
+	  Support for the ZTE V71A (msm8x60) board.
 
 config MACH_MSM8960_SIM
 	depends on ARCH_MSM8960
@@ -482,21 +423,6 @@ config MACH_MSM8960_FLUID
 	bool "MSM8960 FLUID"
 	help
 	  Support for the Qualcomm MSM8960 FLUID device.
-
-config MSM_USE_TSIF1
-	depends on ARCH_MSM8X60
-	bool "MSM8x60 use TSIF1"
-	help
-	  Selects TSIF1 core to be used rather than TSIF0.
-	  The two TSIF cores share the same DM configuration
-	  so they cannot be used simultaneously.
-
-config MACH_MSM8X60_QT
-	depends on ARCH_MSM8X60
-	default n
-	bool "MSM8x60 QT"
-	help
-	  Support for the Qualcomm MSM8x60 QT board.
 
 endmenu
 
