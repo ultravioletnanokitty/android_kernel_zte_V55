@@ -77,6 +77,10 @@ do {									\
 
 int chk_config_get_id()
 {
+	/* For all Fusion targets, Modem will always be present */
+	if (machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa())
+		return 0;
+
 	switch (socinfo_get_id()) {
 	case APQ8060_MACHINE_ID:
 		return APQ8060_TOOLS_ID;
@@ -211,8 +215,14 @@ int diag_device_write(void *buf, int proc_num, struct diag_request *write_ptr)
 			err = usb_diag_write(driver->legacy_ch, write_ptr);
 		}
 #ifdef CONFIG_DIAG_SDIO_PIPE
-		else if (proc_num == SDIO_DATA) 
-			pr_err("diag: Incorrect data while USB write");
+		else if (proc_num == SDIO_DATA) {
+			if (machine_is_msm8x60_charm_surf() ||
+					machine_is_msm8x60_charm_ffa()) {
+				write_ptr->buf = buf;
+				err = usb_diag_write(driver->mdm_ch, write_ptr);
+			} else
+				pr_err("diag: Incorrect data while USB write");
+		}
 #endif
 		APPEND_DEBUG('d');
 	}
@@ -932,7 +942,14 @@ int diagfwd_connect(void)
 	queue_work(driver->diag_wq, &(driver->diag_read_smd_qdsp_work));
 	/* Poll USB channel to check for data*/
 	queue_work(driver->diag_wq, &(driver->diag_read_work));
-
+#ifdef CONFIG_DIAG_SDIO_PIPE
+	if (machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa()) {
+		if (driver->mdm_ch && !IS_ERR(driver->mdm_ch))
+			diagfwd_connect_sdio();
+		else
+			printk(KERN_INFO "diag: No USB MDM ch");
+	}
+#endif
 	return 0;
 }
 
@@ -946,7 +963,11 @@ int diagfwd_disconnect(void)
 	driver->in_busy_qdsp_2 = 1;
 	driver->debug_flag = 1;
 	usb_diag_free_req(driver->legacy_ch);
-
+#ifdef CONFIG_DIAG_SDIO_PIPE
+	if (machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa())
+		if (driver->mdm_ch && !IS_ERR(driver->mdm_ch))
+			diagfwd_disconnect_sdio();
+#endif
 	/* TBD - notify and flow control SMD */
 	return 0;
 }
@@ -975,7 +996,11 @@ int diagfwd_write_complete(struct diag_request *diag_write_ptr)
 	}
 #ifdef CONFIG_DIAG_SDIO_PIPE
 	else if (buf == (void *)driver->buf_in_sdio)
-		pr_err("diag: Incorrect buffer pointer while WRITE");
+		if (machine_is_msm8x60_charm_surf() ||
+					 machine_is_msm8x60_charm_ffa())
+			diagfwd_write_complete_sdio();
+		else
+			pr_err("diag: Incorrect buffer pointer while WRITE");
 #endif
 	else {
 		diagmem_free(driver, (unsigned char *)buf, POOL_TYPE_HDLC);
@@ -1013,7 +1038,12 @@ int diagfwd_read_complete(struct diag_request *diag_read_ptr)
 	}
 #ifdef CONFIG_DIAG_SDIO_PIPE
 	else if (buf == (void *)driver->usb_buf_mdm_out) {
-		pr_err("diag: Incorrect buffer pointer while READ");
+		if (machine_is_msm8x60_charm_surf() ||
+					 machine_is_msm8x60_charm_ffa()) {
+			driver->read_len_mdm = diag_read_ptr->actual;
+			diagfwd_read_complete_sdio();
+		} else
+			pr_err("diag: Incorrect buffer pointer while READ");
 	}
 #endif
 	else
@@ -1225,6 +1255,10 @@ void diagfwd_init(void)
 		printk(KERN_ERR "Unable to open USB diag legacy channel\n");
 		goto err;
 	}
+#ifdef CONFIG_DIAG_SDIO_PIPE
+	if (machine_is_msm8x60_charm_surf() || machine_is_msm8x60_charm_ffa())
+		diagfwd_sdio_init();
+#endif
 #endif
 	platform_driver_register(&msm_smd_ch1_driver);
 
