@@ -21,15 +21,11 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wldev_common.c,v 1.1.4.1.2.14 2011-02-09 01:40:07 $
+ * $Id: wldev_common.c,v 1.1.4.1.2.14 2011-02-09 01:40:07 Exp $
  */
 
-#include <linux/module.h>
-#include <linux/netdevice.h>
-
-#include <wldev_common.h>
+#include <wlioctl.h>
 #include <bcmutils.h>
-#include <dhd_dbg.h>
 
 #define htod32(i) i
 #define htod16(i) i
@@ -37,21 +33,33 @@
 #define dtoh16(i) i
 #define htodchanspec(i) i
 #define dtohchanspec(i) i
-extern int dhd_ioctl_entry_local(struct net_device *net, wl_ioctl_t *ioc, int cmd);
 
 s32 wldev_ioctl(
 	struct net_device *dev, u32 cmd, void *arg, u32 len, u32 set)
 {
 	s32 ret = 0;
+	struct ifreq ifr;
 	struct wl_ioctl ioc;
+	mm_segment_t fs;
+	s32 err = 0;
 
 	memset(&ioc, 0, sizeof(ioc));
 	ioc.cmd = cmd;
 	ioc.buf = arg;
 	ioc.len = len;
 	ioc.set = set;
+	strcpy(ifr.ifr_name, dev->name);
+	ifr.ifr_data = (caddr_t)&ioc;
 
-	ret = dhd_ioctl_entry_local(dev, &ioc, cmd);
+	fs = get_fs();
+	set_fs(get_ds());
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31)
+	err = dev->do_ioctl(dev, &ifr, SIOCDEVPRIVATE);
+#else
+	err = dev->netdev_ops->ndo_do_ioctl(dev, &ifr, SIOCDEVPRIVATE);
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31) */
+	set_fs(fs);
+
 	return ret;
 }
 
@@ -59,7 +67,7 @@ s32 wldev_ioctl(
  * taken care of in dhd_ioctl_entry. Internal use only, not exposed to
  * wl_iw, wl_cfg80211 and wl_cfgp2p
  */
-static s32 wldev_mkiovar(
+s32 wldev_mkiovar(
 	s8 *iovar_name, s8 *param, s32 paramlen,
 	s8 *iovar_buf, u32 buflen)
 {
@@ -77,7 +85,7 @@ s32 wldev_iovar_getbuf(
 	s32 iovar_len = 0;
 
 	iovar_len = wldev_mkiovar(iovar_name, param, paramlen, buf, buflen);
-	ret = wldev_ioctl(dev, WLC_GET_VAR, buf, buflen, FALSE);
+	ret = wldev_ioctl(dev, WLC_GET_VAR, buf, iovar_len, FALSE);
 	return ret;
 }
 
@@ -148,7 +156,7 @@ s32 wldev_mkiovar_bsscfg(
 
 	if (buflen < 0 || iolen > (u32)buflen)
 	{
-		DHD_ERROR(("%s: buffer is too short\n", __FUNCTION__));
+		printk("wldev_mkiovar_bsscfg buffer is too short\n");
 		return BCME_BUFTOOSHORT;
 	}
 
@@ -183,7 +191,7 @@ s32 wldev_iovar_getbuf_bsscfg(
 	s32 iovar_len = 0;
 
 	iovar_len = wldev_mkiovar_bsscfg(iovar_name, param, paramlen, buf, buflen, bsscfg_idx);
-	ret = wldev_ioctl(dev, WLC_GET_VAR, buf, buflen, FALSE);
+	ret = wldev_ioctl(dev, WLC_GET_VAR, buf, iovar_len, FALSE);
 	return ret;
 
 }
@@ -227,115 +235,4 @@ s32 wldev_iovar_getint_bsscfg(
 		*pval = dtoh32(*pval);
 	}
 	return err;
-}
-
-int wldev_get_link_speed(
-	struct net_device *dev, int *plink_speed)
-{
-	int error;
-
-	if (!plink_speed)
-		return -ENOMEM;
-	error = wldev_ioctl(dev, WLC_GET_RATE, plink_speed, sizeof(int), 0);
-	if (unlikely(error))
-		return error;
-
-	/* Convert internal 500Kbps to Kbps */
-	*plink_speed *= 500;
-	return error;
-}
-
-int wldev_get_rssi(
-	struct net_device *dev, int *prssi)
-{
-	scb_val_t scb_val;
-	int error;
-
-	if (!prssi)
-		return -ENOMEM;
-	bzero(&scb_val, sizeof(scb_val_t));
-
-	error = wldev_ioctl(dev, WLC_GET_RSSI, &scb_val, sizeof(scb_val_t), 0);
-	if (unlikely(error))
-		return error;
-
-	*prssi = dtoh32(scb_val.val);
-	return error;
-}
-
-int wldev_get_ssid(
-	struct net_device *dev, wlc_ssid_t *pssid)
-{
-	int error;
-
-	if (!pssid)
-		return -ENOMEM;
-	error = wldev_ioctl(dev, WLC_GET_SSID, pssid, sizeof(wlc_ssid_t), 0);
-	if (unlikely(error))
-		return error;
-	pssid->SSID_len = dtoh32(pssid->SSID_len);
-	return error;
-}
-
-int wldev_get_band(
-	struct net_device *dev, uint *pband)
-{
-	int error;
-
-	error = wldev_ioctl(dev, WLC_GET_BAND, pband, sizeof(uint), 0);
-	return error;
-}
-
-int wldev_set_band(
-	struct net_device *dev, uint band)
-{
-	int error = -1;
-
-	if ((band == WLC_BAND_AUTO) || (band == WLC_BAND_5G) || (band == WLC_BAND_2G)) {
-		error = wldev_ioctl(dev, WLC_SET_BAND, &band, sizeof(band), 1);
-	}
-	return error;
-}
-
-int wldev_set_country(
-	struct net_device *dev, char *country_code)
-{
-	int error = -1;
-	wl_country_t cspec = {{0}, 0, {0}};
-	scb_val_t scbval;
-	char smbuf[WLC_IOCTL_SMLEN];
-
-	if (!country_code)
-		return error;
-
-	error = wldev_iovar_getbuf(dev, "country", &cspec, sizeof(cspec),
-		smbuf, sizeof(smbuf));
-	if (error < 0)
-		DHD_ERROR(("%s: get country failed = %d\n", __FUNCTION__, error));
-
-	if ((error < 0) ||
-	    (strncmp(country_code, smbuf, WLC_CNTRY_BUF_SZ) != 0)) {
-		bzero(&scbval, sizeof(scb_val_t));
-		error = wldev_ioctl(dev, WLC_DISASSOC, &scbval, sizeof(scb_val_t), 1);
-		if (error < 0) {
-			DHD_ERROR(("%s: set country failed due to Disassoc error %d\n",
-				__FUNCTION__, error));
-			return error;
-		}
-	}
-	cspec.rev = -1;
-	memcpy(cspec.country_abbrev, country_code, WLC_CNTRY_BUF_SZ);
-	memcpy(cspec.ccode, country_code, WLC_CNTRY_BUF_SZ);
-	get_customized_country_code((char *)&cspec.country_abbrev, &cspec);
-	error = wldev_iovar_setbuf(dev, "country", &cspec, sizeof(cspec),
-		smbuf, sizeof(smbuf));
-	if (error < 0) {
-		DHD_ERROR(("%s: set country for %s as %s rev %d failed\n",
-			__FUNCTION__, country_code, cspec.ccode, cspec.rev));
-		return error;
-	}
-	dhd_bus_country_set(dev, &cspec);
-	DHD_INFO(("%s: set country for %s as %s rev %d\n",
-		__FUNCTION__, country_code, cspec.ccode, cspec.rev));
-	return 0;
 }

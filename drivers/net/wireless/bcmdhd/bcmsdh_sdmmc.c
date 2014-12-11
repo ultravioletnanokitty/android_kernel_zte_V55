@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh_sdmmc.c 282820 2011-09-09 15:40:35Z $
+ * $Id: bcmsdh_sdmmc.c,v 1.14.64.3 2010-12-23 01:13:15 Exp $
  */
 #include <typedefs.h>
 
@@ -30,7 +30,7 @@
 #include <bcmutils.h>
 #include <osl.h>
 #include <sdio.h>	/* SDIO Device and Protocol Specs */
-#include <sdioh.h>	/* Standard SDIO Host Controller Specification */
+#include <sdioh.h>	/* SDIO Host Controller Specification */
 #include <bcmsdbus.h>	/* bcmsdh to/from specific controller APIs */
 #include <sdiovar.h>	/* ioctl/iovars */
 
@@ -198,14 +198,9 @@ sdioh_detach(osl_t *osh, sdioh_info_t *sd)
 		sdio_release_host(gInstance->func[2]);
 
 		/* Disable Function 1 */
-		if (gInstance->func[1]) {
-			sdio_claim_host(gInstance->func[1]);
-			sdio_disable_func(gInstance->func[1]);
-			sdio_release_host(gInstance->func[1]);
-		}
-
-		gInstance->func[1] = NULL;
-		gInstance->func[2] = NULL;
+		sdio_claim_host(gInstance->func[1]);
+		sdio_disable_func(gInstance->func[1]);
+		sdio_release_host(gInstance->func[1]);
 
 		/* deregister irq */
 		sdioh_sdmmc_osfree(sd);
@@ -682,10 +677,10 @@ sdioh_enable_hw_oob_intr(sdioh_info_t *sd, bool enable)
 	else
 		data = SDIO_SEPINT_ACT_HI;	/* disable hw oob interrupt */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+#if defined(ANDROID) && LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
 	/* Needed for Android Linux Kernel 2.6.35 */
 	data |= SDIO_SEPINT_ACT_HI; 		/* Active HIGH */
-#endif
+#endif /* ANDROID */
 
 	status = sdioh_request_byte(sd, SDIOH_WRITE, 0, SDIOD_CCCR_BRCM_SEPINT, &data);
 	return status;

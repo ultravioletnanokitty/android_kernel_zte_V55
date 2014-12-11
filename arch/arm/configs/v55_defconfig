@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
-# Linux kernel version: 2.6.35.11
-# Mon Oct  8 03:35:42 2012
+# Linux kernel version: 2.6.35.14
+# Thu Dec 11 01:30:10 2014
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -816,7 +816,7 @@ CONFIG_NF_NAT_TFTP=y
 CONFIG_NF_NAT_AMANDA=y
 CONFIG_NF_NAT_PPTP=y
 CONFIG_NF_NAT_H323=y
-CONFIG_NF_NAT_SIP=y
+# CONFIG_NF_NAT_SIP is not set
 CONFIG_IP_NF_MANGLE=y
 # CONFIG_IP_NF_TARGET_CLUSTERIP is not set
 # CONFIG_IP_NF_TARGET_ECN is not set
@@ -969,13 +969,17 @@ CONFIG_WEXT_CORE=y
 CONFIG_WEXT_PROC=y
 CONFIG_WEXT_SPY=y
 CONFIG_WEXT_PRIV=y
-# CONFIG_CFG80211 is not set
+CONFIG_CFG80211=y
+# CONFIG_NL80211_TESTMODE is not set
+# CONFIG_CFG80211_DEVELOPER_WARNINGS is not set
+# CONFIG_CFG80211_REG_DEBUG is not set
+CONFIG_CFG80211_DEFAULT_PS=y
+# CONFIG_CFG80211_DEBUGFS is not set
+# CONFIG_CFG80211_INTERNAL_REGDB is not set
+CONFIG_CFG80211_WEXT=y
 # CONFIG_WIRELESS_EXT_SYSFS is not set
 # CONFIG_LIB80211 is not set
-
-#
-# CFG80211 needs to be enabled for MAC80211
-#
+# CONFIG_MAC80211 is not set
 
 #
 # Some wireless drivers require a rate control algorithm
@@ -1208,12 +1212,16 @@ CONFIG_SMSC911X=y
 # CONFIG_NETDEV_10000 is not set
 CONFIG_WLAN=y
 # CONFIG_USB_ZD1201 is not set
+# CONFIG_USB_NET_RNDIS_WLAN is not set
 CONFIG_LIBRA_SDIOIF=m
-# CONFIG_BCM4329 is not set
+# CONFIG_ATH_COMMON is not set
+CONFIG_BCMDHD=m
+CONFIG_BCMDHD_FW_PATH="/system/etc/firmware/fw_bcmdhd.bin"
+CONFIG_BCMDHD_NVRAM_PATH="/persist/zte/wifi/bcm.txt"
+# CONFIG_BCMDHD_WEXT is not set
 # CONFIG_HOSTAP is not set
-# CONFIG_WIFI_BCM4329_ZTE is not set
-CONFIG_WIFI_BCM4330_ZTE=y
-CONFIG_BCM4330_ZTE=m
+# CONFIG_IWM is not set
+# CONFIG_LIBERTAS is not set
 
 #
 # Enable WiMAX (Networking options) to see the WiMAX drivers

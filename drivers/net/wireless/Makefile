@@ -53,11 +53,7 @@ obj-$(CONFIG_WL12XX)	+= wl12xx/
 
 obj-$(CONFIG_IWM)	+= iwmc3200wifi/
 
-obj-$(CONFIG_BCM4329)	+= bcm4329/
-
-obj-$(CONFIG_BCM4329_ZTE)	+= bcm4329_zte/
-
-obj-$(CONFIG_BCM4330_ZTE)	+= bcm4330_b1_b2_zte/
+obj-$(CONFIG_BCMDHD)	+= bcmdhd/
 
 obj-$(CONFIG_LIBRA_SDIOIF)	+= libra/
 

@@ -2731,14 +2731,8 @@ static inline struct sk_buff *handle_ing(struct sk_buff *skb,
 					 struct packet_type **pt_prev,
 					 int *ret, struct net_device *orig_dev)
 {
-
-#ifdef CONFIG_WIFI_BCM4330_ZTE
-	if (!skb->dev->rx_queue.qdisc || skb->dev->rx_queue.qdisc == &noop_qdisc)
-		goto out;
-#else
 	if (skb->dev->rx_queue.qdisc == &noop_qdisc)
 		goto out;
-#endif
 
 	if (*pt_prev) {
 		*ret = deliver_skb(skb, *pt_prev, orig_dev);

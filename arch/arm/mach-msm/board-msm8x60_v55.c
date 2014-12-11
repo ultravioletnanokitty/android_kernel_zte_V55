@@ -9077,7 +9077,7 @@ static struct mmc_platform_data msm8x60_sdc5_data = {
 };
 #endif
 
-#ifdef CONFIG_WIFI_BCM4330_ZTE
+#ifdef CONFIG_BCMDHD
 #define WIFI_GPIO_EN 41
 
 static int power_on_wlan(void) {
